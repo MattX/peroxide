@@ -1,32 +1,50 @@
 use std::error::Error;
 use std::iter::Peekable;
 
-/// Represents a token from the stream. This is essentially the same as a value for Atoms, but it
-/// doesn't represent nested structures.
+/// Represents a token from the input.
+///
+/// For atoms, i.e. basic types, this is essentially the same as a Value: it holds a tag and the
+/// actual value. However, there is no representation for other types like pairs or vectors. The
+/// parser is in charge of determining if a sequence of tokens validly represents a Scheme
+/// expression.
 #[derive(Debug, PartialEq)]
 pub enum Token {
   Real(f64),
   Integer(i64),
   Boolean(bool),
   Character(char),
-  Nil,
+  Symbol(String),
+  String(String),
+  OpenParen,
+  OpenVector,
+  ClosingParen,
+  Quote,
 }
 
-/// Turns an str slice into a vector of tokens.
+/// Turns an str slice into a vector of tokens, or fails with an error message.
 pub fn lex(input: &str) -> Result<Vec<Token>, String> {
   let mut it = input.chars().peekable();
   let mut tokens: Vec<Token> = Vec::new();
   loop {
     consume_leading_spaces(&mut it);
     if let Some(&c) = it.peek() {
-      let token = if c.is_digit(10) || c == '-' || c == '+' || c == '.' {
+      let token = if c.is_digit(10) || c == '.' || c == '-' || c == '+' {
         consume_number(&mut it)?
       } else if c == '#' {
         consume_hash(&mut it)?
       } else if c == '(' {
-        consume_paren(&mut it)?
+        it.next();
+        Token::OpenParen
+      } else if c == '"' {
+        consume_string(&mut it)?
+      } else if c == '\'' {
+        it.next();
+        Token::Quote
+      } else if c == ')' {
+        it.next();
+        Token::ClosingParen
       } else {
-        return Err(format!("Unexpected token start: `{}`.", c));
+        Token::Symbol(take_delimited_token(&mut it, 1).into_iter().collect())
       };
       tokens.push(token);
     } else {
@@ -48,12 +66,11 @@ fn consume_leading_spaces<I>(it: &mut Peekable<I>) -> ()
   }
 }
 
-fn cautious_take_while<P, I>(it: &mut Peekable<I>, min: usize, predicate: P) -> Vec<char>
-  where P: Fn(&char) -> bool,
-        I: Iterator<Item=char> {
+fn take_delimited_token<I>(it: &mut Peekable<I>, min: usize) -> Vec<char>
+  where I: Iterator<Item=char> {
   let mut result: Vec<char> = Vec::new();
   while let Some(&c) = it.peek() {
-    if result.len() < min || predicate(&c) {
+    if result.len() < min || (c != '(' && c != ')' && !c.is_whitespace()) {
       result.push(c);
       it.next();
     } else {
@@ -65,14 +82,18 @@ fn cautious_take_while<P, I>(it: &mut Peekable<I>, min: usize, predicate: P) -> 
 
 fn consume_number<I>(it: &mut Peekable<I>) -> Result<Token, String>
   where I: Iterator<Item=char> {
-  let chars: String = cautious_take_while(it, 1, |c| !c.is_whitespace()).into_iter().collect();
-  Ok(
-    chars.parse::<i64>()
-        .map(|i| Token::Integer(i))
-        .or(chars.parse::<f64>()
-            .map(|f| Token::Real(f))
-            .map_err(|e| e.description().to_string()))?
-  )
+  let chars: Vec<char> = take_delimited_token(it, 1);
+
+  if (chars[0] == '+' || chars[0] == '-') && (chars.len() == 1 || !chars[1].is_digit(10)) {
+    return Ok(Token::Symbol(chars.into_iter().collect()))
+  }
+
+  let text: String = chars.into_iter().collect();
+  text.parse::<i64>()
+      .map(|i| Token::Integer(i))
+      .or(text.parse::<f64>()
+          .map(|f| Token::Real(f))
+          .map_err(|e| e.description().to_string()))
 }
 
 fn consume_hash<I>(it: &mut Peekable<I>) -> Result<Token, String>
@@ -84,7 +105,7 @@ fn consume_hash<I>(it: &mut Peekable<I>) -> Result<Token, String>
   if let Some(c) = it.next() {
     match c {
       '\\' => {
-        let seq = cautious_take_while(it, 1, |c| !c.is_whitespace());
+        let seq = take_delimited_token(it, 1);
         match seq.len() {
           0 => Err(format!("Unexpected end of token.")),
           1 => Ok(Token::Character(seq[0])),
@@ -100,6 +121,7 @@ fn consume_hash<I>(it: &mut Peekable<I>) -> Result<Token, String>
       }
       't' => Ok(Token::Boolean(true)),
       'f' => Ok(Token::Boolean(false)),
+      '(' => Ok(Token::OpenVector),
       _ => Err(format!("Unknown token form: `#{}...`.", c))
     }
   } else {
@@ -107,21 +129,38 @@ fn consume_hash<I>(it: &mut Peekable<I>) -> Result<Token, String>
   }
 }
 
-fn consume_paren<I>(it: &mut Peekable<I>) -> Result<Token, String>
+fn consume_string<I>(it: &mut Peekable<I>) -> Result<Token, String>
   where I: Iterator<Item=char> {
-  if it.peek() != Some(&'(') {
-    panic!("Unexpected first char `{:?}` in consume_hash.", it.next());
+  if it.peek() != Some(&'"') {
+    panic!("Unexpected first char `{:?}` in consume_string.", it.next());
   }
   it.next();
-  if let Some(&c) = it.peek() {
-    if c != ')' {
-      Err(format!("Unexpected token `({}`.", c))
-    } else {
-      it.next();
-      Ok(Token::Nil)
+
+  let mut found_end: bool = false;
+  let mut escaped: bool = false;
+  let mut result: String = String::new();
+  while let Some(c) = it.next() {
+    if escaped {
+      let r = match c {
+        'n' => '\n',
+        '"' => '"',
+        '\\' => '\\',
+        _ => return Err(format!("Invalid escape `\\{}`", c))
+      };
+      result.push(r);
+    } else if c == '"' {
+      found_end = true;
+      break;
+    } else if c != '\\' {
+      result.push(c);
     }
+    escaped = !escaped && c == '\\';
+  }
+
+  if found_end {
+    Ok(Token::String(result))
   } else {
-    Err(format!("Unknown token `(`"))
+    Err(format!("Unterminated string `\"{}`.", result))
   }
 }
 
@@ -148,8 +187,6 @@ mod tests {
     assert_eq!(lex("-123").unwrap(), vec![Token::Integer(-123)]);
     assert_eq!(lex("+123").unwrap(), vec![Token::Integer(123)]);
     assert!(lex("12d3").is_err());
-    assert!(lex("+").is_err());
-    assert!(lex("-").is_err());
     assert!(lex("123d").is_err());
   }
 
@@ -170,15 +207,15 @@ mod tests {
   }
 
   #[test]
-  fn lex_nil() {
-    assert_eq!(lex("()").unwrap(), vec![Token::Nil]);
+  fn lex_parens() {
+    assert_eq!(lex("()").unwrap(), vec![Token::OpenParen, Token::ClosingParen]);
+    assert_eq!(lex(" (  ) ").unwrap(), vec![Token::OpenParen, Token::ClosingParen]);
   }
 
   #[test]
   fn lex_errors() {
     assert!(lex("#").is_err());
-    assert!(lex("(").is_err());
-    assert!(lex("(x").is_err());
+    assert!(lex("\"abc").is_err());
   }
 
   #[test]
@@ -186,6 +223,24 @@ mod tests {
     assert!(lex("    ").unwrap().is_empty());
     assert!(lex("").unwrap().is_empty());
     assert_eq!(lex("  123   #f   ").unwrap(), vec![Token::Integer(123), Token::Boolean(false)]);
+    assert_eq!(lex("123)456").unwrap(),
+               vec![Token::Integer(123), Token::ClosingParen, Token::Integer(456)]);
+  }
+
+  #[test]
+  fn lex_symbol() {
+    assert_eq!(lex("abc").unwrap(), vec![Token::Symbol("abc".to_string())]);
+    assert_eq!(lex("<=").unwrap(), vec![Token::Symbol("<=".to_string())]);
+    assert_eq!(lex("+").unwrap(), vec![Token::Symbol("+".to_string())]);
+    assert_eq!(lex("-def").unwrap(), vec![Token::Symbol("-def".to_string())]);
+  }
+
+  #[test]
+  fn lex_string() {
+    assert_eq!(lex("\"abcdef\"").unwrap(), vec![Token::String("abcdef".to_string())]);
+    assert_eq!(lex("\"abc\\\"def\"").unwrap(), vec![Token::String("abc\"def".to_string())]);
+    assert_eq!(lex("\"abc\\\\def\"").unwrap(), vec![Token::String("abc\\def".to_string())]);
+    assert_eq!(lex("\"abc\\ndef\"").unwrap(), vec![Token::String("abc\ndef".to_string())]);
   }
 
   #[test]
