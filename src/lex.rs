@@ -15,10 +15,15 @@ pub enum Token {
   Character(char),
   Symbol(String),
   String(String),
-  OpenParen,
   OpenVector,
+  OpenParen,
   ClosingParen,
+  Dot,
+  Ellipsis,
   Quote,
+  QuasiQuote,
+  Unquote,
+  UnquoteSplicing,
 }
 
 /// Turns an str slice into a vector of tokens, or fails with an error message.
@@ -28,21 +33,30 @@ pub fn lex(input: &str) -> Result<Vec<Token>, String> {
   loop {
     consume_leading_spaces(&mut it);
     if let Some(&c) = it.peek() {
+      if c == ';' {
+        break; // comment
+      }
       let token = if c.is_digit(10) || c == '.' || c == '-' || c == '+' {
         consume_number(&mut it)?
       } else if c == '#' {
         consume_hash(&mut it)?
-      } else if c == '(' {
-        it.next();
-        Token::OpenParen
       } else if c == '"' {
         consume_string(&mut it)?
       } else if c == '\'' {
         it.next();
         Token::Quote
+      } else if c == '(' {
+        it.next();
+        Token::OpenParen
       } else if c == ')' {
         it.next();
         Token::ClosingParen
+      } else if c == '`' {
+        it.next();
+        Token::QuasiQuote
+      } else if c == ',' {
+        it.next();
+        Token::Unquote //TODO: Unquote-splicing
       } else {
         Token::Symbol(take_delimited_token(&mut it, 1).into_iter().collect())
       };
@@ -82,18 +96,21 @@ fn take_delimited_token<I>(it: &mut Peekable<I>, min: usize) -> Vec<char>
 
 fn consume_number<I>(it: &mut Peekable<I>) -> Result<Token, String>
   where I: Iterator<Item=char> {
-  let chars: Vec<char> = take_delimited_token(it, 1);
+  let token: String = take_delimited_token(it, 1).into_iter().collect();
 
-  if (chars[0] == '+' || chars[0] == '-') && (chars.len() == 1 || !chars[1].is_digit(10)) {
-    return Ok(Token::Symbol(chars.into_iter().collect()))
+  if token == "+" || token == "-" {
+    Ok(Token::Symbol(token))
+  } else if token == "." {
+    Ok(Token::Dot)
+  } else if token == "..." {
+    Ok(Token::Ellipsis)
+  } else {
+    token.parse::<i64>()
+        .map(|i| Token::Integer(i))
+        .or(token.parse::<f64>()
+            .map(|f| Token::Real(f))
+            .map_err(|e| e.description().to_string()))
   }
-
-  let text: String = chars.into_iter().collect();
-  text.parse::<i64>()
-      .map(|i| Token::Integer(i))
-      .or(text.parse::<f64>()
-          .map(|f| Token::Real(f))
-          .map_err(|e| e.description().to_string()))
 }
 
 fn consume_hash<I>(it: &mut Peekable<I>) -> Result<Token, String>
@@ -232,7 +249,8 @@ mod tests {
     assert_eq!(lex("abc").unwrap(), vec![Token::Symbol("abc".to_string())]);
     assert_eq!(lex("<=").unwrap(), vec![Token::Symbol("<=".to_string())]);
     assert_eq!(lex("+").unwrap(), vec![Token::Symbol("+".to_string())]);
-    assert_eq!(lex("-def").unwrap(), vec![Token::Symbol("-def".to_string())]);
+    assert_eq!(lex(".").unwrap(), vec![Token::Dot]);
+    assert_eq!(lex("...").unwrap(), vec![Token::Ellipsis]);
   }
 
   #[test]

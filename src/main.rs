@@ -6,6 +6,8 @@ use rustyline::Editor;
 use rustyline::error::ReadlineError;
 
 mod lex;
+mod value;
+mod parse;
 
 fn main() -> io::Result<()> {
   let mut rl = Editor::<()>::new();
@@ -39,5 +41,9 @@ fn main() -> io::Result<()> {
 
 // Read, eval, print
 fn rep(buffer: &str) -> () {
-  println!("{:?}", lex::lex(buffer));
+  let lex_result = lex::lex(buffer);
+  match lex_result {
+    Ok(token_vector) => println!("{:?}", parse::parse(&token_vector)),
+    Err(s) => println!("Tokenizing error: {}", s)
+  }
 }
