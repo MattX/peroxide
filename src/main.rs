@@ -41,9 +41,13 @@ fn main() -> io::Result<()> {
 
 // Read, eval, print
 fn rep(buffer: &str) -> () {
-  let lex_result = lex::lex(buffer);
-  match lex_result {
-    Ok(token_vector) => println!("{:?}", parse::parse(&token_vector)),
+  match lex::lex(buffer) {
+    Ok(token_vector) => {
+      match parse::parse(&token_vector) {
+        Ok(value) => println!("{}", value),
+        Err(s) => println!("Parsing error: {:?}", s)
+      }
+    },
     Err(s) => println!("Tokenizing error: {}", s)
   }
 }

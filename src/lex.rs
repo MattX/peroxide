@@ -56,7 +56,10 @@ pub fn lex(input: &str) -> Result<Vec<Token>, String> {
         Token::QuasiQuote
       } else if c == ',' {
         it.next();
-        Token::Unquote //TODO: Unquote-splicing
+        if it.peek() == Some(&'@') {
+          it.next();
+          Token::UnquoteSplicing
+        } else { Token::Unquote }
       } else {
         Token::Symbol(take_delimited_token(&mut it, 1).into_iter().collect())
       };
