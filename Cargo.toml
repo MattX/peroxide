@@ -5,3 +5,4 @@ authors = ["Matthieu Felix <matthieufelix@gmail.com>"]
 
 [dependencies]
 rustyline = "2.1.0"
+lazy_static = "1.2.0"

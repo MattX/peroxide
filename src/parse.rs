@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::iter::Peekable;
-use std::rc::Rc;
 
+use arena::Arena;
 use lex::Token;
 use value::Value;
 
@@ -12,16 +12,16 @@ pub enum ParseResult {
   ParseError(String),
 }
 
-pub fn parse(tokens: &[Token]) -> Result<Value, ParseResult> {
+pub fn parse(arena: &mut Arena, tokens: &[Token]) -> Result<Value, ParseResult> {
   if tokens.is_empty() {
     return Err(ParseResult::None);
   }
 
   let mut it = tokens.iter().peekable();
-  do_parse(&mut it)
+  do_parse(arena, &mut it)
 }
 
-fn do_parse<'a, 'b, I>(it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
+fn do_parse<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
   where I: Iterator<Item=&'b Token> {
   if let Some(t) = it.next() {
     match t {
@@ -31,9 +31,9 @@ fn do_parse<'a, 'b, I>(it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
       Token::Character(c) => Ok(Value::Character(*c)),
       Token::String(s) => Ok(Value::String(s.to_string())),
       Token::Symbol(s) => Ok(Value::Symbol(s.to_string())),
-      Token::OpenParen => parse_list(it),
-      Token::OpenVector => parse_vec(it),
-      Token::Quote => parse_quote(it),
+      Token::OpenParen => parse_list(arena, it),
+      Token::OpenVector => parse_vec(arena, it),
+      Token::Quote => parse_quote(arena, it),
       _ => Err(ParseResult::ParseError(format!("Unexpected token {:?}.", t)))
     }
   } else {
@@ -41,7 +41,7 @@ fn do_parse<'a, 'b, I>(it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
   }
 }
 
-fn parse_list<'a, 'b, I>(it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
+fn parse_list<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
   where I: Iterator<Item=&'b Token> {
   if let Some(&t) = it.peek() {
     match t {
@@ -50,18 +50,20 @@ fn parse_list<'a, 'b, I>(it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
         Ok(Value::EmptyList)
       }
       _ => {
-        let first = do_parse(it)?;
+        let first = do_parse(arena, it)?;
         let second = if it.peek() == Some(&&Token::Dot) {
           it.next();
-          let ret = do_parse(it);
+          let ret = do_parse(arena, it);
           let next = it.next();
           if next != Some(&&Token::ClosingParen) {
             Err(ParseResult::ParseError(format!("Unexpected token {:?} after dot.", next)))
           } else { ret }
         } else {
-          parse_list(it)
+          parse_list(arena, it)
         }?;
-        Ok(Value::Pair(Rc::new(RefCell::new(first)), Rc::new(RefCell::new(second))))
+        let first_ptr = arena.intern(first);
+        let second_ptr = arena.intern(second);
+        Ok(Value::Pair(RefCell::new(first_ptr), RefCell::new(second_ptr)))
       }
     }
   } else {
@@ -69,9 +71,9 @@ fn parse_list<'a, 'b, I>(it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
   }
 }
 
-fn parse_vec<'a, 'b, I>(it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
+fn parse_vec<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
   where I: Iterator<Item=&'b Token> {
-  let mut result: Vec<Value> = Vec::new();
+  let mut result: Vec<RefCell<usize>> = Vec::new();
 
   if None == it.peek() {
     return Err(ParseResult::ParseError(format!("Unexpected end of vector.")));
@@ -84,8 +86,9 @@ fn parse_vec<'a, 'b, I>(it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
         break;
       }
       _ => {
-        let elem = do_parse(it)?;
-        result.push(elem);
+        let elem = do_parse(arena, it)?;
+        let elem_ptr = arena.intern(elem);
+        result.push(RefCell::new(elem_ptr));
       }
     }
   }
@@ -93,9 +96,11 @@ fn parse_vec<'a, 'b, I>(it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
   Ok(Value::Vector(result))
 }
 
-fn parse_quote<'a, 'b, I>(it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
+fn parse_quote<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
   where I: Iterator<Item=&'b Token> {
-  let quoted = do_parse(it)?;
-  Ok(Value::Pair(Rc::new(RefCell::new(Value::Symbol("quote".to_string()))),
-                 Rc::new(RefCell::new(quoted))))
+  let quoted = do_parse(arena, it)?;
+  let quoted_ptr = arena.intern(quoted);
+  let quote_sym_ptr = arena.intern(Value::Symbol("quote".to_string()));
+  Ok(Value::Pair(RefCell::new(quote_sym_ptr),
+                 RefCell::new(quoted_ptr)))
 }

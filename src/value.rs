@@ -1,8 +1,6 @@
-use std::cell::Ref;
 use std::cell::RefCell;
 use std::fmt;
-use std::rc::Rc;
-use std::ops::Deref;
+use arena;
 
 #[derive(Debug, PartialEq)]
 pub enum Value {
@@ -13,8 +11,8 @@ pub enum Value {
   Symbol(String),
   String(String),
   EmptyList,
-  Pair(Rc<RefCell<Value>>, Rc<RefCell<Value>>),
-  Vector(Vec<Value>),
+  Pair(RefCell<usize>, RefCell<usize>),
+  Vector(Vec<RefCell<usize>>),
   // We'll add some stuff here later
 }
 
@@ -30,10 +28,10 @@ impl fmt::Display for Value {
       Value::Symbol(s) => write!(f, "{}", s),
       Value::String(s) => write!(f, "\"{}\"", s), // TODO escape string
       Value::EmptyList => write!(f, "()"),
-      Value::Pair(_, _) => write!(f, "{}", print_pair(self)),
+      Value::Pair(a, b) => write!(f, "(=>{} . =>{})", a.borrow(), b.borrow()),
       Value::Vector(vals) => {
         let contents = vals.iter()
-            .map(|v| format!("{}", v))
+            .map(|v| format!("=>{}", v.borrow()))
             .collect::<Vec<String>>()
             .join(" ");
         write!(f, "#({})", contents)
@@ -42,7 +40,7 @@ impl fmt::Display for Value {
   }
 }
 
-// TODO: this can blow up the stack
+/*
 fn print_pair(p: &Value) -> String {
   fn _print_pair(p: &Value, s: &mut String) {
     match p {
@@ -73,6 +71,7 @@ fn print_pair(p: &Value) -> String {
     _ => panic!("print_pair passed a value that is not a pair: {:?}", p)
   }
 }
+*/
 
 #[cfg(test)]
 mod tests {
@@ -93,23 +92,15 @@ mod tests {
   #[test]
   fn format_list() {
     assert_eq!("()", &format!("{}", Value::EmptyList));
-    assert_eq!("(1)", &format!("{}", Value::Pair(
-      Rc::new(RefCell::new(Value::Integer(1))), Rc::new(RefCell::new(Value::EmptyList))
-    )));
-    assert_eq!("(1 . 2)", &format!("{}", Value::Pair(
-      Rc::new(RefCell::new(Value::Integer(1))), Rc::new(RefCell::new(Value::Integer(2)))
-    )));
-    assert_eq!("(1 2)", &format!("{}", Value::Pair(
-      Rc::new(RefCell::new(Value::Integer(1))), Rc::new(RefCell::new(Value::Pair(
-        Rc::new(RefCell::new(Value::Integer(2))), Rc::new(RefCell::new(Value::EmptyList))
-      )))
-    )));
+    assert_eq!("(=>1 . =>2)", &format!("{}", Value::Pair(
+      RefCell::new(1), RefCell::new(2))
+    ));
   }
 
   #[test]
   fn format_vec() {
     assert_eq!("#()", &format!("{}", Value::Vector(vec![])));
-    assert_eq!("#(1 2)",
-               &format!("{}", Value::Vector(vec![Value::Integer(1), Value::Integer(2)])));
+    assert_eq!("#(=>1 =>2)",
+               &format!("{}", Value::Vector(vec![RefCell::new(1), RefCell::new(2)])));
   }
 }
