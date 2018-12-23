@@ -100,7 +100,10 @@ fn parse_quote<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<
   where I: Iterator<Item=&'b Token> {
   let quoted = do_parse(arena, it)?;
   let quoted_ptr = arena.intern(quoted);
+  let empty_list_ptr = arena.intern(Value::EmptyList);
+  let quoted_list_ptr = arena.intern(Value::Pair(RefCell::new(quoted_ptr),
+                                                 RefCell::new(empty_list_ptr)));
   let quote_sym_ptr = arena.intern(Value::Symbol("quote".to_string()));
   Ok(Value::Pair(RefCell::new(quote_sym_ptr),
-                 RefCell::new(quoted_ptr)))
+                 RefCell::new(quoted_list_ptr)))
 }

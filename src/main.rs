@@ -48,7 +48,7 @@ fn rep(arena: &mut arena::Arena, buffer: &str) -> () {
   match lex::lex(buffer) {
     Ok(token_vector) => {
       match parse::parse(arena, &token_vector) {
-        Ok(value) => println!("{}", value),
+        Ok(value) => println!("{}", value::pretty_print(arena, &value)),
         Err(s) => println!("Parsing error: {:?}", s)
       }
     },

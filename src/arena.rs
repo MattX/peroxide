@@ -26,7 +26,7 @@ impl Arena {
     }
   }
 
-  pub fn value_ref(&mut self, at: usize) -> &Value {
+  pub fn value_ref(&self, at: usize) -> &Value {
     match self.values[at] {
       ArenaValue::Absent => panic!("mutable_box on absent value."),
       ArenaValue::Present(ref b) => b.borrow()

@@ -1,6 +1,8 @@
 use std::cell::RefCell;
 use std::fmt;
-use arena;
+use std::ops::Deref;
+
+use arena::Arena;
 
 #[derive(Debug, PartialEq)]
 pub enum Value {
@@ -40,17 +42,24 @@ impl fmt::Display for Value {
   }
 }
 
-/*
-fn print_pair(p: &Value) -> String {
-  fn _print_pair(p: &Value, s: &mut String) {
+pub fn pretty_print(arena: &Arena, p: &Value) -> String {
+  match p {
+    Value::Pair(_, _) => print_pair(arena, p),
+    Value::Vector(_) => print_vector(arena, p),
+    _ => format!("{}", p)
+  }
+}
+
+fn print_pair(arena: &Arena, p: &Value) -> String {
+  fn _print_pair(arena: &Arena, p: &Value, s: &mut String) {
     match p {
       Value::Pair(a, b) => {
-        s.push_str(&format!("{}", a.borrow())[..]);
-        if let Value::EmptyList = b.borrow().deref() {
+        s.push_str(&pretty_print(arena, arena.value_ref(*a.borrow().deref()))[..]);
+        if let Value::EmptyList = arena.value_ref(*b.borrow().deref()) {
           s.push_str(")");
         } else {
           s.push_str(&format!(" "));
-          _print_pair(&b.borrow(), s);
+          _print_pair(arena, arena.value_ref(*b.borrow().deref()), s);
         }
       }
       Value::EmptyList => {
@@ -65,13 +74,24 @@ fn print_pair(p: &Value) -> String {
   match p {
     Value::Pair(_, _) | Value::EmptyList => {
       let mut s = "(".to_string();
-      _print_pair(p, &mut s);
+      _print_pair(arena, p, &mut s);
       s
     }
-    _ => panic!("print_pair passed a value that is not a pair: {:?}", p)
+    _ => panic!("print_pair passed a value that is not a pair: {:?}.", p)
   }
 }
-*/
+
+fn print_vector(arena: &Arena, v: &Value) -> String {
+  if let Value::Vector(vals) = v {
+    let contents = vals.iter()
+        .map(|e| format!("{}", pretty_print(arena, arena.value_ref(*e.borrow().deref()))))
+        .collect::<Vec<String>>()
+        .join(" ");
+    format!("#({})", contents)
+  } else {
+    panic!("print_vector passed a value that is not a vector: {:?}.", v)
+  }
+}
 
 #[cfg(test)]
 mod tests {
