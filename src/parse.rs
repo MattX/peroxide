@@ -8,7 +8,6 @@ use value::Value;
 #[derive(Debug)]
 pub enum ParseResult {
   None,
-  Incomplete,
   ParseError(String),
 }
 
@@ -18,7 +17,12 @@ pub fn parse(arena: &mut Arena, tokens: &[Token]) -> Result<Value, ParseResult> 
   }
 
   let mut it = tokens.iter().peekable();
-  do_parse(arena, &mut it)
+  let res = do_parse(arena, &mut it);
+  if let Some(s) = it.peek() {
+    Err(ParseResult::ParseError(format!("Unexpected token {:?}", s)))
+  } else {
+    res
+  }
 }
 
 fn do_parse<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>

@@ -3,6 +3,7 @@ use std::fmt;
 use std::ops::Deref;
 
 use arena::Arena;
+use environment::Environment;
 
 #[derive(Debug, PartialEq)]
 pub enum Value {
@@ -15,6 +16,7 @@ pub enum Value {
   EmptyList,
   Pair(RefCell<usize>, RefCell<usize>),
   Vector(Vec<RefCell<usize>>),
+  Environment(RefCell<Environment>),
   // We'll add some stuff here later
 }
 
@@ -38,6 +40,7 @@ impl fmt::Display for Value {
             .join(" ");
         write!(f, "#({})", contents)
       }
+      Value::Environment(e) => write!(f, "{:?}", e)
     }
   }
 }

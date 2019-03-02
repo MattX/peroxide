@@ -1,3 +1,5 @@
+/// A global of boxes for all values. This is used to perform garbage collection.
+
 use value::Value;
 use std::borrow::Borrow;
 
@@ -12,6 +14,7 @@ enum ArenaValue {
 }
 
 impl Arena {
+  /// Moves a value into the arena, and returns a pointer to its new position.
   pub fn intern(&mut self, v: Value) -> usize {
     let space = self.find_space();
     match space {
@@ -26,13 +29,15 @@ impl Arena {
     }
   }
 
+  /// Given a position in the arena, returns a reference to the value at that location.
   pub fn value_ref(&self, at: usize) -> &Value {
     match self.values[at] {
-      ArenaValue::Absent => panic!("mutable_box on absent value."),
+      ArenaValue::Absent => panic!("value_ref on absent value."),
       ArenaValue::Present(ref b) => b.borrow()
     }
   }
 
+  /// Instantiate a new arena
   pub fn new() -> Arena {
     Arena { values: Vec::new() }
   }

@@ -9,6 +9,7 @@ mod lex;
 mod value;
 mod parse;
 mod arena;
+mod environment;
 
 fn main() -> io::Result<()> {
   let mut rl = Editor::<()>::new();
