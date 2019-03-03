@@ -1,7 +1,8 @@
 [package]
-name = "rustscheme"
+name = "peroxide"
 version = "0.1.0"
 authors = ["Matthieu Felix <matthieufelix@gmail.com>"]
+license = "Apache-2.0"
 
 [dependencies]
 rustyline = "2.1.0"
