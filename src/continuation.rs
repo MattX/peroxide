@@ -1,6 +1,7 @@
 use arena::Arena;
 use trampoline::Bounce;
 use value::Value;
+use std::cell::RefCell;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Continuation {
@@ -16,7 +17,7 @@ pub enum Continuation {
 
 impl Continuation {
   pub fn resume(&self, arena: &mut Arena, value_r: Option<usize>) -> Bounce {
-    let value = value_r.map(|v| arena.value_ref(v));
+    let value = value_r.map(|v| arena.value_ref(v).clone());
     match self {
       Continuation::If { e_true_r, e_false_r, environment_r, next_r } => {
         match value {
@@ -53,9 +54,30 @@ impl Continuation {
           }
           _ => panic!("Expected environment, got {}.", arena.value_ref(*environment_r).pretty_print(arena))
         }
-      }
+      },
+      Continuation::EvFun { args_r, environment_r, next_r } => {
+        if let Some(v) = value_r {
+          let apply_cont = Continuation::Apply {
+            fun_r: v,
+            environment_r: *environment_r,
+            next_r: *next_r
+          };
+          let apply_cont_r = arena.intern(Value::Continuation(RefCell::new(apply_cont)));
+          Bounce::EvaluateArguments { args_r: *args_r, environment_r: *environment_r, continuation_r: *next_r }
+        } else {
+          Bounce::Done(Err(format!("Trying to apply undefined value.")))
+        }
+      },
+      Continuation::Argument { sequence_r, environment_r, next_r } => {
+        Bounce::Done(Err(format!("Not implemented")))
+      },
+      Continuation::Gather { value_r, next_r } => {
+        Bounce::Done(Err(format!("Not implemented")))
+      },
+      Continuation::Apply { fun_r, environment_r, next_r } => {
+        Bounce::Done(Err(format!("Not implemented")))
+      },
       Continuation::TopLevel => Bounce::Done(Ok(value_r)),
-      _ => Bounce::Done(Err(format!("Not implemented")))
     }
   }
 }
