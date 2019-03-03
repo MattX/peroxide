@@ -16,6 +16,12 @@ impl Environment {
     Environment { parent, values: HashMap::new() }
   }
 
+  pub fn define_all(&mut self, bindings: Vec<(String, usize)>) {
+    for (k, v) in bindings.iter() {
+      self.define(&k, *v);
+    }
+  }
+
   pub fn define(&mut self, name: &str, value: usize) {
     self.values.insert(name.to_string(), value);
   }

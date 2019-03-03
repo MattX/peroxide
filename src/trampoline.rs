@@ -19,6 +19,7 @@ impl Bounce {
   pub fn run_trampoline(self, arena: &mut Arena) -> Result<usize, String> {
     let mut current_bounce = self;
     loop {
+      println!(" C> {:?}", &current_bounce);
       match current_bounce {
         Bounce::Evaluate { continuation_r, value_r, environment_r } => {
           current_bounce = evaluate(arena, value_r, environment_r, continuation_r);

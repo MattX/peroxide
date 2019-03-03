@@ -70,7 +70,7 @@ fn evaluate_quote(arena: &mut Arena, environment: usize, cdr_r: usize, continuat
   }
 }
 
-
+// TODO (easy: support 2-form version)
 fn evaluate_if(arena: &mut Arena, environment: usize, cdr_r: usize, continuation: usize)
                -> Bounce {
   let lst = arena.value_ref(cdr_r).pair_to_vec(arena);
@@ -142,7 +142,7 @@ fn evaluate_set(arena: &mut Arena, environment: usize, cdr_r: usize, continuatio
   }
 }
 
-
+// TODO (easy): verify formals at this point
 fn evaluate_lambda(arena: &mut Arena, environment: usize, cdr_r: usize, continuation: usize)
                    -> Bounce {
   let val = arena.value_ref(cdr_r).pair_to_vec(arena);
@@ -187,7 +187,7 @@ pub fn evaluate_arguments(arena: &mut Arena, environment: usize, args: usize, co
 
   match val {
     Ok(v) => if v.is_empty() {
-      Bounce::Resume { continuation_r: continuation, value_r: arena.unspecific }
+      Bounce::Resume { continuation_r: continuation, value_r: arena.empty_list }
     } else {
       let cont = Continuation::Argument {
         sequence_r: args,

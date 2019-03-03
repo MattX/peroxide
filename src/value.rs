@@ -3,8 +3,8 @@ use std::fmt;
 use std::ops::Deref;
 
 use arena::Arena;
-use environment::Environment;
 use continuation::Continuation;
+use environment::Environment;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {
@@ -20,7 +20,7 @@ pub enum Value {
   Vector(Vec<RefCell<usize>>),
   Environment(RefCell<Environment>),
   Continuation(RefCell<Continuation>),
-  Lambda { environment: usize, formals: usize, body: usize }
+  Lambda { environment: usize, formals: usize, body: usize },
 }
 
 impl fmt::Display for Value {
@@ -131,6 +131,36 @@ impl Value {
       *cdr.borrow()
     } else {
       panic!("Not a pair: {:?}.", self)
+    }
+  }
+
+  pub fn bind_formals(&self, arena: &Arena, args: usize) -> Result<Vec<(String, usize)>, String> {
+    fn _bind_formals(arena: &Arena, formals: usize, args: usize) -> Result<Vec<(String, usize)>, String> {
+      let fm = arena.value_ref(formals);
+      let act = arena.value_ref(args);
+      match (fm, act) {
+        (Value::Symbol(s), _) => Ok(vec![(s.clone(), args)]),
+        (Value::EmptyList, Value::EmptyList) => Ok(vec![]),
+        (Value::Pair(f_car, f_cdr), Value::Pair(a_car, a_cdr)) => {
+          let f_car_v = arena.value_ref(*f_car.borrow());
+          if let Value::Symbol(s) = f_car_v {
+            let mut rest = _bind_formals(arena, *f_cdr.borrow(), *a_cdr.borrow())?;
+            rest.push((s.clone(), *a_car.borrow()));
+            Ok(rest)
+          } else {
+            // TODO turn this into a panic once we start checkings
+            Err(format!("Malformed formals, expected symbol, got {}.", f_car_v))
+          }
+        }
+        _ => Err(format!("Malformed formals ({}), or formals do not match argument list ({}).",
+                         fm.pretty_print(arena), act.pretty_print(arena)))
+      }
+    }
+
+    if let Value::Lambda { environment: _, formals, body: _ } = self {
+      _bind_formals(arena, *formals, args)
+    } else {
+      panic!("bind_formals called on {:?}.", self)
     }
   }
 }

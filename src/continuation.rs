@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use arena::Arena;
 use trampoline::Bounce;
 use value::Value;
+use environment::Environment;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Continuation {
@@ -12,7 +13,7 @@ pub enum Continuation {
   EvFun { args_r: usize, environment_r: usize, next_r: usize },
   Apply { fun_r: usize, environment_r: usize, next_r: usize },
   Argument { sequence_r: usize, environment_r: usize, next_r: usize },
-  Gather { value_r: usize, next_r: usize },
+  Gather { gathered_r: usize, next_r: usize },
   TopLevel,
 }
 
@@ -56,13 +57,34 @@ impl Continuation {
         Bounce::EvaluateArguments { args_r: *args_r, environment_r: *environment_r, continuation_r: apply_cont_r }
       }
       Continuation::Argument { sequence_r, environment_r, next_r } => {
-        Bounce::Done(Err(format!("Not implemented")))
+        let gather_cont = Continuation::Gather {
+          gathered_r: value_r,
+          next_r: *next_r,
+        };
+        let gather_cont_r = arena.intern(Value::Continuation(RefCell::new(gather_cont)));
+        let cdr = arena.value_ref(*sequence_r).cdr();
+        Bounce::EvaluateArguments { args_r: cdr, environment_r: *environment_r, continuation_r: gather_cont_r }
       }
-      Continuation::Gather { value_r, next_r } => {
-        Bounce::Done(Err(format!("Not implemented")))
+      Continuation::Gather { gathered_r, next_r } => {
+        let gathered = Value::Pair(RefCell::new(*gathered_r), RefCell::new(value_r));
+        let gathered_r = arena.intern(gathered);
+        Bounce::Resume { continuation_r: *next_r, value_r: gathered_r }
       }
-      Continuation::Apply { fun_r, environment_r, next_r } => {
-        Bounce::Done(Err(format!("Not implemented")))
+      Continuation::Apply { fun_r, environment_r: _, next_r } => {
+        let fun = arena.value_ref(*fun_r).clone();
+        if let Value::Lambda { environment: lambda_environment_r, formals: _, body } = fun {
+          match fun.bind_formals(arena, value_r) {
+            Ok(v) => {
+              let mut env = Environment::new(Some(lambda_environment_r));
+              env.define_all(v);
+              let env_r = arena.intern(Value::Environment(RefCell::new(env)));
+              Bounce::EvaluateBegin { environment_r: env_r, value_r: body, continuation_r:*next_r }
+            },
+            Err(s) => Bounce::Done(Err(format!("Error binding function arguments: {}.", s)))
+          }
+        } else {
+          Bounce::Done(Err(format!("Tried to apply non-function: {}.", fun)))
+        }
       }
       Continuation::TopLevel => Bounce::Done(Ok(value_r)),
     }
