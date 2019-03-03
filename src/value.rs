@@ -8,6 +8,7 @@ use continuation::Continuation;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {
+  Unspecific,
   Real(f64),
   Integer(i64),
   Boolean(bool),
@@ -25,6 +26,7 @@ pub enum Value {
 impl fmt::Display for Value {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
+      Value::Unspecific => write!(f, "#unspecific"),
       Value::Real(r) => write!(f, "{}", r),
       Value::Integer(i) => write!(f, "{}", i),
       Value::Boolean(true) => write!(f, "#t"),

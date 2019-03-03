@@ -68,9 +68,7 @@ fn rep(arena: &mut Arena, buffer: &str, environment_r: usize, cont_r: usize) -> 
         Ok(value) => {
           let value_r = arena.intern(value);
           let result = evaluate_toplevel(arena, value_r, environment_r, cont_r)
-              .map(|x_opt| x_opt
-                  .map(|x| arena.value_ref(x).pretty_print(arena))
-                  .unwrap_or(format!("Unspecific")));
+              .map(|x| arena.value_ref(x).pretty_print(arena));
           match result {
             Ok(x) => println!(" => {}", x),
             Err(x) => println!(" !> {}", x),

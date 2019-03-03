@@ -1,10 +1,15 @@
+use std::borrow::Borrow;
+
 /// A global of boxes for all values. This is used to perform garbage collection.
 
 use value::Value;
-use std::borrow::Borrow;
 
 pub struct Arena {
   values: Vec<ArenaValue>,
+  pub unspecific: usize,
+  pub empty_list: usize,
+  pub tru: usize,
+  pub fal: usize,
 }
 
 #[derive(Debug, PartialEq)]
@@ -39,7 +44,18 @@ impl Arena {
 
   /// Instantiate a new arena
   pub fn new() -> Arena {
-    Arena { values: Vec::new() }
+    Arena {
+      values: vec![
+        ArenaValue::Present(Box::new(Value::Unspecific)),
+        ArenaValue::Present(Box::new(Value::EmptyList)),
+        ArenaValue::Present(Box::new(Value::Boolean(false))),
+        ArenaValue::Present(Box::new(Value::Boolean(true))),
+      ],
+      unspecific: 0,
+      empty_list: 1,
+      fal: 2,
+      tru: 3,
+    }
   }
 
   /// Returns the address of the first `Absent` value in the arena, or an empty optional if there
@@ -55,8 +71,9 @@ impl Arena {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use value::Value;
+
+  use super::*;
 
   #[test]
   fn add_empty() {

@@ -15,7 +15,7 @@ pub fn evaluate(arena: &mut Arena, form: usize, environment: usize, continuation
   match val {
     Value::Symbol(s) => evaluate_variable(arena, environment, &s, continuation),
     Value::Pair(_, _) => evaluate_pair(arena, environment, form, continuation),
-    _ => Bounce::Resume { continuation_r: continuation, value_r: Some(form) },
+    _ => Bounce::Resume { continuation_r: continuation, value_r: form },
   }
 }
 
@@ -23,7 +23,7 @@ fn evaluate_variable(arena: &mut Arena, environment: usize, name: &str, continua
                      -> Bounce {
   if let Value::Environment(e) = arena.value_ref(environment) {
     match e.borrow().get(arena, name) {
-      Some(v) => Bounce::Resume { continuation_r: continuation, value_r: Some(v) },
+      Some(v) => Bounce::Resume { continuation_r: continuation, value_r: v },
       None => Bounce::Done(Err(format!("Undefined value: {}.", name))),
     }
   } else {
@@ -64,7 +64,7 @@ fn evaluate_quote(arena: &mut Arena, environment: usize, cdr_r: usize, continuat
     Ok(l) => if l.len() != 1 {
       Bounce::Done(Err(format!("Syntax error in quote, expecting exactly 1 quoted value.")))
     } else {
-      Bounce::Resume { continuation_r: continuation, value_r: Some(l[0]) }
+      Bounce::Resume { continuation_r: continuation, value_r: l[0] }
     },
     Err(s) => Bounce::Done(Err(format!("Syntax error in quote: {}.", s)))
   }
@@ -99,7 +99,7 @@ pub fn evaluate_begin(arena: &mut Arena, environment: usize, cdr_r: usize, conti
 
   match val {
     Ok(v) => match v.len() {
-      0 => Bounce::Resume { continuation_r: continuation, value_r: None },
+      0 => Bounce::Resume { continuation_r: continuation, value_r: arena.unspecific },
       1 => {
         Bounce::Evaluate { value_r: v[0], environment_r: environment, continuation_r: continuation }
       }
@@ -153,7 +153,7 @@ fn evaluate_lambda(arena: &mut Arena, environment: usize, cdr_r: usize, continua
     } else {
       let val = Value::Lambda { environment, formals: v[0], body: arena.value_ref(cdr_r).cdr() };
       let val_r = arena.intern(val);
-      Bounce::Resume { continuation_r: continuation, value_r: Some(val_r) }
+      Bounce::Resume { continuation_r: continuation, value_r: val_r }
     },
     Err(s) => Bounce::Done(Err(format!("Syntax error in lambda: {}.", s)))
   }
@@ -187,7 +187,7 @@ pub fn evaluate_arguments(arena: &mut Arena, environment: usize, args: usize, co
 
   match val {
     Ok(v) => if v.is_empty() {
-      Bounce::Resume { continuation_r: continuation, value_r: None }
+      Bounce::Resume { continuation_r: continuation, value_r: arena.unspecific }
     } else {
       let cont = Continuation::Argument {
         sequence_r: args,

@@ -11,12 +11,12 @@ pub enum Bounce {
   Evaluate { continuation_r: usize, value_r: usize, environment_r: usize },
   EvaluateBegin { continuation_r: usize, value_r: usize, environment_r: usize },
   EvaluateArguments { continuation_r: usize, args_r: usize, environment_r: usize },
-  Resume { continuation_r: usize, value_r: Option<usize> },
-  Done(Result<Option<usize>, String>),
+  Resume { continuation_r: usize, value_r: usize },
+  Done(Result<usize, String>),
 }
 
 impl Bounce {
-  pub fn run_trampoline(self, arena: &mut Arena) -> Result<Option<usize>, String> {
+  pub fn run_trampoline(self, arena: &mut Arena) -> Result<usize, String> {
     let mut current_bounce = self;
     loop {
       match current_bounce {
@@ -43,6 +43,6 @@ impl Bounce {
 }
 
 pub fn evaluate_toplevel(arena: &mut Arena, value_r: usize, continuation_r: usize, environment_r: usize)
-                         -> Result<Option<usize>, String> {
+                         -> Result<usize, String> {
   evaluate(arena, value_r, continuation_r, environment_r).run_trampoline(arena)
 }
