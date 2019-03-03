@@ -32,7 +32,7 @@ fn main() -> io::Result<()> {
 
   let cont = Value::Continuation(RefCell::new(Continuation {
     next_r: None,
-    typ: ContinuationType::Display,
+    typ: ContinuationType::TopLevel,
   }));
   let cont_r = arena.intern(cont);
 

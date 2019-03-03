@@ -17,14 +17,13 @@ pub enum ContinuationType {
   Apply { fun_r: usize, environment_r: usize },
   Argument { sequence_r: usize, environment_r: usize },
   Gather { value_r: usize },
-  Display,
+  TopLevel,
 }
 
 impl Continuation {
   pub fn resume(&self, arena: &mut Arena, value: usize) -> Bounce {
     match &self.typ {
-      ContinuationType::Display => {
-        println!("{}", value::pretty_print(arena, arena.value_ref(value)));
+      ContinuationType::TopLevel => {
         Bounce::Done(Ok(value))
       },
       _ => Bounce::Done(Err(format!("Not implemented")))
