@@ -7,7 +7,7 @@ pub enum Continuation {
   If { e_true_r: usize, e_false_r: usize, environment_r: usize, next_r: usize },
   Begin { body_r: usize, environment_r: usize, next_r: usize },
   Set { name: String, environment_r: usize, next_r: usize, define: bool },
-  EvFun { body_r: usize, environment_r: usize, next_r: usize },
+  EvFun { args_r: usize, environment_r: usize, next_r: usize },
   Apply { fun_r: usize, environment_r: usize, next_r: usize },
   Argument { sequence_r: usize, environment_r: usize, next_r: usize },
   Gather { value_r: usize, next_r: usize },
@@ -40,10 +40,10 @@ impl Continuation {
               Some(v) => {
                 if *define {
                   e.borrow_mut().define(name, v);
-                  Bounce::Done(Ok(None))
+                  Bounce::Resume { continuation_r: *next_r, value_r: None }
                 } else {
                   match e.borrow_mut().set(arena, name, v) {
-                    Ok(_) => Bounce::Done(Ok(None)),
+                    Ok(_) => Bounce::Resume { continuation_r: *next_r, value_r: None },
                     Err(s) => Bounce::Done(Err(format!("Cannot set {}: {}", name, s)))
                   }
                 }

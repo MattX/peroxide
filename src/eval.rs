@@ -14,7 +14,7 @@ pub fn evaluate(arena: &mut Arena, form: usize, environment: usize, continuation
   let val = arena.value_ref(form).clone();
   match val {
     Value::Symbol(s) => evaluate_variable(arena, environment, &s, continuation),
-    Value::Pair(_, _) => evaluate_pair(arena, environment, val, continuation),
+    Value::Pair(_, _) => evaluate_pair(arena, environment, form, continuation),
     _ => Bounce::Resume { continuation_r: continuation, value_r: Some(form) },
   }
 }
@@ -31,8 +31,10 @@ fn evaluate_variable(arena: &mut Arena, environment: usize, name: &str, continua
   }
 }
 
-fn evaluate_pair(arena: &mut Arena, environment: usize, pair: Value, continuation: usize)
+fn evaluate_pair(arena: &mut Arena, environment: usize, pair_r: usize, continuation: usize)
                  -> Bounce {
+  let pair = arena.value_ref(pair_r).clone();
+
   if let Value::Pair(car_r, cdr_r) = pair {
     let car = arena.value_ref(*car_r.borrow()).clone();
     if let Value::Symbol(s) = car {
@@ -40,13 +42,13 @@ fn evaluate_pair(arena: &mut Arena, environment: usize, pair: Value, continuatio
         "quote" => evaluate_quote(arena, environment, *cdr_r.borrow(), continuation),
         "if" => evaluate_if(arena, environment, *cdr_r.borrow(), continuation),
         "begin" => evaluate_begin(arena, environment, *cdr_r.borrow(), continuation),
-        "lambda" => Bounce::Done(Err("'lambda' not implemented".to_string())),
+        "lambda" => evaluate_lambda(arena, environment, *cdr_r.borrow(), continuation),
         "set!" => evaluate_set(arena, environment, *cdr_r.borrow(), continuation, false),
         "define" => evaluate_set(arena, environment, *cdr_r.borrow(), continuation, true),
-        _ => Bounce::Done(Err("application not implemented".to_string())),
+        _ => evaluate_application(arena, environment, pair_r, continuation),
       }
     } else {
-      Bounce::Done(Err("application not implemented".to_string()))
+      evaluate_application(arena, environment, pair_r, continuation)
     }
   } else {
     panic!("Value passed to evaluate_pair() is not a pair: {:?}", pair);
@@ -122,7 +124,7 @@ fn evaluate_set(arena: &mut Arena, environment: usize, cdr_r: usize, continuatio
 
   match val {
     Ok(v) => if v.len() != 2 {
-      Bounce::Done(Err(format!("Syntax error in set!, expecting exactly 2 forms")))
+      Bounce::Done(Err(format!("Syntax error in set!, expecting exactly 2 forms.")))
     } else {
       let name = match arena.value_ref(v[0]) {
         Value::Symbol(s) => s.clone(),
@@ -132,19 +134,69 @@ fn evaluate_set(arena: &mut Arena, environment: usize, cdr_r: usize, continuatio
         name,
         environment_r: environment,
         next_r: continuation,
-        define
+        define,
       })));
       Bounce::Evaluate { value_r: v[1], environment_r: environment, continuation_r: cont }
     },
-    Err(s) => Bounce::Done(Err(format!("Syntax error in set!: {}.", s)))
+    Err(s) => Bounce::Done(Err(format!("Syntax error in {}: {}.", if define { "define" } else { "set!" }, s)))
   }
 }
 
 
-fn resume_cont(arena: &mut Arena, value: Option<usize>, continuation: usize) -> Bounce {
-  if let Value::Continuation(c) = arena.value_ref(continuation).clone() {
-    c.borrow().clone().resume(arena, value)
-  } else {
-    panic!("Value passed to resume_cont() is not a continuation: {:?}", arena.value_ref(continuation));
+fn evaluate_lambda(arena: &mut Arena, environment: usize, cdr_r: usize, continuation: usize)
+                   -> Bounce {
+  let val = arena.value_ref(cdr_r).pair_to_vec(arena);
+
+  match val {
+    Ok(v) => if v.len() < 2 {
+      Bounce::Done(Err(format!("Syntax error in lambda, expecting at least 2 forms.")))
+    } else {
+      let val = Value::Lambda { environment, formals: v[0], body: arena.value_ref(cdr_r).cdr() };
+      let val_r = arena.intern(val);
+      Bounce::Resume { continuation_r: continuation, value_r: Some(val_r) }
+    },
+    Err(s) => Bounce::Done(Err(format!("Syntax error in lambda: {}.", s)))
+  }
+}
+
+
+fn evaluate_application(arena: &mut Arena, environment: usize, cdr_r: usize, continuation: usize)
+                        -> Bounce {
+  let val = arena.value_ref(cdr_r).pair_to_vec(arena);
+
+  match val {
+    Ok(v) => if v.is_empty() {
+      Bounce::Done(Err(format!("Syntax error in application: empty list.")))
+    } else {
+      let cont = Continuation::EvFun {
+        args_r: arena.value_ref(cdr_r).cdr(),
+        environment_r: environment,
+        next_r: continuation,
+      };
+      let cont_r = arena.intern(Value::Continuation(RefCell::new(cont)));
+      Bounce::Evaluate { environment_r: environment, value_r: v[0], continuation_r: cont_r }
+    },
+    Err(s) => Bounce::Done(Err(format!("Syntax error in application: {}.", s)))
+  }
+}
+
+
+pub fn evaluate_arguments(arena: &mut Arena, environment: usize, args: usize, continuation: usize)
+                          -> Bounce {
+  let val = arena.value_ref(args).pair_to_vec(arena);
+
+  match val {
+    Ok(v) => if v.is_empty() {
+      Bounce::Resume { continuation_r: continuation, value_r: None }
+    } else {
+      let cont = Continuation::Argument {
+        sequence_r: args,
+        environment_r: environment,
+        next_r: continuation,
+      };
+      let cont_r = arena.intern(Value::Continuation(RefCell::new(cont)));
+      Bounce::Evaluate { environment_r: environment, value_r: v[0], continuation_r: cont_r }
+    },
+    Err(e) => panic!("Argument to evaluate arguments isn't a list, which should have been caught before.")
   }
 }

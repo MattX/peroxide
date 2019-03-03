@@ -73,7 +73,7 @@ fn rep(arena: &mut Arena, buffer: &str, environment_r: usize, cont_r: usize) -> 
                   .unwrap_or(format!("Unspecific")));
           match result {
             Ok(x) => println!(" => {}", x),
-            Err(x) => println!("Error: {}", x),
+            Err(x) => println!(" !> {}", x),
           }
         }
         Err(s) => println!("Parsing error: {:?}", s),

@@ -19,7 +19,7 @@ pub enum Value {
   Vector(Vec<RefCell<usize>>),
   Environment(RefCell<Environment>),
   Continuation(RefCell<Continuation>),
-  // We'll add some stuff here later
+  Lambda { environment: usize, formals: usize, body: usize }
 }
 
 impl fmt::Display for Value {
