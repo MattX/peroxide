@@ -47,56 +47,84 @@ impl fmt::Display for Value {
   }
 }
 
-pub fn pretty_print(arena: &Arena, p: &Value) -> String {
-  match p {
-    Value::Pair(_, _) => print_pair(arena, p),
-    Value::Vector(_) => print_vector(arena, p),
-    _ => format!("{}", p)
+impl Value {
+  pub fn pretty_print(&self, arena: &Arena) -> String {
+    match self {
+      Value::Pair(_, _) => self.print_pair(arena),
+      Value::Vector(_) => self.print_vector(arena),
+      _ => format!("{}", self)
+    }
   }
-}
 
-fn print_pair(arena: &Arena, p: &Value) -> String {
-  fn _print_pair(arena: &Arena, p: &Value, s: &mut String) {
-    match p {
-      Value::Pair(a, b) => {
-        s.push_str(&pretty_print(arena, arena.value_ref(*a.borrow().deref()))[..]);
-        if let Value::EmptyList = arena.value_ref(*b.borrow().deref()) {
+  fn print_pair(&self, arena: &Arena) -> String {
+    fn _print_pair(arena: &Arena, p: &Value, s: &mut String) {
+      match p {
+        Value::Pair(a, b) => {
+          s.push_str(&arena.value_ref(*a.borrow()).pretty_print(arena)[..]);
+          if let Value::EmptyList = arena.value_ref(*b.borrow().deref()) {
+            s.push_str(")");
+          } else {
+            s.push_str(&format!(" "));
+            _print_pair(arena, arena.value_ref(*b.borrow().deref()), s);
+          }
+        }
+        Value::EmptyList => {
           s.push_str(")");
-        } else {
-          s.push_str(&format!(" "));
-          _print_pair(arena, arena.value_ref(*b.borrow().deref()), s);
+        }
+        _ => {
+          s.push_str(&format!(". {})", p)[..]);
         }
       }
-      Value::EmptyList => {
-        s.push_str(")");
+    }
+
+    match self {
+      Value::Pair(_, _) | Value::EmptyList => {
+        let mut s = "(".to_string();
+        _print_pair(arena, self, &mut s);
+        s
       }
-      _ => {
-        s.push_str(&format!(". {})", p)[..]);
-      }
+      _ => panic!("print_pair called on a value that is not a pair: {:?}.", self)
     }
   }
 
-  match p {
-    Value::Pair(_, _) | Value::EmptyList => {
-      let mut s = "(".to_string();
-      _print_pair(arena, p, &mut s);
-      s
+  fn print_vector(&self, arena: &Arena) -> String {
+    if let Value::Vector(vals) = self {
+      let contents = vals.iter()
+          .map(|e| format!("{}", arena.value_ref(*e.borrow()).pretty_print(arena)))
+          .collect::<Vec<String>>()
+          .join(" ");
+      format!("#({})", contents)
+    } else {
+      panic!("print_vector called on a value that is not a vector: {:?}.", self)
     }
-    _ => panic!("print_pair passed a value that is not a pair: {:?}.", p)
+  }
+
+  pub fn pair_to_vec(&self, arena: &Arena) -> Result<Vec<usize>, String> {
+    let mut p = self;
+    let mut result: Vec<usize> = Vec::new();
+    loop {
+      match p {
+        Value::Pair(car_r, cdr_r) => {
+          result.push(*car_r.borrow());
+          p = arena.value_ref(*cdr_r.borrow());
+        }
+        Value::EmptyList => break,
+        _ => return Err(format!("Converting list to vec: {} is not a proper list.",
+                                self.pretty_print(arena)))
+      }
+    }
+    Ok(result)
+  }
+
+  pub fn truthy(&self) -> bool {
+    if let Value::Boolean(b) = self {
+      *b
+    } else {
+      true
+    }
   }
 }
 
-fn print_vector(arena: &Arena, v: &Value) -> String {
-  if let Value::Vector(vals) = v {
-    let contents = vals.iter()
-        .map(|e| format!("{}", pretty_print(arena, arena.value_ref(*e.borrow().deref()))))
-        .collect::<Vec<String>>()
-        .join(" ");
-    format!("#({})", contents)
-  } else {
-    panic!("print_vector passed a value that is not a vector: {:?}.", v)
-  }
-}
 
 #[cfg(test)]
 mod tests {
