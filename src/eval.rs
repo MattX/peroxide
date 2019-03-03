@@ -15,6 +15,7 @@ pub fn evaluate(arena: &mut Arena, form: usize, environment: usize, continuation
   match val {
     Value::Symbol(s) => evaluate_variable(arena, environment, &s, continuation),
     Value::Pair(_, _) => evaluate_pair(arena, environment, form, continuation),
+    Value::EmptyList => Bounce::Done(Err(format!("Syntax error: applying empty list."))),
     _ => Bounce::Resume { continuation_r: continuation, value_r: form },
   }
 }
@@ -39,7 +40,7 @@ fn evaluate_pair(arena: &mut Arena, environment: usize, pair_r: usize, continuat
     let car = arena.value_ref(*car_r.borrow()).clone();
     if let Value::Symbol(s) = car {
       match s.as_ref() {
-        "quote" => evaluate_quote(arena, environment, *cdr_r.borrow(), continuation),
+        "quote" => evaluate_quote(arena, *cdr_r.borrow(), continuation),
         "if" => evaluate_if(arena, environment, *cdr_r.borrow(), continuation),
         "begin" => evaluate_begin(arena, environment, *cdr_r.borrow(), continuation),
         "lambda" => evaluate_lambda(arena, environment, *cdr_r.borrow(), continuation),
@@ -56,7 +57,7 @@ fn evaluate_pair(arena: &mut Arena, environment: usize, pair_r: usize, continuat
 }
 
 
-fn evaluate_quote(arena: &mut Arena, environment: usize, cdr_r: usize, continuation: usize)
+fn evaluate_quote(arena: &mut Arena, cdr_r: usize, continuation: usize)
                   -> Bounce {
   let lst = arena.value_ref(cdr_r).pair_to_vec(arena);
 
@@ -197,6 +198,6 @@ pub fn evaluate_arguments(arena: &mut Arena, environment: usize, args: usize, co
       let cont_r = arena.intern(Value::Continuation(RefCell::new(cont)));
       Bounce::Evaluate { environment_r: environment, value_r: v[0], continuation_r: cont_r }
     },
-    Err(e) => panic!("Argument to evaluate arguments isn't a list, which should have been caught before.")
+    Err(_) => panic!("Argument to evaluate arguments isn't a list, which should have been caught before.")
   }
 }

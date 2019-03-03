@@ -7,13 +7,13 @@ use value::Value;
 
 #[derive(Debug)]
 pub enum ParseResult {
-  None,
+  Nothing,
   ParseError(String),
 }
 
 pub fn parse(arena: &mut Arena, tokens: &[Token]) -> Result<Value, ParseResult> {
   if tokens.is_empty() {
-    return Err(ParseResult::None);
+    return Err(ParseResult::Nothing);
   }
 
   let mut it = tokens.iter().peekable();
@@ -37,7 +37,10 @@ fn do_parse<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<Val
       Token::Symbol(s) => Ok(Value::Symbol(s.to_string())),
       Token::OpenParen => parse_list(arena, it),
       Token::OpenVector => parse_vec(arena, it),
-      Token::Quote => parse_quote(arena, it),
+      Token::Quote => parse_quote(arena, it, "quote"),
+      Token::QuasiQuote => parse_quote(arena, it, "quasiquote"),
+      Token::Unquote => parse_quote(arena, it, "unquote"),
+      Token::UnquoteSplicing => parse_quote(arena, it, "unquote-splicing"),
       _ => Err(ParseResult::ParseError(format!("Unexpected token {:?}.", t)))
     }
   } else {
@@ -100,14 +103,15 @@ fn parse_vec<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<Va
   Ok(Value::Vector(result))
 }
 
-fn parse_quote<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
+fn parse_quote<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>, prefix: &'static str)
+                          -> Result<Value, ParseResult>
   where I: Iterator<Item=&'b Token> {
   let quoted = do_parse(arena, it)?;
   let quoted_ptr = arena.intern(quoted);
   let empty_list_ptr = arena.intern(Value::EmptyList);
   let quoted_list_ptr = arena.intern(Value::Pair(RefCell::new(quoted_ptr),
                                                  RefCell::new(empty_list_ptr)));
-  let quote_sym_ptr = arena.intern(Value::Symbol("quote".to_string()));
+  let quote_sym_ptr = arena.intern(Value::Symbol(prefix.to_string()));
   Ok(Value::Pair(RefCell::new(quote_sym_ptr),
                  RefCell::new(quoted_list_ptr)))
 }

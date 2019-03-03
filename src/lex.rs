@@ -7,7 +7,7 @@ use std::iter::Peekable;
 /// actual value. However, there is no representation for other types like pairs or vectors. The
 /// parser is in charge of determining if a sequence of tokens validly represents a Scheme
 /// expression.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Token {
   Real(f64),
   Integer(i64),
@@ -182,6 +182,40 @@ fn consume_string<I>(it: &mut Peekable<I>) -> Result<Token, String>
   } else {
     Err(format!("Unterminated string `\"{}`.", result))
   }
+}
+
+pub struct SegmentationResult {
+  pub segments: Vec<Vec<Token>>,
+  pub remainder: Vec<Token>,
+  pub depth: u64,
+}
+
+pub fn segment(toks: Vec<Token>) -> Result<SegmentationResult, String> {
+  let mut depth: i64 = 0;
+  let mut segments = Vec::new();
+  let mut current_segment = Vec::new();
+
+  for tok in toks.into_iter() {
+    match tok {
+      Token::OpenParen => depth += 1,
+      Token::OpenVector => depth += 1,
+      Token::ClosingParen => depth -= 1,
+      _ => (),
+    }
+    current_segment.push(tok);
+    if depth < 0 {
+      return Err(format!("Syntax error: negative parenthesis depth."));
+    } else if depth == 0 {
+      segments.push(current_segment);
+      current_segment = Vec::new();
+    }
+  }
+
+  Ok(SegmentationResult {
+    segments,
+    remainder: current_segment,
+    depth: depth as u64,
+  })
 }
 
 

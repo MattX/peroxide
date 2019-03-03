@@ -9,6 +9,9 @@ use rustyline::error::ReadlineError;
 use arena::Arena;
 use continuation::Continuation;
 use environment::Environment;
+use lex::segment;
+use lex::SegmentationResult;
+use lex::Token;
 use trampoline::evaluate_toplevel;
 use value::Value;
 
@@ -36,47 +39,93 @@ fn main() -> io::Result<()> {
   }
 
   loop {
-    let readline = rl.readline(">>> ");
-    match readline {
-      Ok(line) => {
-        rl.add_history_entry(line.as_ref());
-        rep(&mut arena, line.as_ref(), environment_r, cont_r);
-      }
-      Err(ReadlineError::Interrupted) => {
-        println!("CTRL-C");
-        break;
-      }
-      Err(ReadlineError::Eof) => {
-        println!("CTRL-D");
-        break;
-      }
-      Err(err) => {
-        println!("Error: {:?}", err);
-        break;
-      }
-    }
+    let result = handle_one_expr_wrap(&mut rl, &mut arena, environment_r, cont_r);
+    if !result { break; }
   }
+
   rl.save_history("history.txt").unwrap();
   Ok(())
 }
 
-// Read, eval, print
-fn rep(arena: &mut Arena, buffer: &str, environment_r: usize, cont_r: usize) -> () {
-  match lex::lex(buffer) {
-    Ok(token_vector) => {
-      match parse::parse(arena, &token_vector) {
-        Ok(value) => {
-          let value_r = arena.intern(value);
-          let result = evaluate_toplevel(arena, value_r, environment_r, cont_r)
-              .map(|x| arena.value_ref(x).pretty_print(arena));
-          match result {
-            Ok(x) => println!(" => {}", x),
-            Err(x) => println!(" !> {}", x),
-          }
-        }
-        Err(s) => println!("Parsing error: {:?}", s),
-      }
+// Returns true if the REPL loop should continue, false otherwise.
+fn handle_one_expr_wrap(rl: &mut Editor<()>, arena: &mut Arena, environment: usize, continuation: usize)
+                        -> bool {
+  handle_one_expr(rl, arena, environment, continuation)
+      .map_err(|e| println!("Error: {}", e))
+      .unwrap_or(true)
+}
+
+fn handle_one_expr(rl: &mut Editor<()>, arena: &mut Arena, environment: usize, continuation: usize)
+                   -> Result<bool, String> {
+  let mut current_expr_string: Vec<String> = Vec::new();
+  let mut exprs: Vec<Vec<Token>> = Vec::new();
+  let mut pending_expr: Vec<Token> = Vec::new();
+  let mut depth: u64 = 0;
+
+  loop {
+    let line_opt = if pending_expr.is_empty() {
+      rl.readline(">>> ")
+    } else {
+      rl.readline_with_initial("... ", (&" ".to_string().repeat((depth * 2) as usize), ""))
+    };
+
+    match line_opt {
+      Err(ReadlineError::Eof) => return Ok(false),
+      Err(ReadlineError::Interrupted) => return Ok(false),
+      Err(e) => { println!("Readline error: {}", e); return Ok(true) }
+      _ => ()
+    };
+
+    let line = line_opt.unwrap();
+    let mut tokenize_result = lex::lex(&line)?;
+    current_expr_string.push(line);
+    pending_expr.append(&mut tokenize_result);
+
+    let SegmentationResult { mut segments, remainder, depth: new_depth } = lex::segment(pending_expr)?;
+    exprs.append(&mut segments);
+
+    if remainder.is_empty() {
+      break;
     }
-    Err(s) => println!("Tokenizing error: {}", s),
+
+    depth = new_depth;
+    pending_expr = remainder;
+  }
+
+  rl.add_history_entry(current_expr_string.join("\n"));
+  rep(arena, exprs, environment, continuation);
+  Ok(true)
+}
+
+fn get_line(rl: &mut Editor<()>, prompt: &str) -> Option<String> {
+  let readline = rl.readline(prompt);
+  match readline {
+    Ok(line) => Some(line),
+    Err(ReadlineError::Interrupted) => {
+      println!("CTRL-C");
+      None
+    }
+    Err(ReadlineError::Eof) => None,
+    Err(err) => {
+      println!("Readline error: {}.", err);
+      None
+    }
+  }
+}
+
+fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment_r: usize, cont_r: usize) -> () {
+  for token_vector in toks {
+    match parse::parse(arena, &token_vector) {
+      Ok(value) => {
+        let value_r = arena.intern(value);
+        let result = evaluate_toplevel(arena, value_r, environment_r, cont_r)
+            .map(|x| arena.value_ref(x).pretty_print(arena));
+        match result {
+          Ok(x) => println!(" => {}", x),
+          Err(x) => println!(" !> {}", x),
+        }
+      }
+      Err(s) => println!("Parsing error: {:?}", s),
+    }
   }
 }
