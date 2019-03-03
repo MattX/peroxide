@@ -1,15 +1,19 @@
 use std::fmt::{Debug, Error, Formatter};
-use value::Value;
+
 use arena::Arena;
+use eval::evaluate;
+use value::Value;
 
 pub enum Bounce {
-  Resume { continuation_r: usize, value_r: usize },
-  Done(Result<usize, String>),
+  Evaluate { continuation_r: usize, value_r: usize, environment_r: usize },
+  Resume { continuation_r: usize, value_r: Option<usize> },
+  Done(Result<Option<usize>, String>),
 }
 
 impl Debug for Bounce {
   fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
     match self {
+      Bounce::Evaluate { continuation_r, value_r, environment_r } => write!(f, "Evaluate()"),
       Bounce::Resume { continuation_r, value_r } => write!(f, "Resume()"),
       Bounce::Done(u) => write!(f, "Done({:?})", u)
     }
@@ -17,10 +21,13 @@ impl Debug for Bounce {
 }
 
 impl Bounce {
-  pub fn run_trampoline(self, arena: &mut Arena) -> Result<usize, String> {
+  pub fn run_trampoline(self, arena: &mut Arena) -> Result<Option<usize>, String> {
     let mut current_bounce = self;
     loop {
       match current_bounce {
+        Bounce::Evaluate { continuation_r, value_r, environment_r } => {
+          current_bounce = evaluate(arena, value_r, environment_r, continuation_r);
+        }
         Bounce::Resume { continuation_r, value_r } => {
           if let Value::Continuation(c) = arena.value_ref(continuation_r).clone() {
             current_bounce = c.borrow().resume(arena, value_r);
@@ -32,4 +39,9 @@ impl Bounce {
       }
     }
   }
+}
+
+pub fn evaluate_toplevel(arena: &mut Arena, value_r: usize, continuation_r: usize, environment_r: usize)
+                         -> Result<Option<usize>, String> {
+  evaluate(arena, value_r, continuation_r, environment_r).run_trampoline(arena)
 }

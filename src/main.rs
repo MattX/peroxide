@@ -8,11 +8,9 @@ use rustyline::error::ReadlineError;
 
 use arena::Arena;
 use continuation::Continuation;
-use continuation::ContinuationType;
 use environment::Environment;
+use trampoline::evaluate_toplevel;
 use value::Value;
-use trampoline::Bounce;
-use eval::evaluate;
 
 mod lex;
 mod value;
@@ -30,10 +28,7 @@ fn main() -> io::Result<()> {
   let environment = Value::Environment(RefCell::new(Environment::new(None)));
   let environment_r = arena.intern(environment);
 
-  let cont = Value::Continuation(RefCell::new(Continuation {
-    next_r: None,
-    typ: ContinuationType::TopLevel,
-  }));
+  let cont = Value::Continuation(RefCell::new(Continuation::TopLevel));
   let cont_r = arena.intern(cont);
 
   if rl.load_history("history.txt").is_err() {
@@ -72,13 +67,15 @@ fn rep(arena: &mut Arena, buffer: &str, environment_r: usize, cont_r: usize) -> 
       match parse::parse(arena, &token_vector) {
         Ok(value) => {
           let value_r = arena.intern(value);
-          let result = evaluate(arena, value_r, environment_r, cont_r)
-              .map(|x| value::pretty_print(arena, arena.value_ref(x)));
+          let result = evaluate_toplevel(arena, value_r, environment_r, cont_r)
+              .map(|x_opt| x_opt
+                  .map(|x| arena.value_ref(x).pretty_print(arena))
+                  .unwrap_or(format!("Unspecific")));
           match result {
             Ok(x) => println!(" => {}", x),
             Err(x) => println!("Error: {}", x),
           }
-        },
+        }
         Err(s) => println!("Parsing error: {:?}", s),
       }
     }
