@@ -4,8 +4,9 @@ use std::ops::Deref;
 
 use arena::Arena;
 use environment::Environment;
+use continuation::Continuation;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Value {
   Real(f64),
   Integer(i64),
@@ -17,6 +18,7 @@ pub enum Value {
   Pair(RefCell<usize>, RefCell<usize>),
   Vector(Vec<RefCell<usize>>),
   Environment(RefCell<Environment>),
+  Continuation(RefCell<Continuation>),
   // We'll add some stuff here later
 }
 
@@ -40,7 +42,7 @@ impl fmt::Display for Value {
             .join(" ");
         write!(f, "#({})", contents)
       }
-      Value::Environment(e) => write!(f, "{:?}", e)
+      e => write!(f, "{:?}", e)
     }
   }
 }

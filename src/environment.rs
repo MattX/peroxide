@@ -5,7 +5,7 @@ use std::option::Option;
 use arena::Arena;
 use value::Value;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Environment {
   parent: Option<usize>,
   values: HashMap<String, usize>,
@@ -154,7 +154,7 @@ mod tests {
     let mut env = Environment::new(None);
 
     env.define("abc", 22);
-    env.set(&arena, "abc", 18);
+    env.set(&arena, "abc", 18).unwrap();
     assert_eq!(env.get(&arena, "abc"), Some(18));
   }
 }
