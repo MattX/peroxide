@@ -39,7 +39,7 @@ fn evaluate_pair(arena: &mut Arena, environment: usize, pair: Value, continuatio
       match s.as_ref() {
         "quote" => evaluate_quote(arena, environment, *cdr_r.borrow(), continuation),
         "if" => evaluate_if(arena, environment, *cdr_r.borrow(), continuation),
-        "begin" => Bounce::Done(Err("'begin' not implemented".to_string())),
+        "begin" => evaluate_begin(arena, environment, *cdr_r.borrow(), continuation),
         "lambda" => Bounce::Done(Err("'lambda' not implemented".to_string())),
         "set!" => Bounce::Done(Err("'set!' not implemented".to_string())),
         _ => Bounce::Done(Err("application not implemented".to_string())),
@@ -88,6 +88,32 @@ fn evaluate_if(arena: &mut Arena, environment: usize, cdr_r: usize, continuation
     Err(s) => Bounce::Done(Err(format!("Syntax error in if: {}.", s)))
   }
 }
+
+
+pub fn evaluate_begin(arena: &mut Arena, environment: usize, cdr_r: usize, continuation: usize)
+                  -> Bounce {
+  let val = arena.value_ref(cdr_r).pair_to_vec(arena);
+
+  match val {
+    Ok(v) => match v.len() {
+      0 => Bounce::Resume { continuation_r: continuation, value_r: None },
+      1 => {
+        Bounce::Evaluate { value_r: v[0], environment_r: environment, continuation_r: continuation }
+      },
+      _ => {
+        let cdr = arena.value_ref(cdr_r).cdr();
+        let cont = arena.intern(Value::Continuation(RefCell::new(Continuation::Begin {
+          body_r: cdr,
+          environment_r: environment,
+          next_r: continuation,
+        })));
+        Bounce::Evaluate { value_r: v[0], environment_r: environment, continuation_r: cont }
+      }
+    },
+    Err(s) => Bounce::Done(Err(format!("Syntax error in begin: {}.", s)))
+  }
+}
+
 
 fn resume_cont(arena: &mut Arena, value: Option<usize>, continuation: usize) -> Bounce {
   if let Value::Continuation(c) = arena.value_ref(continuation).clone() {

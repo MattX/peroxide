@@ -28,7 +28,10 @@ impl Continuation {
           }
           None => Bounce::Done(Err(format!("No value returned by 'if' predicate.")))
         }
-      }
+      },
+      Continuation::Begin { body_r, environment_r, next_r } => {
+        Bounce::EvaluateBegin { value_r: *body_r, environment_r: *environment_r, continuation_r: *next_r }
+      },
       Continuation::TopLevel => Bounce::Done(Ok(value_r)),
       _ => Bounce::Done(Err(format!("Not implemented")))
     }

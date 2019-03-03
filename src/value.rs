@@ -123,6 +123,14 @@ impl Value {
       true
     }
   }
+
+  pub fn cdr(&self) -> usize {
+    if let Value::Pair(_, cdr) = self {
+      *cdr.borrow()
+    } else {
+      panic!("Not a pair: {:?}.", self)
+    }
+  }
 }
 
 

@@ -1,11 +1,12 @@
 use std::fmt::{Debug, Error, Formatter};
 
 use arena::Arena;
-use eval::evaluate;
+use eval::{evaluate, evaluate_begin};
 use value::Value;
 
 pub enum Bounce {
   Evaluate { continuation_r: usize, value_r: usize, environment_r: usize },
+  EvaluateBegin { continuation_r: usize, value_r: usize, environment_r: usize },
   Resume { continuation_r: usize, value_r: Option<usize> },
   Done(Result<Option<usize>, String>),
 }
@@ -14,6 +15,7 @@ impl Debug for Bounce {
   fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
     match self {
       Bounce::Evaluate { continuation_r, value_r, environment_r } => write!(f, "Evaluate()"),
+      Bounce::EvaluateBegin { continuation_r, value_r, environment_r } => write!(f, "EvaluateBegin()"),
       Bounce::Resume { continuation_r, value_r } => write!(f, "Resume()"),
       Bounce::Done(u) => write!(f, "Done({:?})", u)
     }
@@ -27,7 +29,10 @@ impl Bounce {
       match current_bounce {
         Bounce::Evaluate { continuation_r, value_r, environment_r } => {
           current_bounce = evaluate(arena, value_r, environment_r, continuation_r);
-        }
+        },
+        Bounce::EvaluateBegin { continuation_r, value_r, environment_r } => {
+          current_bounce = evaluate_begin(arena, environment_r, value_r, continuation_r);
+        },
         Bounce::Resume { continuation_r, value_r } => {
           if let Value::Continuation(c) = arena.value_ref(continuation_r).clone() {
             current_bounce = c.borrow().resume(arena, value_r);
