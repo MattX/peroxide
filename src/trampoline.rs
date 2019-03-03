@@ -14,9 +14,9 @@ pub enum Bounce {
 impl Debug for Bounce {
   fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
     match self {
-      Bounce::Evaluate { continuation_r, value_r, environment_r } => write!(f, "Evaluate()"),
-      Bounce::EvaluateBegin { continuation_r, value_r, environment_r } => write!(f, "EvaluateBegin()"),
-      Bounce::Resume { continuation_r, value_r } => write!(f, "Resume()"),
+      Bounce::Evaluate { continuation_r: _, value_r: _, environment_r: _ } => write!(f, "Evaluate()"),
+      Bounce::EvaluateBegin { continuation_r: _, value_r: _, environment_r: _ } => write!(f, "EvaluateBegin()"),
+      Bounce::Resume { continuation_r: _, value_r: _ } => write!(f, "Resume()"),
       Bounce::Done(u) => write!(f, "Done({:?})", u)
     }
   }

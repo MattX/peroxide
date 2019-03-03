@@ -7,7 +7,7 @@ use value::Value;
 
 pub fn evaluate(arena: &mut Arena, form: usize, environment: usize, continuation: usize)
                 -> Bounce {
-  if let Value::Environment(e) = arena.value_ref(environment) {} else {
+  if let Value::Environment(_) = arena.value_ref(environment) {} else {
     panic!("Value passed to evaluate() is not an environment: {:?}", arena.value_ref(environment));
   }
 
@@ -41,7 +41,8 @@ fn evaluate_pair(arena: &mut Arena, environment: usize, pair: Value, continuatio
         "if" => evaluate_if(arena, environment, *cdr_r.borrow(), continuation),
         "begin" => evaluate_begin(arena, environment, *cdr_r.borrow(), continuation),
         "lambda" => Bounce::Done(Err("'lambda' not implemented".to_string())),
-        "set!" => Bounce::Done(Err("'set!' not implemented".to_string())),
+        "set!" => evaluate_set(arena, environment, *cdr_r.borrow(), continuation, false),
+        "define" => evaluate_set(arena, environment, *cdr_r.borrow(), continuation, true),
         _ => Bounce::Done(Err("application not implemented".to_string())),
       }
     } else {
@@ -91,7 +92,7 @@ fn evaluate_if(arena: &mut Arena, environment: usize, cdr_r: usize, continuation
 
 
 pub fn evaluate_begin(arena: &mut Arena, environment: usize, cdr_r: usize, continuation: usize)
-                  -> Bounce {
+                      -> Bounce {
   let val = arena.value_ref(cdr_r).pair_to_vec(arena);
 
   match val {
@@ -99,7 +100,7 @@ pub fn evaluate_begin(arena: &mut Arena, environment: usize, cdr_r: usize, conti
       0 => Bounce::Resume { continuation_r: continuation, value_r: None },
       1 => {
         Bounce::Evaluate { value_r: v[0], environment_r: environment, continuation_r: continuation }
-      },
+      }
       _ => {
         let cdr = arena.value_ref(cdr_r).cdr();
         let cont = arena.intern(Value::Continuation(RefCell::new(Continuation::Begin {
@@ -111,6 +112,31 @@ pub fn evaluate_begin(arena: &mut Arena, environment: usize, cdr_r: usize, conti
       }
     },
     Err(s) => Bounce::Done(Err(format!("Syntax error in begin: {}.", s)))
+  }
+}
+
+
+fn evaluate_set(arena: &mut Arena, environment: usize, cdr_r: usize, continuation: usize,
+                define: bool) -> Bounce {
+  let val = arena.value_ref(cdr_r).pair_to_vec(arena);
+
+  match val {
+    Ok(v) => if v.len() != 2 {
+      Bounce::Done(Err(format!("Syntax error in set!, expecting exactly 2 forms")))
+    } else {
+      let name = match arena.value_ref(v[0]) {
+        Value::Symbol(s) => s.clone(),
+        _ => return Bounce::Done(Err(format!("Expected symbol, got {}.", arena.value_ref(v[0]).pretty_print(arena))))
+      };
+      let cont = arena.intern(Value::Continuation(RefCell::new(Continuation::Set {
+        name,
+        environment_r: environment,
+        next_r: continuation,
+        define
+      })));
+      Bounce::Evaluate { value_r: v[1], environment_r: environment, continuation_r: cont }
+    },
+    Err(s) => Bounce::Done(Err(format!("Syntax error in set!: {}.", s)))
   }
 }
 
