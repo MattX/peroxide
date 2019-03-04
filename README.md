@@ -36,3 +36,13 @@ system. Oh well.
 a bunch of the code (we'll be able to use `?`.)
 * Make `structs` for the more complex values in `Value`, so we can
 provide appropriate methods in a type-safe manner.
+
+
+## Useful documentation
+
+* https://github.com/scheme-requests-for-implementation
+* http://www.madore.org/~david/computers/callcc.html#sec_whatis
+* https://schemers.org/Documents/Standards/R5RS/HTML/
+* https://github.com/ashinn/chibi-scheme/blob/master/tests/r5rs-tests.scm
+* https://github.com/kenpratt/rusty_scheme/blob/master/src/interpreter/cps_interpreter.rs
+* 

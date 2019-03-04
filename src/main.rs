@@ -1,19 +1,18 @@
 extern crate rustyline;
 
 use std::cell::RefCell;
+use std::env;
 use std::io;
-
-use rustyline::Editor;
-use rustyline::error::ReadlineError;
 
 use arena::Arena;
 use continuation::Continuation;
 use environment::Environment;
-use lex::segment;
 use lex::SegmentationResult;
 use lex::Token;
 use trampoline::evaluate_toplevel;
 use value::Value;
+use repl::{ReadlineRepl, Repl, StdIoRepl};
+use repl::GetLineError;
 
 mod lex;
 mod value;
@@ -23,9 +22,16 @@ mod environment;
 mod continuation;
 mod eval;
 mod trampoline;
+mod repl;
 
 fn main() -> io::Result<()> {
-  let mut rl = Editor::<()>::new();
+  let args: Vec<String> = env::args().collect();
+  let mut repl: Box<Repl> = if args.iter().any(|x| x == "--no-readline") {
+    Box::new(StdIoRepl {})
+  } else {
+    Box::new(ReadlineRepl::new(Some("history.txt".to_string())))
+  };
+
   let mut arena = Arena::new();
 
   let environment = Value::Environment(RefCell::new(Environment::new(None)));
@@ -34,28 +40,24 @@ fn main() -> io::Result<()> {
   let cont = Value::Continuation(RefCell::new(Continuation::TopLevel));
   let cont_r = arena.intern(cont);
 
-  if rl.load_history("history.txt").is_err() {
-    println!("No previous history.");
-  }
-
   loop {
-    let result = handle_one_expr_wrap(&mut rl, &mut arena, environment_r, cont_r);
+    let result = handle_one_expr_wrap(&mut repl, &mut arena, environment_r, cont_r);
     if !result { break; }
   }
 
-  rl.save_history("history.txt").unwrap();
+  repl.save_history();
   Ok(())
 }
 
 // Returns true if the REPL loop should continue, false otherwise.
-fn handle_one_expr_wrap(rl: &mut Editor<()>, arena: &mut Arena, environment: usize, continuation: usize)
+fn handle_one_expr_wrap(repl: &mut Box<Repl>, arena: &mut Arena, environment: usize, continuation: usize)
                         -> bool {
-  handle_one_expr(rl, arena, environment, continuation)
+  handle_one_expr(repl, arena, environment, continuation)
       .map_err(|e| println!("Error: {}", e))
       .unwrap_or(true)
 }
 
-fn handle_one_expr(rl: &mut Editor<()>, arena: &mut Arena, environment: usize, continuation: usize)
+fn handle_one_expr(repl: &mut Box<Repl>, arena: &mut Arena, environment: usize, continuation: usize)
                    -> Result<bool, String> {
   let mut current_expr_string: Vec<String> = Vec::new();
   let mut exprs: Vec<Vec<Token>> = Vec::new();
@@ -64,16 +66,16 @@ fn handle_one_expr(rl: &mut Editor<()>, arena: &mut Arena, environment: usize, c
 
   loop {
     let line_opt = if pending_expr.is_empty() {
-      rl.readline(">>> ")
+      repl.get_line(">>> ", "")
     } else {
-      rl.readline_with_initial("... ", (&" ".to_string().repeat((depth * 2) as usize), ""))
+      repl.get_line("... ", &" ".to_string().repeat((depth * 2) as usize))
     };
 
     match line_opt {
-      Err(ReadlineError::Eof) => return Ok(false),
-      Err(ReadlineError::Interrupted) => return Ok(false),
-      Err(e) => { println!("Readline error: {}", e); return Ok(true) }
-      _ => ()
+      Err(GetLineError::Eof) => return Ok(false),
+      Err(GetLineError::Interrupted) => return Ok(false),
+      Err(GetLineError::Err(s)) => { println!("Readline error: {}", s); return Ok(true) }
+      Ok(_) => ()
     };
 
     let line = line_opt.unwrap();
@@ -92,25 +94,9 @@ fn handle_one_expr(rl: &mut Editor<()>, arena: &mut Arena, environment: usize, c
     pending_expr = remainder;
   }
 
-  rl.add_history_entry(current_expr_string.join("\n"));
+  repl.add_to_history(&current_expr_string.join("\n"));
   rep(arena, exprs, environment, continuation);
   Ok(true)
-}
-
-fn get_line(rl: &mut Editor<()>, prompt: &str) -> Option<String> {
-  let readline = rl.readline(prompt);
-  match readline {
-    Ok(line) => Some(line),
-    Err(ReadlineError::Interrupted) => {
-      println!("CTRL-C");
-      None
-    }
-    Err(ReadlineError::Eof) => None,
-    Err(err) => {
-      println!("Readline error: {}.", err);
-      None
-    }
-  }
 }
 
 fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment_r: usize, cont_r: usize) -> () {

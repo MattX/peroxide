@@ -1,4 +1,6 @@
 /target
 **/*.rs.bk
-Cargo.lock
+/Cargo.lock
 history.txt
+/jupyter-kernel/env
+/jupyter-kernel/build
