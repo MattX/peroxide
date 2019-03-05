@@ -96,9 +96,9 @@ pub fn evaluate_begin(arena: &mut Arena, cdr_r: usize, environment: usize, conti
     _ => {
       let cdr = arena.value_ref(cdr_r).cdr();
       let cont = arena.intern_continuation(Continuation::Begin {
-        body_r: cdr,
-        environment_r: environment,
-        next_r: continuation,
+        body: cdr,
+        environment,
+        continuation,
       });
       Ok(Bounce::Evaluate { value_r: args[0], environment_r: environment, continuation_r: cont })
     }
@@ -117,12 +117,10 @@ fn evaluate_set(arena: &mut Arena, cdr_r: usize, define: bool, environment: usiz
     Value::Symbol(s) => s.clone(),
     _ => return Err(format!("Expected symbol, got {}.", arena.value_ref(args[0]).pretty_print(arena)))
   };
-  let cont = arena.intern(Value::Continuation(RefCell::new(Continuation::Set {
-    name,
-    environment_r: environment,
-    next_r: continuation,
-    define,
-  })));
+
+  let cont = arena.intern_continuation(
+    Continuation::Set { name, define, environment, continuation });
+
   Ok(Bounce::Evaluate { value_r: args[1], environment_r: environment, continuation_r: cont })
 }
 
@@ -147,13 +145,10 @@ fn evaluate_application(arena: &mut Arena, cdr_r: usize, environment: usize, con
     panic!("Syntax error in application: empty list. This should have been caught before.")
   }
 
-  let cont = Continuation::EvFun {
-    args_r: arena.value_ref(cdr_r).cdr(),
-    environment_r: environment,
-    next_r: continuation,
-  };
-  let cont_r = arena.intern(Value::Continuation(RefCell::new(cont)));
-  Ok(Bounce::Evaluate { environment_r: environment, value_r: args[0], continuation_r: cont_r })
+  let fun_args = arena.value_ref(cdr_r).cdr();
+  let cont = arena.intern_continuation(
+    Continuation::EvFun { args: fun_args, environment, continuation });
+  Ok(Bounce::Evaluate { environment_r: environment, value_r: args[0], continuation_r: cont })
 }
 
 
@@ -165,13 +160,12 @@ pub fn evaluate_arguments(arena: &mut Arena, environment: usize, args_r: usize, 
   if args.is_empty() {
     Ok(Bounce::Resume { continuation_r: continuation, value_r: arena.empty_list })
   } else {
-    let cont = Continuation::Argument {
-      sequence_r: args_r,
-      environment_r: environment,
-      next_r: continuation,
-    };
-    let cont_r = arena.intern(Value::Continuation(RefCell::new(cont)));
-    Ok(Bounce::Evaluate { environment_r: environment, value_r: args[0], continuation_r: cont_r })
+    let cont = arena.intern_continuation(Continuation::Argument {
+      sequence: args_r,
+      environment,
+      continuation,
+    });
+    Ok(Bounce::Evaluate { environment_r: environment, value_r: args[0], continuation_r: cont })
   }
 }
 
