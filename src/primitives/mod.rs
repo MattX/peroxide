@@ -54,14 +54,17 @@
 use std::fmt::{Debug, Formatter, Error};
 
 use arena::Arena;
-use primitives::numeric::add;
+use primitives::numeric::{add, sub, div, mul};
 use environment::Environment;
 use value::Value;
 
 mod numeric;
 
-static PRIMITIVES: [Primitive; 1] = [
-  Primitive { name: "+", implementation: add }
+static PRIMITIVES: [Primitive; 4] = [
+  Primitive { name: "+", implementation: add },
+  Primitive { name: "*", implementation: mul },
+  Primitive { name: "-", implementation: sub },
+  Primitive { name: "/", implementation: div },
 ];
 
 #[derive(Clone)]
