@@ -111,7 +111,7 @@ impl Value {
           p = arena.value_ref(*cdr_r.borrow());
         }
         Value::EmptyList => break,
-        _ => return Err(format!("Converting list to vec: {} is not a proper list.",
+        _ => return Err(format!("Converting list to vec: {} is not a proper list",
                                 self.pretty_print(arena)))
       }
     }

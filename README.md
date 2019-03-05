@@ -32,8 +32,6 @@ system. Oh well.
 
 ### Small
 
-* Refactor Bounce to move the Result outside, which should greatly clarify
-a bunch of the code (we'll be able to use `?`.)
 * Make `structs` for the more complex values in `Value`, so we can
 provide appropriate methods in a type-safe manner.
 * Make `define` support the function definition shorthand (could be done

@@ -75,26 +75,28 @@ mod tests {
 
   use super::*;
 
+  const BASE_ENTRY: usize = 4;
+
   #[test]
   fn add_empty() {
     let mut arena = Arena::new();
-    assert_eq!(0, arena.intern(Value::EmptyList));
+    assert_eq!(BASE_ENTRY, arena.intern(Value::EmptyList));
   }
 
   #[test]
   fn add_remove() {
     let mut arena = Arena::new();
-    assert_eq!(0, arena.intern(Value::EmptyList));
-    assert_eq!(1, arena.intern(Value::EmptyList));
-    assert_eq!(2, arena.intern(Value::EmptyList));
-    arena.values[1] = ArenaValue::Absent;
-    assert_eq!(1, arena.intern(Value::EmptyList));
+    assert_eq!(BASE_ENTRY, arena.intern(Value::EmptyList));
+    assert_eq!(BASE_ENTRY + 1, arena.intern(Value::EmptyList));
+    assert_eq!(BASE_ENTRY + 2, arena.intern(Value::EmptyList));
+    arena.values[BASE_ENTRY + 1] = ArenaValue::Absent;
+    assert_eq!(BASE_ENTRY + 1, arena.intern(Value::EmptyList));
   }
 
   #[test]
   fn get() {
     let mut arena = Arena::new();
-    assert_eq!(0, arena.intern(Value::Real(0.1)));
-    assert_eq!(Value::Real(0.1), *arena.value_ref(0));
+    assert_eq!(BASE_ENTRY, arena.intern(Value::Real(0.1)));
+    assert_eq!(Value::Real(0.1), *arena.value_ref(BASE_ENTRY));
   }
 }

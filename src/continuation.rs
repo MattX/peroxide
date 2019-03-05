@@ -18,29 +18,29 @@ pub enum Continuation {
 }
 
 impl Continuation {
-  pub fn resume(&self, arena: &mut Arena, value_r: usize) -> Bounce {
+  pub fn resume(&self, arena: &mut Arena, value_r: usize) -> Result<Bounce, String> {
     let value = arena.value_ref(value_r).clone();
     match self {
       Continuation::If { e_true_r, e_false_r, environment_r, next_r } => {
-        Bounce::Evaluate {
+        Ok(Bounce::Evaluate {
           continuation_r: *next_r,
           value_r: if value.truthy() { *e_true_r } else { *e_false_r },
           environment_r: *environment_r,
-        }
+        })
       }
       Continuation::Begin { body_r, environment_r, next_r } => {
-        Bounce::EvaluateBegin { value_r: *body_r, environment_r: *environment_r, continuation_r: *next_r }
+        Ok(Bounce::EvaluateBegin { value_r: *body_r, environment_r: *environment_r, continuation_r: *next_r })
       }
       Continuation::Set { name, environment_r, next_r, define } => {
         match arena.value_ref(*environment_r) {
           Value::Environment(e) => {
             if *define {
               e.borrow_mut().define(name, value_r);
-              Bounce::Resume { continuation_r: *next_r, value_r: arena.unspecific }
+              Ok(Bounce::Resume { continuation_r: *next_r, value_r: arena.unspecific })
             } else {
               match e.borrow_mut().set(arena, name, value_r) {
-                Ok(_) => Bounce::Resume { continuation_r: *next_r, value_r: arena.unspecific },
-                Err(s) => Bounce::Done(Err(format!("Cannot set {}: {}", name, s)))
+                Ok(_) => Ok(Bounce::Resume { continuation_r: *next_r, value_r: arena.unspecific }),
+                Err(s) => Err(format!("Cannot set {}: {}", name, s))
               }
             }
           }
@@ -54,7 +54,7 @@ impl Continuation {
           next_r: *next_r,
         };
         let apply_cont_r = arena.intern(Value::Continuation(RefCell::new(apply_cont)));
-        Bounce::EvaluateArguments { args_r: *args_r, environment_r: *environment_r, continuation_r: apply_cont_r }
+        Ok(Bounce::EvaluateArguments { args_r: *args_r, environment_r: *environment_r, continuation_r: apply_cont_r })
       }
       Continuation::Argument { sequence_r, environment_r, next_r } => {
         let gather_cont = Continuation::Gather {
@@ -63,12 +63,12 @@ impl Continuation {
         };
         let gather_cont_r = arena.intern(Value::Continuation(RefCell::new(gather_cont)));
         let cdr = arena.value_ref(*sequence_r).cdr();
-        Bounce::EvaluateArguments { args_r: cdr, environment_r: *environment_r, continuation_r: gather_cont_r }
+        Ok(Bounce::EvaluateArguments { args_r: cdr, environment_r: *environment_r, continuation_r: gather_cont_r })
       }
       Continuation::Gather { gathered_r, next_r } => {
         let gathered = Value::Pair(RefCell::new(*gathered_r), RefCell::new(value_r));
         let gathered_r = arena.intern(gathered);
-        Bounce::Resume { continuation_r: *next_r, value_r: gathered_r }
+        Ok(Bounce::Resume { continuation_r: *next_r, value_r: gathered_r })
       }
       Continuation::Apply { fun_r, environment_r: _, next_r } => {
         let fun = arena.value_ref(*fun_r).clone();
@@ -78,15 +78,15 @@ impl Continuation {
               let mut env = Environment::new(Some(lambda_environment_r));
               env.define_all(v);
               let env_r = arena.intern(Value::Environment(RefCell::new(env)));
-              Bounce::EvaluateBegin { environment_r: env_r, value_r: body, continuation_r:*next_r }
+              Ok(Bounce::EvaluateBegin { environment_r: env_r, value_r: body, continuation_r:*next_r })
             },
-            Err(s) => Bounce::Done(Err(format!("Error binding function arguments: {}.", s)))
+            Err(s) => Err(format!("Error binding function arguments: {}.", s))
           }
         } else {
-          Bounce::Done(Err(format!("Tried to apply non-function: {}.", fun)))
+          Err(format!("Tried to apply non-function: {}.", fun))
         }
       }
-      Continuation::TopLevel => Bounce::Done(Ok(value_r)),
+      Continuation::TopLevel => Ok(Bounce::Done(value_r)),
     }
   }
 }
