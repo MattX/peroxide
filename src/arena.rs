@@ -65,6 +65,10 @@ impl Arena {
     self.intern(Value::Continuation(RefCell::new(c)))
   }
 
+  pub fn intern_pair(&mut self, car: usize, cdr: usize) -> usize {
+    self.intern(Value::Pair(RefCell::new(car), RefCell::new(cdr)))
+  }
+
   /// Returns the address of the first `Absent` value in the arena, or an empty optional if there
   /// is none.
   fn find_space(&self) -> Option<usize> {

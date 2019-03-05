@@ -1,15 +1,15 @@
 use arena::Arena;
 use eval::{evaluate, evaluate_begin};
 use value::Value;
-use eval::evaluate_arguments;
+use continuation::Continuation;
 
 
 #[derive(Debug)]
 pub enum Bounce {
-  Evaluate { continuation_r: usize, value_r: usize, environment_r: usize },
-  EvaluateBegin { continuation_r: usize, value_r: usize, environment_r: usize },
-  EvaluateArguments { continuation_r: usize, args_r: usize, environment_r: usize },
-  Resume { continuation_r: usize, value_r: usize },
+  Evaluate { value: usize, environment: usize, continuation: usize },
+  EvaluateBegin { value: usize, environment: usize, continuation: usize },
+  EvaluateArguments { args: usize, environment: usize, continuation: usize },
+  Resume { value: usize, continuation: usize },
   Done(usize),
 }
 
@@ -19,18 +19,18 @@ impl Bounce {
     loop {
       // println!(" C> {:?}", &current_bounce);
       match current_bounce {
-        Bounce::Evaluate { continuation_r, value_r, environment_r } => {
-          current_bounce = evaluate(arena, value_r, environment_r, continuation_r)?;
+        Bounce::Evaluate { value, environment, continuation } => {
+          current_bounce = evaluate(arena, value, environment, continuation)?;
         },
-        Bounce::EvaluateBegin { continuation_r, value_r, environment_r } => {
-          current_bounce = evaluate_begin(arena, environment_r, value_r, continuation_r)?;
-        },
-        Bounce::EvaluateArguments { continuation_r, args_r, environment_r } => {
-          current_bounce = evaluate_arguments(arena, environment_r, args_r, continuation_r)?;
+        Bounce::EvaluateBegin { value, environment, continuation } => {
+          current_bounce = evaluate_begin(arena, value, environment, continuation)?;
         }
-        Bounce::Resume { continuation_r, value_r } => {
-          if let Value::Continuation(c) = arena.value_ref(continuation_r).clone() {
-            current_bounce = c.borrow().resume(arena, value_r)?;
+        Bounce::EvaluateArguments { args, environment, continuation } => {
+          current_bounce = evaluate_arguments(arena, args, environment, continuation)?;
+        }
+        Bounce::Resume { value, continuation } => {
+          if let Value::Continuation(c) = arena.value_ref(continuation).clone() {
+            current_bounce = c.borrow().resume(arena, value)?;
           } else {
             panic!("Resuming non-continuation.")
           }
@@ -41,7 +41,24 @@ impl Bounce {
   }
 }
 
-pub fn evaluate_toplevel(arena: &mut Arena, value_r: usize, continuation_r: usize, environment_r: usize)
+pub fn evaluate_toplevel(arena: &mut Arena, value: usize, continuation: usize, environment: usize)
                          -> Result<usize, String> {
-  evaluate(arena, value_r, continuation_r, environment_r)?.run_trampoline(arena)
+  evaluate(arena, value, continuation, environment)?.run_trampoline(arena)
+}
+
+fn evaluate_arguments(arena: &mut Arena, args_r: usize, environment: usize, continuation: usize)
+                      -> Result<Bounce, String> {
+  let args = arena.value_ref(args_r).pair_to_vec(arena)
+      .expect(&format!("Argument evaluation didn't produce a list."));
+
+  if args.is_empty() {
+    Ok(Bounce::Resume { value: arena.empty_list, continuation })
+  } else {
+    let cont = arena.intern_continuation(Continuation::Argument {
+      sequence: args_r,
+      environment,
+      continuation,
+    });
+    Ok(Bounce::Evaluate { value: args[0], environment, continuation: cont })
+  }
 }
