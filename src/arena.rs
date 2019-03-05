@@ -3,6 +3,8 @@ use std::borrow::Borrow;
 /// A global of boxes for all values. This is used to perform garbage collection.
 
 use value::Value;
+use continuation::Continuation;
+use std::cell::RefCell;
 
 pub struct Arena {
   values: Vec<ArenaValue>,
@@ -56,6 +58,11 @@ impl Arena {
       fal: 2,
       tru: 3,
     }
+  }
+
+  /// Helper method to intern a continuation in one go
+  pub fn intern_continuation(&mut self, c: Continuation) -> usize {
+    self.intern(Value::Continuation(RefCell::new(c)))
   }
 
   /// Returns the address of the first `Absent` value in the arena, or an empty optional if there

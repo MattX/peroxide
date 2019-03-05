@@ -13,14 +13,14 @@ pub fn evaluate(arena: &mut Arena, form: usize, environment: usize, continuation
 
   let val = arena.value_ref(form).clone();
   match val {
-    Value::Symbol(s) => evaluate_variable(arena, environment, &s, continuation),
-    Value::Pair(_, _) => evaluate_pair(arena, environment, form, continuation),
+    Value::Symbol(s) => evaluate_variable(arena, &s, environment, continuation),
+    Value::Pair(_, _) => evaluate_pair(arena, form, environment, continuation),
     Value::EmptyList => Err(format!("Syntax error: applying empty list.")),
     _ => Ok(Bounce::Resume { continuation_r: continuation, value_r: form }),
   }
 }
 
-fn evaluate_variable(arena: &mut Arena, environment: usize, name: &str, continuation: usize)
+fn evaluate_variable(arena: &mut Arena, name: &str, environment: usize, continuation: usize)
                      -> Result<Bounce, String> {
   if let Value::Environment(e) = arena.value_ref(environment) {
     match e.borrow().get(arena, name) {
@@ -32,7 +32,7 @@ fn evaluate_variable(arena: &mut Arena, environment: usize, name: &str, continua
   }
 }
 
-fn evaluate_pair(arena: &mut Arena, environment: usize, pair_r: usize, continuation: usize)
+fn evaluate_pair(arena: &mut Arena, pair_r: usize, environment: usize, continuation: usize)
                  -> Result<Bounce, String> {
   let pair = arena.value_ref(pair_r).clone();
 
@@ -41,31 +41,19 @@ fn evaluate_pair(arena: &mut Arena, environment: usize, pair_r: usize, continuat
     if let Value::Symbol(s) = car {
       match s.as_ref() {
         "quote" => evaluate_quote(arena, *cdr_r.borrow(), continuation),
-        "if" => evaluate_if(arena, environment, *cdr_r.borrow(), continuation),
-        "begin" => evaluate_begin(arena, environment, *cdr_r.borrow(), continuation),
-        "lambda" => evaluate_lambda(arena, environment, *cdr_r.borrow(), continuation),
-        "set!" => evaluate_set(arena, environment, *cdr_r.borrow(), continuation, false),
-        "define" => evaluate_set(arena, environment, *cdr_r.borrow(), continuation, true),
-        _ => evaluate_application(arena, environment, pair_r, continuation),
+        "if" => evaluate_if(arena, *cdr_r.borrow(), environment, continuation),
+        "begin" => evaluate_begin(arena, *cdr_r.borrow(), environment, continuation),
+        "lambda" => evaluate_lambda(arena, *cdr_r.borrow(), environment, continuation),
+        "set!" => evaluate_set(arena, *cdr_r.borrow(), false, environment, continuation),
+        "define" => evaluate_set(arena, *cdr_r.borrow(), true, environment,  continuation),
+        _ => evaluate_application(arena, pair_r, environment,  continuation),
       }
     } else {
-      evaluate_application(arena, environment, pair_r, continuation)
+      evaluate_application(arena, pair_r, environment, continuation)
     }
   } else {
     panic!("Value passed to evaluate_pair() is not a pair: {:?}.", pair);
   }
-}
-
-fn with_check_len<T>(v: Vec<T>, min: Option<usize>, max: Option<usize>) -> Result<Vec<T>, String> {
-  match min {
-    Some(m) => if v.len() < m { return Err(format!("Too few values, expecting at least {}", m)); },
-    _ => ()
-  };
-  match max {
-    Some(m) => if v.len() > m { return Err(format!("Too many values, expecting at most {}", m)); },
-    _ => ()
-  }
-  Ok(v)
 }
 
 fn evaluate_quote(arena: &mut Arena, cdr_r: usize, continuation: usize)
@@ -78,24 +66,24 @@ fn evaluate_quote(arena: &mut Arena, cdr_r: usize, continuation: usize)
 }
 
 // TODO (easy: support 2-form version)
-fn evaluate_if(arena: &mut Arena, environment: usize, cdr_r: usize, continuation: usize)
+fn evaluate_if(arena: &mut Arena, cdr_r: usize, environment: usize, continuation: usize)
                -> Result<Bounce, String> {
   let args = arena.value_ref(cdr_r).pair_to_vec(arena)
       .and_then(|v| with_check_len(v, Some(3), Some(3)))
       .map_err(|s| format!("Syntax error in if: {}.", s))?;
 
   let cont = Continuation::If {
-    e_true_r: args[1],
-    e_false_r: args[2],
-    environment_r: environment,
-    next_r: continuation,
+    e_true: args[1],
+    e_false: args[2],
+    environment,
+    continuation,
   };
   let cont_r = arena.intern(Value::Continuation(RefCell::new(cont)));
   Ok(Bounce::Evaluate { continuation_r: cont_r, value_r: args[0], environment_r: environment })
 }
 
 
-pub fn evaluate_begin(arena: &mut Arena, environment: usize, cdr_r: usize, continuation: usize)
+pub fn evaluate_begin(arena: &mut Arena, cdr_r: usize, environment: usize, continuation: usize)
                       -> Result<Bounce, String> {
   let args = arena.value_ref(cdr_r).pair_to_vec(arena)
       .map_err(|s| format!("Syntax error in begin: {}.", s))?;
@@ -107,19 +95,19 @@ pub fn evaluate_begin(arena: &mut Arena, environment: usize, cdr_r: usize, conti
     }
     _ => {
       let cdr = arena.value_ref(cdr_r).cdr();
-      let cont = arena.intern(Value::Continuation(RefCell::new(Continuation::Begin {
+      let cont = arena.intern_continuation(Continuation::Begin {
         body_r: cdr,
         environment_r: environment,
         next_r: continuation,
-      })));
+      });
       Ok(Bounce::Evaluate { value_r: args[0], environment_r: environment, continuation_r: cont })
     }
   }
 }
 
 
-fn evaluate_set(arena: &mut Arena, environment: usize, cdr_r: usize, continuation: usize,
-                define: bool) -> Result<Bounce, String> {
+fn evaluate_set(arena: &mut Arena, cdr_r: usize, define: bool, environment: usize,
+                continuation: usize) -> Result<Bounce, String> {
   let fn_name = if define { "define" } else { "set!" };
   let args = arena.value_ref(cdr_r).pair_to_vec(arena)
       .and_then(|v| with_check_len(v, Some(2), Some(2)))
@@ -139,7 +127,7 @@ fn evaluate_set(arena: &mut Arena, environment: usize, cdr_r: usize, continuatio
 }
 
 // TODO (easy): verify formals at this point
-fn evaluate_lambda(arena: &mut Arena, environment: usize, cdr_r: usize, continuation: usize)
+fn evaluate_lambda(arena: &mut Arena, cdr_r: usize, environment: usize, continuation: usize)
                    -> Result<Bounce, String> {
   let args = arena.value_ref(cdr_r).pair_to_vec(arena)
       .and_then(|v| with_check_len(v, Some(2), None))
@@ -150,7 +138,7 @@ fn evaluate_lambda(arena: &mut Arena, environment: usize, cdr_r: usize, continua
 }
 
 
-fn evaluate_application(arena: &mut Arena, environment: usize, cdr_r: usize, continuation: usize)
+fn evaluate_application(arena: &mut Arena, cdr_r: usize, environment: usize, continuation: usize)
                         -> Result<Bounce, String> {
   let args = arena.value_ref(cdr_r).pair_to_vec(arena)
       .map_err(|s| format!("Syntax error in application: {}.", s))?;
@@ -185,4 +173,16 @@ pub fn evaluate_arguments(arena: &mut Arena, environment: usize, args_r: usize, 
     let cont_r = arena.intern(Value::Continuation(RefCell::new(cont)));
     Ok(Bounce::Evaluate { environment_r: environment, value_r: args[0], continuation_r: cont_r })
   }
+}
+
+fn with_check_len<T>(v: Vec<T>, min: Option<usize>, max: Option<usize>) -> Result<Vec<T>, String> {
+  match min {
+    Some(m) => if v.len() < m { return Err(format!("Too few values, expecting at least {}", m)); },
+    _ => ()
+  };
+  match max {
+    Some(m) => if v.len() > m { return Err(format!("Too many values, expecting at most {}", m)); },
+    _ => ()
+  }
+  Ok(v)
 }
