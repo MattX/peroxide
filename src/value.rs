@@ -5,6 +5,7 @@ use std::ops::Deref;
 use arena::Arena;
 use continuation::Continuation;
 use environment::Environment;
+use primitives::Primitive;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {
@@ -21,6 +22,7 @@ pub enum Value {
   Environment(RefCell<Environment>),
   Continuation(RefCell<Continuation>),
   Lambda { environment: usize, formals: usize, body: usize },
+  Primitive(Primitive)
 }
 
 impl fmt::Display for Value {

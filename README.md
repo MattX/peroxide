@@ -37,8 +37,12 @@ provide appropriate methods in a type-safe manner.
 * Make `define` support the function definition shorthand (could be done
 with a macro, maybe?)
 * We can store bodies, and probably argument lists as well, as vecs instead
-of Scheme lists, as they have well-defined shapes.
+of Scheme lists, as they have well-defined shapes. This does pose a
+problem for continuations, because they want a reference inside the
+arena.
 
+Idea: Make a `Value::Numeric` that would then contain the numeric
+subtypes. 
 
 ## Useful documentation
 

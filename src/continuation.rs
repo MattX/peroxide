@@ -76,15 +76,22 @@ impl Continuation {
 
       Continuation::Apply { fun: fun_r, environment: _, continuation } => {
         let fun = arena.value_ref(fun_r).clone();
-        if let Value::Lambda { environment: lambda_environment, formals: _, body } = fun {
-          let bound_formals = fun.bind_formals(arena, value_r)
-              .map_err(|s| format!("Error binding function arguments: {}.", s))?;
+        match fun {
+          Value::Lambda { environment: lambda_environment, formals: _, body } => {
+            let bound_formals = fun.bind_formals(arena, value_r)
+                .map_err(|s| format!("Error binding function arguments: {}.", s))?;
 
-          let env = Environment::new_initial(Some(lambda_environment), bound_formals);
-          let env_r = arena.intern(Value::Environment(RefCell::new(env)));
-          Ok(Bounce::EvaluateBegin { value: body, environment: env_r, continuation })
-        } else {
-          Err(format!("Tried to apply non-function: {}.", fun))
+            let env = Environment::new_initial(Some(lambda_environment), bound_formals);
+            let env_r = arena.intern(Value::Environment(RefCell::new(env)));
+            Ok(Bounce::EvaluateBegin { value: body, environment: env_r, continuation })
+          }
+          Value::Primitive(p) => {
+            let args_as_vec = arena.value_ref(value_r).pair_to_vec(arena)
+                .expect("Function arguments are not a list, which we should have caught.");
+            let result = (p.implementation)(arena, args_as_vec)?;
+            Ok(Bounce::Resume { value: result, continuation })
+          }
+          _ => Err(format!("Tried to apply non-function: {}.", fun)),
         }
       }
 

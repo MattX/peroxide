@@ -24,6 +24,11 @@ impl Arena {
   /// Moves a value into the arena, and returns a pointer to its new position.
   pub fn intern(&mut self, v: Value) -> usize {
     let space = self.find_space();
+
+    if self.values.len() > 1_000_000 {
+      panic!("We're trying to allocate suspicious amounts of memory.");
+    }
+
     match space {
       Some(n) => {
         self.values[n] = ArenaValue::Present(Box::new(v));

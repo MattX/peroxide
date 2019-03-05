@@ -13,6 +13,7 @@ use trampoline::evaluate_toplevel;
 use value::Value;
 use repl::{ReadlineRepl, Repl, StdIoRepl};
 use repl::GetLineError;
+use primitives::register_primitives;
 
 mod lex;
 mod value;
@@ -23,6 +24,8 @@ mod continuation;
 mod eval;
 mod trampoline;
 mod repl;
+mod util;
+mod primitives;
 
 fn main() -> io::Result<()> {
   let args: Vec<String> = env::args().collect();
@@ -34,8 +37,9 @@ fn main() -> io::Result<()> {
 
   let mut arena = Arena::new();
 
-  let environment = Value::Environment(RefCell::new(Environment::new(None)));
-  let environment_r = arena.intern(environment);
+  let mut environment = Environment::new(None);
+  register_primitives(&mut arena, &mut environment);
+  let environment_r = arena.intern(Value::Environment(RefCell::new(environment)));
 
   let cont = Value::Continuation(RefCell::new(Continuation::TopLevel));
   let cont_r = arena.intern(cont);

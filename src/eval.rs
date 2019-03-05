@@ -2,6 +2,7 @@ use arena::Arena;
 use continuation::Continuation;
 use trampoline::Bounce;
 use value::Value;
+use util::with_check_len;
 
 pub fn evaluate(arena: &mut Arena, value: usize, environment: usize, continuation: usize)
                 -> Result<Bounce, String> {
@@ -143,16 +144,4 @@ fn evaluate_application(arena: &mut Arena, cdr_r: usize, environment: usize, con
   let cont = arena.intern_continuation(
     Continuation::EvFun { args: fun_args, environment, continuation });
   Ok(Bounce::Evaluate { value: args[0], environment, continuation: cont })
-}
-
-fn with_check_len<T>(v: Vec<T>, min: Option<usize>, max: Option<usize>) -> Result<Vec<T>, String> {
-  match min {
-    Some(m) => if v.len() < m { return Err(format!("Too few values, expecting at least {}", m)); },
-    _ => ()
-  };
-  match max {
-    Some(m) => if v.len() > m { return Err(format!("Too many values, expecting at most {}", m)); },
-    _ => ()
-  }
-  Ok(v)
 }
