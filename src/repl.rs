@@ -1,7 +1,8 @@
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
-use std::io::{self, Write};
+use std::fs::File;
+use std::io::{self, BufRead, BufReader, Write};
 
 #[derive(Debug)]
 pub enum GetLineError {
@@ -72,6 +73,37 @@ impl Repl for StdIoRepl {
             Ok(0) => Err(GetLineError::Eof),
             Ok(_) => Ok(buf),
             Err(e) => Err(GetLineError::Err(e.to_string())),
+        }
+    }
+
+    fn add_to_history(&mut self, _data: &str) -> () {}
+
+    fn save_history(&mut self) -> () {}
+}
+
+pub struct FileRepl {
+    reader: BufReader<File>,
+}
+
+impl FileRepl {
+    pub fn new(file_name: &str) -> Result<FileRepl, String> {
+        let f = File::open(file_name).map_err(|e| e.to_string())?;
+        Ok(FileRepl {
+            reader: BufReader::new(f),
+        })
+    }
+}
+
+impl Repl for FileRepl {
+    fn get_line(&mut self, _prompt: &str, _prefill: &str) -> Result<String, GetLineError> {
+        let mut line = String::new();
+        let len = self
+            .reader
+            .read_line(&mut line)
+            .map_err(|e| GetLineError::Err(e.to_string()))?;
+        match len {
+            0 => Err(GetLineError::Eof),
+            _ => Ok(line),
         }
     }
 

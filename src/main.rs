@@ -2,7 +2,6 @@ extern crate rustyline;
 
 use std::cell::RefCell;
 use std::env;
-use std::io;
 
 use arena::Arena;
 use continuation::Continuation;
@@ -11,7 +10,7 @@ use lex::SegmentationResult;
 use lex::Token;
 use primitives::register_primitives;
 use repl::GetLineError;
-use repl::{ReadlineRepl, Repl, StdIoRepl};
+use repl::{FileRepl, ReadlineRepl, Repl, StdIoRepl};
 use trampoline::evaluate_toplevel;
 use value::Value;
 
@@ -27,12 +26,30 @@ mod trampoline;
 mod util;
 mod value;
 
-fn main() -> io::Result<()> {
+fn main() -> () {
     let args: Vec<String> = env::args().collect();
-    let mut repl: Box<Repl> = if args.iter().any(|x| x == "--no-readline") {
-        Box::new(StdIoRepl {})
-    } else {
-        Box::new(ReadlineRepl::new(Some("history.txt".to_string())))
+    match do_main(args) {
+        Err(e) => {
+            println!("Error: {}", e);
+            std::process::exit(1)
+        }
+        Ok(()) => std::process::exit(0),
+    }
+}
+
+fn do_main(args: Vec<String>) -> Result<(), String> {
+    let options = parse_args(&args.iter().map(|x| &**x).collect::<Vec<_>>())
+        .map_err(|e| format!("Could not parse arguments: {}", e))?;
+
+    let mut repl: Box<Repl> = match options.input_file {
+        Some(f) => Box::new(FileRepl::new(&f)?),
+        None => {
+            if options.enable_readline {
+                Box::new(ReadlineRepl::new(Some("history.txt".to_string())))
+            } else {
+                Box::new(StdIoRepl {})
+            }
+        }
     };
 
     let mut arena = Arena::new();
@@ -134,4 +151,27 @@ fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment_r: usize, cont_r: u
             Err(s) => println!("Parsing error: {:?}", s),
         }
     }
+}
+
+#[derive(Debug)]
+struct Options {
+    pub enable_readline: bool,
+    pub input_file: Option<String>,
+}
+
+// TODO emit sensible error / warning messages
+fn parse_args(args: &[&str]) -> Result<Options, String> {
+    let (mut positional, flags): (Vec<&str>, Vec<&str>) =
+        args.iter().skip(1).partition(|s| !s.starts_with("--"));
+
+    let enable_readline = !flags.iter().any(|&x| x == "--disable-readline");
+    let input_file = if positional.len() <= 1 {
+        positional.pop().map(|x| x.to_string())
+    } else {
+        return Err("Too many positional arguments.".into());
+    };
+    Ok(Options {
+        enable_readline,
+        input_file,
+    })
 }
