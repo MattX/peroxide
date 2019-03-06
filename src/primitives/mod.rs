@@ -1,11 +1,13 @@
-//! **Needed:**
-//! eq? eqv?
+//! Naming convention: replace `?` with `_p`, `!` with `_b`, `->` with `_to_`.
+//!
+//! ### Needed
+//! OK~ eq? eqv?
 //!
 //! number? complex? real? rational? integer?
 //! exact? inexact?
-//! = < <= > >=
+//! OK = < <= > >=
 //!
-//! + * - /
+//! OK + * - /
 //! quotient remainder modulo
 //! numerator denominator
 //! floor ceiling truncate round
@@ -16,8 +18,8 @@
 //! exact->inexact inexact->exact
 //! number->string string->number
 //!
-//! pair?
-//! cons car cdr
+//! OK pair?
+//! OK cons car cdr
 //! set-car! set-cdr!
 //!
 //! symbol?
@@ -55,12 +57,44 @@ use std::fmt::{Debug, Error, Formatter};
 
 use arena::Arena;
 use environment::Environment;
-use primitives::numeric::{add, div, equal, less_than, greater_than, mul, sub};
+use primitives::numeric::*;
+use primitives::object::*;
+use primitives::pair::*;
 use value::Value;
 
 mod numeric;
+mod object;
+mod pair;
 
-static PRIMITIVES: [Primitive; 7] = [
+static PRIMITIVES: [Primitive; 15] = [
+    Primitive {
+        name: "eq?",
+        implementation: eq_p,
+    },
+    Primitive {
+        name: "eqv?",
+        implementation: eqv_p,
+    },
+    Primitive {
+        name: "=",
+        implementation: equal,
+    },
+    Primitive {
+        name: "<",
+        implementation: less_than,
+    },
+    Primitive {
+        name: ">",
+        implementation: greater_than,
+    },
+    Primitive {
+        name: "<=",
+        implementation: less_than_equal,
+    },
+    Primitive {
+        name: ">=",
+        implementation: greater_than_equal,
+    },
     Primitive {
         name: "+",
         implementation: add,
@@ -78,16 +112,20 @@ static PRIMITIVES: [Primitive; 7] = [
         implementation: div,
     },
     Primitive {
-        name: "=",
-        implementation: equal,
+        name: "pair?",
+        implementation: pair_p,
     },
     Primitive {
-        name: "<",
-        implementation: less_than,
+        name: "cons",
+        implementation: cons,
     },
     Primitive {
-        name: ">",
-        implementation: greater_than,
+        name: "car",
+        implementation: car,
+    },
+    Primitive {
+        name: "cdr",
+        implementation: cdr,
     },
 ];
 

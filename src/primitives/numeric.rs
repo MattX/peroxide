@@ -37,6 +37,7 @@ fn mul2(a: &Value, b: &Value) -> Value {
     }
 }
 
+/// TODO: noncompliant: (- 1) shoud return -1, not 1.
 /// Like [prim_fold_0], but uses the first element of the list as the fold initializer
 macro_rules! prim_fold_1 {
     ($name:ident, $folder:ident) => {
@@ -125,6 +126,30 @@ fn greater_than2(a: &Value, b: &Value) -> bool {
     match cast_same(a, b) {
         (Value::Integer(ia), Value::Integer(ib)) => ia < ib,
         (Value::Real(fa), Value::Real(fb)) => fa < fb,
+        _ => panic!(
+            "cast_same did not return equal numeric types: ({}, {})",
+            a, b
+        ),
+    }
+}
+
+prim_monotonic!(less_than_equal, less_than_equal2);
+fn less_than_equal2(a: &Value, b: &Value) -> bool {
+    match cast_same(a, b) {
+        (Value::Integer(ia), Value::Integer(ib)) => ia <= ib,
+        (Value::Real(fa), Value::Real(fb)) => fa <= fb,
+        _ => panic!(
+            "cast_same did not return equal numeric types: ({}, {})",
+            a, b
+        ),
+    }
+}
+
+prim_monotonic!(greater_than_equal, greater_than_equal2);
+fn greater_than_equal2(a: &Value, b: &Value) -> bool {
+    match cast_same(a, b) {
+        (Value::Integer(ia), Value::Integer(ib)) => ia >= ib,
+        (Value::Real(fa), Value::Real(fb)) => fa >= fb,
         _ => panic!(
             "cast_same did not return equal numeric types: ({}, {})",
             a, b
