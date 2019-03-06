@@ -23,8 +23,8 @@ pub enum Value {
     Continuation(RefCell<Continuation>),
     Lambda {
         environment: usize,
-        formals: usize,
-        body: usize,
+        formals: Formals,
+        body: Vec<usize>,
     },
     Primitive(Primitive),
 }
@@ -152,50 +152,78 @@ impl Value {
         }
     }
 
-    pub fn bind_formals(&self, arena: &Arena, args: usize) -> Result<Vec<(String, usize)>, String> {
-        fn _bind_formals(
-            arena: &Arena,
-            formals: usize,
-            args: usize,
-        ) -> Result<Vec<(String, usize)>, String> {
-            let fm = arena.value_ref(formals);
-            let act = arena.value_ref(args);
-            match (fm, act) {
-                (Value::Symbol(s), _) => Ok(vec![(s.clone(), args)]),
-                (Value::EmptyList, Value::EmptyList) => Ok(vec![]),
-                (Value::Pair(f_car, f_cdr), Value::Pair(a_car, a_cdr)) => {
-                    let f_car_v = arena.value_ref(*f_car.borrow());
-                    if let Value::Symbol(s) = f_car_v {
-                        let mut rest = _bind_formals(arena, *f_cdr.borrow(), *a_cdr.borrow())?;
-                        rest.push((s.clone(), *a_car.borrow()));
-                        Ok(rest)
+    pub fn from_vec(arena: &mut Arena, vals: &[usize]) -> usize {
+        if vals.is_empty() {
+            arena.empty_list
+        } else {
+            let rest = Value::from_vec(arena, &vals[1..]);
+            arena.intern(Value::Pair(RefCell::new(vals[0]), RefCell::new(rest)))
+        }
+    }
+}
+
+/// Structure that holds a function's formal argument list.
+/// `(x y z)` will be represented as `Formals { values: [x, y, z], rest: None }`
+/// `(x y . z)` will be represented as `Formals { values: [x, y], rest: Some(z) }`
+#[derive(Debug, PartialEq, Clone)]
+pub struct Formals {
+    pub values: Vec<String>,
+    pub rest: Option<String>,
+}
+
+impl Formals {
+    pub fn new(arena: &mut Arena, formals: usize) -> Result<Formals, String> {
+        let mut values = Vec::new();
+        let mut formal = formals;
+        loop {
+            match arena.value_ref(formal) {
+                Value::Symbol(s) => {
+                    return Ok(Formals {
+                        values,
+                        rest: Some(s.clone()),
+                    });
+                }
+                Value::EmptyList => return Ok(Formals { values, rest: None }),
+                Value::Pair(car, cdr) => {
+                    if let Value::Symbol(s) = arena.value_ref(*car.borrow()) {
+                        values.push(s.clone());
+                        formal = *cdr.borrow();
                     } else {
-                        // TODO turn this into a panic once we start checking the formals ahead of
-                        // time.
-                        Err(format!(
-                            "Malformed formals, expected symbol, got {}.",
-                            f_car_v
-                        ))
+                        return Err(format!(
+                            "Malformed formals: {}.",
+                            arena.value_ref(formals).pretty_print(arena)
+                        ));
                     }
                 }
-                _ => Err(format!(
-                    "Malformed formals ({}), or formals do not match argument list ({}).",
-                    fm.pretty_print(arena),
-                    act.pretty_print(arena)
-                )),
+                _ => {
+                    return Err(format!(
+                        "Malformed formals: {}.",
+                        arena.value_ref(formals).pretty_print(arena)
+                    ));
+                }
             }
         }
+    }
 
-        if let Value::Lambda {
-            environment: _,
-            formals,
-            body: _,
-        } = self
-        {
-            _bind_formals(arena, *formals, args)
-        } else {
-            panic!("bind_formals called on {:?}.", self)
+    pub fn bind(&self, arena: &mut Arena, args: &[usize]) -> Result<Vec<(String, usize)>, String> {
+        if args.len() < self.values.len() {
+            return Err(format!("Too few arguments for application."));
         }
+        if args.len() > self.values.len() && self.rest.is_none() {
+            return Err(format!("Too many arguments for application."));
+        }
+
+        let mut ans: Vec<_> = self
+            .values
+            .clone()
+            .into_iter()
+            .zip(args.to_vec().into_iter())
+            .collect();
+        if let Some(ref r) = self.rest {
+            let num_collected = ans.len();
+            ans.push((r.clone(), Value::from_vec(arena, &args[num_collected..])))
+        }
+        Ok(ans)
     }
 }
 

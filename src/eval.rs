@@ -2,7 +2,7 @@ use arena::Arena;
 use continuation::Continuation;
 use trampoline::Bounce;
 use util::with_check_len;
-use value::Value;
+use value::{Formals, Value};
 
 pub fn evaluate(
     arena: &mut Arena,
@@ -59,36 +59,44 @@ pub fn evaluate_arguments(
     }
 }
 
-pub fn evaluate_begin(
+/// Evaluates a `begin` whose syntax hasn't been checked yet.
+pub fn check_evaluate_begin(
     arena: &mut Arena,
     cdr_r: usize,
     environment: usize,
     continuation: usize,
 ) -> Result<Bounce, String> {
-    let args = arena
+    let body = arena
         .value_ref(cdr_r)
         .pair_to_vec(arena)
         .map_err(|s| format!("Syntax error in begin: {}.", s))?;
+    evaluate_begin(arena, &body, environment, continuation)
+}
 
-    match args.len() {
+pub fn evaluate_begin(
+    arena: &mut Arena,
+    body: &[usize],
+    environment: usize,
+    continuation: usize,
+) -> Result<Bounce, String> {
+    match body.len() {
         0 => Ok(Bounce::Resume {
             value: arena.unspecific,
             continuation,
         }),
         1 => Ok(Bounce::Evaluate {
-            value: args[0],
+            value: body[0],
             environment,
             continuation,
         }),
         _ => {
-            let cdr = arena.value_ref(cdr_r).cdr();
             let cont = arena.intern_continuation(Continuation::Begin {
-                body: cdr,
+                body: body[1..].to_vec(),
                 environment,
                 continuation,
             });
             Ok(Bounce::Evaluate {
-                value: args[0],
+                value: body[0],
                 environment,
                 continuation: cont,
             })
@@ -133,7 +141,7 @@ fn evaluate_pair(
             match s.as_ref() {
                 "quote" => evaluate_quote(arena, *cdr_r.borrow(), continuation),
                 "if" => evaluate_if(arena, *cdr_r.borrow(), environment, continuation),
-                "begin" => evaluate_begin(arena, *cdr_r.borrow(), environment, continuation),
+                "begin" => check_evaluate_begin(arena, *cdr_r.borrow(), environment, continuation),
                 "lambda" => evaluate_lambda(arena, *cdr_r.borrow(), environment, continuation),
                 "set!" => evaluate_set(arena, *cdr_r.borrow(), false, environment, continuation),
                 "define" => evaluate_set(arena, *cdr_r.borrow(), true, environment, continuation),
@@ -230,16 +238,17 @@ fn evaluate_lambda(
     environment: usize,
     continuation: usize,
 ) -> Result<Bounce, String> {
-    let args = arena
+    let mut args = arena
         .value_ref(cdr_r)
         .pair_to_vec(arena)
         .and_then(|v| with_check_len(v, Some(2), None))
         .map_err(|s| format!("Syntax error in lambda: {}.", s))?;
+    let formals = args.remove(0);
 
     let val = Value::Lambda {
         environment,
-        formals: args[0],
-        body: arena.value_ref(cdr_r).cdr(),
+        formals: Formals::new(arena, formals)?,
+        body: args,
     };
     Ok(Bounce::Resume {
         value: arena.intern(val),

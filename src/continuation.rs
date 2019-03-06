@@ -15,7 +15,7 @@ pub enum Continuation {
         continuation: usize,
     },
     Begin {
-        body: usize,
+        body: Vec<usize>,
         environment: usize,
         continuation: usize,
     },
@@ -67,7 +67,7 @@ impl Continuation {
             }),
 
             Continuation::Begin {
-                body,
+                ref body,
                 environment,
                 continuation,
             } => evaluate_begin(arena, body, environment, continuation),
@@ -145,16 +145,17 @@ impl Continuation {
                 match fun {
                     Value::Lambda {
                         environment: lambda_environment,
-                        formals: _,
+                        formals,
                         body,
                     } => {
-                        let bound_formals = fun
-                            .bind_formals(arena, value_r)
+                        let vec_args = arena.value_ref(value_r).clone().pair_to_vec(arena)?;
+                        let bound_formals = formals
+                            .bind(arena, &vec_args)
                             .map_err(|s| format!("Error binding function arguments: {}.", s))?;
 
                         let env = Environment::new_initial(Some(lambda_environment), bound_formals);
                         let env_r = arena.intern(Value::Environment(RefCell::new(env)));
-                        evaluate_begin(arena, body, env_r, continuation)
+                        evaluate_begin(arena, &body, env_r, continuation)
                     }
 
                     Value::Primitive(p) => {
