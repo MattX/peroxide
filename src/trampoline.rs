@@ -34,7 +34,8 @@ impl Bounce {
                     continuation,
                 } => {
                     if let Value::Continuation(c) = arena.value_ref(continuation).clone() {
-                        current_bounce = c.borrow().resume(arena, value)?;
+                        // println!("Resuming depth {:04} {:?}", continuation_depth(arena, continuation), c);
+                        current_bounce = c.resume(arena, value)?;
                     } else {
                         panic!("Resuming non-continuation.")
                     }

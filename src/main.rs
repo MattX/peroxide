@@ -41,11 +41,10 @@ fn main() -> io::Result<()> {
     register_primitives(&mut arena, &mut environment);
     let environment_r = arena.intern(Value::Environment(RefCell::new(environment)));
 
-    let cont = Value::Continuation(RefCell::new(Continuation::TopLevel));
-    let cont_r = arena.intern(cont);
+    let cont = arena.intern_continuation(Continuation::TopLevel);
 
     loop {
-        let result = handle_one_expr_wrap(&mut repl, &mut arena, environment_r, cont_r);
+        let result = handle_one_expr_wrap(&mut repl, &mut arena, environment_r, cont);
         if !result {
             break;
         }

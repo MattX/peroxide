@@ -4,6 +4,7 @@ use arena::Arena;
 use environment::Environment;
 use eval::{evaluate_arguments, evaluate_begin};
 use trampoline::Bounce;
+use util::with_check_len;
 use value::Value;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -138,17 +139,21 @@ impl Continuation {
 
             Continuation::Apply {
                 fun: fun_r,
-                environment: _,
                 continuation,
+                ..
             } => {
                 let fun = arena.value_ref(fun_r).clone();
+                let vec_args = arena
+                    .value_ref(value_r)
+                    .clone()
+                    .pair_to_vec(arena)
+                    .expect("Function arguments are not a list, which should never happen.");
                 match fun {
                     Value::Lambda {
                         environment: lambda_environment,
                         formals,
                         body,
                     } => {
-                        let vec_args = arena.value_ref(value_r).clone().pair_to_vec(arena)?;
                         let bound_formals = formals
                             .bind(arena, &vec_args)
                             .map_err(|s| format!("Error binding function arguments: {}.", s))?;
@@ -159,15 +164,22 @@ impl Continuation {
                     }
 
                     Value::Primitive(p) => {
-                        let args_as_vec = arena.value_ref(value_r).pair_to_vec(arena).expect(
-                            "Function arguments are not a list, which we should have caught.",
-                        );
-                        let result = (p.implementation)(arena, args_as_vec)?;
+                        let result = (p.implementation)(arena, vec_args)?;
                         Ok(Bounce::Resume {
                             value: result,
                             continuation,
                         })
                     }
+
+                    Value::Continuation(_) => {
+                        let vec_args = with_check_len(vec_args, Some(1), Some(1))
+                            .map_err(|e| format!("Error when invoking continuation: {}.", e))?;
+                        Ok(Bounce::Resume {
+                            value: vec_args[0],
+                            continuation: fun_r,
+                        })
+                    }
+
                     _ => Err(format!(
                         "Tried to apply non-function: {}.",
                         fun.pretty_print(arena)
@@ -177,5 +189,34 @@ impl Continuation {
 
             Continuation::TopLevel => Ok(Bounce::Done(value_r)),
         }
+    }
+}
+
+#[allow(dead_code)]
+pub fn continuation_depth(arena: &Arena, c: usize) -> u64 {
+    match arena.value_ref(c).clone() {
+        Value::Continuation(Continuation::If { continuation, .. }) => {
+            continuation_depth(arena, continuation) + 1
+        }
+        Value::Continuation(Continuation::Apply { continuation, .. }) => {
+            continuation_depth(arena, continuation) + 1
+        }
+        Value::Continuation(Continuation::Gather { continuation, .. }) => {
+            continuation_depth(arena, continuation) + 1
+        }
+        Value::Continuation(Continuation::EvFun { continuation, .. }) => {
+            continuation_depth(arena, continuation) + 1
+        }
+        Value::Continuation(Continuation::Argument { continuation, .. }) => {
+            continuation_depth(arena, continuation) + 1
+        }
+        Value::Continuation(Continuation::Begin { continuation, .. }) => {
+            continuation_depth(arena, continuation) + 1
+        }
+        Value::Continuation(Continuation::Set { continuation, .. }) => {
+            continuation_depth(arena, continuation) + 1
+        }
+        Value::Continuation(Continuation::TopLevel) => 0,
+        _ => panic!("Wat"),
     }
 }

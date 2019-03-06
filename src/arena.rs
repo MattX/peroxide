@@ -66,7 +66,7 @@ impl Arena {
 
     /// Helper method to intern a continuation in one go
     pub fn intern_continuation(&mut self, c: Continuation) -> usize {
-        self.intern(Value::Continuation(RefCell::new(c)))
+        self.intern(Value::Continuation(c))
     }
 
     pub fn intern_pair(&mut self, car: usize, cdr: usize) -> usize {

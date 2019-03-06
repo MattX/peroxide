@@ -20,7 +20,7 @@ pub enum Value {
     Pair(RefCell<usize>, RefCell<usize>),
     Vector(Vec<RefCell<usize>>),
     Environment(RefCell<Environment>),
-    Continuation(RefCell<Continuation>),
+    Continuation(Continuation),
     Lambda {
         environment: usize,
         formals: Formals,
