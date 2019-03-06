@@ -55,7 +55,7 @@ use std::fmt::{Debug, Error, Formatter};
 
 use arena::Arena;
 use environment::Environment;
-use primitives::numeric::{add, div, equal, less_than, more_than, mul, sub};
+use primitives::numeric::{add, div, equal, less_than, greater_than, mul, sub};
 use value::Value;
 
 mod numeric;
@@ -87,7 +87,7 @@ static PRIMITIVES: [Primitive; 7] = [
     },
     Primitive {
         name: ">",
-        implementation: more_than,
+        implementation: greater_than,
     },
 ];
 

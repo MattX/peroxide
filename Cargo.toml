@@ -3,6 +3,7 @@ name = "peroxide"
 version = "0.1.0"
 authors = ["Matthieu Felix <matthieufelix@gmail.com>"]
 license = "Apache-2.0"
+publish = false
 
 [dependencies]
-rustyline = "2.1.0"
+rustyline = "3.0.0"

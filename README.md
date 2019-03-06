@@ -29,7 +29,9 @@ system. Oh well.
 * Standard library
 * Better input handling, read from files, etc.
 * Maybe support exact and inexact numbers, and complexes and rationals
-* Catch overflows or support bigints
+ * Catch overflows or support bigints
+ * Idea: Make a `Value::Numeric` that would then contain the numeric
+   subtypes. 
 * Macro support
 
 ### Small
@@ -42,9 +44,9 @@ with a macro, maybe?)
 of Scheme lists, as they have well-defined shapes. This does pose a
 problem for continuations, because they want a reference inside the
 arena.
+* Allow fully disabling rustyline [using features](
+https://doc.rust-lang.org/cargo/reference/manifest.html#the-features-section).
 
-Idea: Make a `Value::Numeric` that would then contain the numeric
-subtypes. 
 
 ## Useful documentation
 

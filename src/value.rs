@@ -170,7 +170,8 @@ impl Value {
                         rest.push((s.clone(), *a_car.borrow()));
                         Ok(rest)
                     } else {
-                        // TODO turn this into a panic once we start checkings
+                        // TODO turn this into a panic once we start checking the formals ahead of
+                        // time.
                         Err(format!(
                             "Malformed formals, expected symbol, got {}.",
                             f_car_v
