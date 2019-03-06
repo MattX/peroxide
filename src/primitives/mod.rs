@@ -51,49 +51,70 @@
 //!
 //! load
 
-use std::fmt::{Debug, Formatter, Error};
+use std::fmt::{Debug, Error, Formatter};
 
 use arena::Arena;
-use primitives::numeric::{add, sub, div, mul, equal, less_than, more_than};
 use environment::Environment;
+use primitives::numeric::{add, div, equal, less_than, more_than, mul, sub};
 use value::Value;
 
 mod numeric;
 
 static PRIMITIVES: [Primitive; 7] = [
-  Primitive { name: "+", implementation: add },
-  Primitive { name: "*", implementation: mul },
-  Primitive { name: "-", implementation: sub },
-  Primitive { name: "/", implementation: div },
-  Primitive { name: "=", implementation: equal },
-  Primitive { name: "<", implementation: less_than },
-  Primitive { name: ">", implementation: more_than },
+    Primitive {
+        name: "+",
+        implementation: add,
+    },
+    Primitive {
+        name: "*",
+        implementation: mul,
+    },
+    Primitive {
+        name: "-",
+        implementation: sub,
+    },
+    Primitive {
+        name: "/",
+        implementation: div,
+    },
+    Primitive {
+        name: "=",
+        implementation: equal,
+    },
+    Primitive {
+        name: "<",
+        implementation: less_than,
+    },
+    Primitive {
+        name: ">",
+        implementation: more_than,
+    },
 ];
 
 #[derive(Clone)]
 pub struct Primitive {
-  pub name: &'static str,
-  pub implementation: fn(&mut Arena, Vec<usize>) -> Result<usize, String>
+    pub name: &'static str,
+    pub implementation: fn(&mut Arena, Vec<usize>) -> Result<usize, String>,
 }
 
 impl Debug for Primitive {
-  fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-    write!(f, "primitive {}", self.name)
-  }
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "primitive {}", self.name)
+    }
 }
 
 impl PartialEq for Primitive {
-  fn eq(&self, other: &Primitive) -> bool {
-    self.name == other.name
-  }
+    fn eq(&self, other: &Primitive) -> bool {
+        self.name == other.name
+    }
 
-  fn ne(&self, other: &Primitive) -> bool {
-    self.name != other.name
-  }
+    fn ne(&self, other: &Primitive) -> bool {
+        self.name != other.name
+    }
 }
 
 pub fn register_primitives(arena: &mut Arena, e: &mut Environment) {
-  for p in PRIMITIVES.iter() {
-    e.define(p.name, arena.intern(Value::Primitive(p.clone())))
-  }
+    for p in PRIMITIVES.iter() {
+        e.define(p.name, arena.intern(Value::Primitive(p.clone())))
+    }
 }
