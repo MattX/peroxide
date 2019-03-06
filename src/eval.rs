@@ -160,7 +160,6 @@ fn evaluate_quote(arena: &mut Arena, cdr_r: usize, continuation: usize) -> Resul
     })
 }
 
-// TODO (easy: support 2-form version)
 fn evaluate_if(
     arena: &mut Arena,
     cdr_r: usize,
@@ -170,12 +169,12 @@ fn evaluate_if(
     let args = arena
         .value_ref(cdr_r)
         .pair_to_vec(arena)
-        .and_then(|v| with_check_len(v, Some(3), Some(3)))
+        .and_then(|v| with_check_len(v, Some(2), Some(3)))
         .map_err(|s| format!("Syntax error in if: {}.", s))?;
 
     let cont = arena.intern_continuation(Continuation::If {
         e_true: args[1],
-        e_false: args[2],
+        e_false: args.get(2).cloned(),
         environment,
         continuation,
     });

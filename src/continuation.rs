@@ -2,15 +2,15 @@ use std::cell::RefCell;
 
 use arena::Arena;
 use environment::Environment;
+use eval::{evaluate_arguments, evaluate_begin};
 use trampoline::Bounce;
 use value::Value;
-use eval::{evaluate_begin, evaluate_arguments};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Continuation {
     If {
         e_true: usize,
-        e_false: usize,
+        e_false: Option<usize>,
         environment: usize,
         continuation: usize,
     },
@@ -57,7 +57,11 @@ impl Continuation {
                 environment,
                 continuation,
             } => Ok(Bounce::Evaluate {
-                value: if value.truthy() { e_true } else { e_false },
+                value: if value.truthy() {
+                    e_true
+                } else {
+                    e_false.unwrap_or(arena.unspecific)
+                },
                 environment,
                 continuation,
             }),
