@@ -19,7 +19,6 @@ system. Oh well.
 
 ### Large
 
-* Macro support
 * GC
 * Be faster and less stupid
 
@@ -29,6 +28,9 @@ system. Oh well.
 * Quasiquotation
 * Standard library
 * Better input handling, read from files, etc.
+* Maybe support exact and inexact numbers, and complexes and rationals
+* Catch overflows or support bigints
+* Macro support
 
 ### Small
 
