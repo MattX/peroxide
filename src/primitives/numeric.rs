@@ -83,7 +83,6 @@ fn div2(a: &Value, b: &Value) -> Value {
     }
 }
 
-
 /// Generates a numeric primitive that verifies monotonicity. Needs a (&Value, &Value) -> bool
 /// function to wrap.
 macro_rules! prim_monotonic {
@@ -94,7 +93,7 @@ macro_rules! prim_monotonic {
             let ans = values.windows(2).all(|x| $pair(&x[0], &x[1]));
             Ok(arena.intern(Value::Boolean(ans)))
         }
-    }
+    };
 }
 
 prim_monotonic!(equal, equal2);

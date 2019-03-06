@@ -2,7 +2,6 @@ use arena::Arena;
 use util::with_check_len;
 use value::Value;
 
-
 // TODO: This is non-compliant for now, we need to make sure that two symbols whose strings
 // are equal point to the same memory location.
 pub fn eq_p(arena: &mut Arena, args: Vec<usize>) -> Result<usize, String> {

@@ -167,7 +167,10 @@ impl Continuation {
                             continuation,
                         })
                     }
-                    _ => Err(format!("Tried to apply non-function: {}.", fun)),
+                    _ => Err(format!(
+                        "Tried to apply non-function: {}.",
+                        fun.pretty_print(arena)
+                    )),
                 }
             }
 

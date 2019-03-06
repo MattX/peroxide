@@ -20,7 +20,7 @@
 //!
 //! OK pair?
 //! OK cons car cdr
-//! set-car! set-cdr!
+//! OK set-car! set-cdr!
 //!
 //! symbol?
 //! symbol->string
@@ -66,7 +66,7 @@ mod numeric;
 mod object;
 mod pair;
 
-static PRIMITIVES: [Primitive; 15] = [
+static PRIMITIVES: [Primitive; 17] = [
     Primitive {
         name: "eq?",
         implementation: eq_p,
@@ -126,6 +126,14 @@ static PRIMITIVES: [Primitive; 15] = [
     Primitive {
         name: "cdr",
         implementation: cdr,
+    },
+    Primitive {
+        name: "set-car!",
+        implementation: set_car_b,
+    },
+    Primitive {
+        name: "set-cdr!",
+        implementation: set_cdr_b,
     },
 ];
 
