@@ -4,6 +4,7 @@ use arena::Arena;
 use environment::Environment;
 use trampoline::Bounce;
 use value::Value;
+use eval::{evaluate_begin, evaluate_arguments};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Continuation {
@@ -65,11 +66,7 @@ impl Continuation {
                 body,
                 environment,
                 continuation,
-            } => Ok(Bounce::EvaluateBegin {
-                value: body,
-                environment,
-                continuation,
-            }),
+            } => evaluate_begin(arena, body, environment, continuation),
 
             Continuation::Set {
                 ref name,
@@ -108,11 +105,7 @@ impl Continuation {
                     environment,
                     continuation,
                 });
-                Ok(Bounce::EvaluateArguments {
-                    args,
-                    environment,
-                    continuation: apply_cont,
-                })
+                evaluate_arguments(arena, args, environment, apply_cont)
             }
 
             Continuation::Argument {
@@ -125,11 +118,7 @@ impl Continuation {
                     continuation,
                 });
                 let args = arena.value_ref(sequence).cdr();
-                Ok(Bounce::EvaluateArguments {
-                    args,
-                    environment,
-                    continuation: gather_cont,
-                })
+                evaluate_arguments(arena, args, environment, gather_cont)
             }
 
             Continuation::Gather {
@@ -161,12 +150,9 @@ impl Continuation {
 
                         let env = Environment::new_initial(Some(lambda_environment), bound_formals);
                         let env_r = arena.intern(Value::Environment(RefCell::new(env)));
-                        Ok(Bounce::EvaluateBegin {
-                            value: body,
-                            environment: env_r,
-                            continuation,
-                        })
+                        evaluate_begin(arena, body, env_r, continuation)
                     }
+
                     Value::Primitive(p) => {
                         let args_as_vec = arena.value_ref(value_r).pair_to_vec(arena).expect(
                             "Function arguments are not a list, which we should have caught.",

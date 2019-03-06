@@ -20,10 +20,7 @@ impl Environment {
     }
 
     pub fn new_initial(parent: Option<usize>, bindings: Vec<(String, usize)>) -> Environment {
-        let mut env = Environment {
-            parent,
-            values: HashMap::new(),
-        };
+        let mut env = Environment::new(parent);
         for (k, v) in bindings.iter() {
             env.define(&k, *v);
         }

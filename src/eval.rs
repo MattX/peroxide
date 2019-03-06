@@ -29,6 +29,73 @@ pub fn evaluate(
     }
 }
 
+pub fn evaluate_arguments(
+    arena: &mut Arena,
+    args_r: usize,
+    environment: usize,
+    continuation: usize,
+) -> Result<Bounce, String> {
+    let args = arena
+        .value_ref(args_r)
+        .pair_to_vec(arena)
+        .expect(&format!("Argument evaluation didn't produce a list."));
+
+    if args.is_empty() {
+        Ok(Bounce::Resume {
+            value: arena.empty_list,
+            continuation,
+        })
+    } else {
+        let cont = arena.intern_continuation(Continuation::Argument {
+            sequence: args_r,
+            environment,
+            continuation,
+        });
+        Ok(Bounce::Evaluate {
+            value: args[0],
+            environment,
+            continuation: cont,
+        })
+    }
+}
+
+pub fn evaluate_begin(
+    arena: &mut Arena,
+    cdr_r: usize,
+    environment: usize,
+    continuation: usize,
+) -> Result<Bounce, String> {
+    let args = arena
+        .value_ref(cdr_r)
+        .pair_to_vec(arena)
+        .map_err(|s| format!("Syntax error in begin: {}.", s))?;
+
+    match args.len() {
+        0 => Ok(Bounce::Resume {
+            value: arena.unspecific,
+            continuation,
+        }),
+        1 => Ok(Bounce::Evaluate {
+            value: args[0],
+            environment,
+            continuation,
+        }),
+        _ => {
+            let cdr = arena.value_ref(cdr_r).cdr();
+            let cont = arena.intern_continuation(Continuation::Begin {
+                body: cdr,
+                environment,
+                continuation,
+            });
+            Ok(Bounce::Evaluate {
+                value: args[0],
+                environment,
+                continuation: cont,
+            })
+        }
+    }
+}
+
 fn evaluate_variable(
     arena: &mut Arena,
     name: &str,
@@ -117,43 +184,6 @@ fn evaluate_if(
         environment,
         continuation: cont,
     })
-}
-
-pub fn evaluate_begin(
-    arena: &mut Arena,
-    cdr_r: usize,
-    environment: usize,
-    continuation: usize,
-) -> Result<Bounce, String> {
-    let args = arena
-        .value_ref(cdr_r)
-        .pair_to_vec(arena)
-        .map_err(|s| format!("Syntax error in begin: {}.", s))?;
-
-    match args.len() {
-        0 => Ok(Bounce::Resume {
-            value: arena.unspecific,
-            continuation,
-        }),
-        1 => Ok(Bounce::Evaluate {
-            value: args[0],
-            environment,
-            continuation,
-        }),
-        _ => {
-            let cdr = arena.value_ref(cdr_r).cdr();
-            let cont = arena.intern_continuation(Continuation::Begin {
-                body: cdr,
-                environment,
-                continuation,
-            });
-            Ok(Bounce::Evaluate {
-                value: args[0],
-                environment,
-                continuation: cont,
-            })
-        }
-    }
 }
 
 fn evaluate_set(

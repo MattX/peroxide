@@ -1,22 +1,11 @@
 use arena::Arena;
-use continuation::Continuation;
-use eval::{evaluate, evaluate_begin};
+use eval::evaluate;
 use value::Value;
 
 #[derive(Debug)]
 pub enum Bounce {
     Evaluate {
         value: usize,
-        environment: usize,
-        continuation: usize,
-    },
-    EvaluateBegin {
-        value: usize,
-        environment: usize,
-        continuation: usize,
-    },
-    EvaluateArguments {
-        args: usize,
         environment: usize,
         continuation: usize,
     },
@@ -39,20 +28,6 @@ impl Bounce {
                     continuation,
                 } => {
                     current_bounce = evaluate(arena, value, environment, continuation)?;
-                }
-                Bounce::EvaluateBegin {
-                    value,
-                    environment,
-                    continuation,
-                } => {
-                    current_bounce = evaluate_begin(arena, value, environment, continuation)?;
-                }
-                Bounce::EvaluateArguments {
-                    args,
-                    environment,
-                    continuation,
-                } => {
-                    current_bounce = evaluate_arguments(arena, args, environment, continuation)?;
                 }
                 Bounce::Resume {
                     value,
@@ -77,34 +52,4 @@ pub fn evaluate_toplevel(
     environment: usize,
 ) -> Result<usize, String> {
     evaluate(arena, value, continuation, environment)?.run_trampoline(arena)
-}
-
-fn evaluate_arguments(
-    arena: &mut Arena,
-    args_r: usize,
-    environment: usize,
-    continuation: usize,
-) -> Result<Bounce, String> {
-    let args = arena
-        .value_ref(args_r)
-        .pair_to_vec(arena)
-        .expect(&format!("Argument evaluation didn't produce a list."));
-
-    if args.is_empty() {
-        Ok(Bounce::Resume {
-            value: arena.empty_list,
-            continuation,
-        })
-    } else {
-        let cont = arena.intern_continuation(Continuation::Argument {
-            sequence: args_r,
-            environment,
-            continuation,
-        });
-        Ok(Bounce::Evaluate {
-            value: args[0],
-            environment,
-            continuation: cont,
-        })
-    }
 }
