@@ -2,49 +2,53 @@ use std::borrow::Borrow;
 
 use continuation::Continuation;
 use std::cell::RefCell;
-/// A global of boxes for all values. This is used to perform garbage collection.
+use std::collections::HashMap;
 use value::Value;
 
 pub struct Arena {
-    values: Vec<ArenaValue>,
+    values: Vec<Value>,
+    symbol_map: HashMap<String, usize>,
     pub unspecific: usize,
     pub empty_list: usize,
-    pub tru: usize,
-    pub fal: usize,
-}
-
-#[derive(Debug, PartialEq)]
-enum ArenaValue {
-    Absent,
-    Present(Box<Value>),
+    pub t: usize,
+    pub f: usize,
 }
 
 impl Arena {
     /// Moves a value into the arena, and returns a pointer to its new position.
     pub fn intern(&mut self, v: Value) -> usize {
-        let space = self.find_space();
-
-        if self.values.len() > 1_000_000 {
-            panic!("We're trying to allocate suspicious amounts of memory.");
-        }
-
-        match space {
-            Some(n) => {
-                self.values[n] = ArenaValue::Present(Box::new(v));
-                n
+        match v {
+            Value::Unspecific => self.unspecific,
+            Value::EmptyList => self.empty_list,
+            Value::Boolean(true) => self.t,
+            Value::Boolean(false) => self.f,
+            Value::Symbol(s) => {
+                let res = self.symbol_map.get(&s).cloned();
+                match res {
+                    Some(u) => u,
+                    None => {
+                        let label = s.clone();
+                        let pos = self.do_intern(Value::Symbol(s));
+                        self.symbol_map.insert(label, pos);
+                        pos
+                    }
+                }
             }
-            None => {
-                self.values.push(ArenaValue::Present(Box::new(v)));
-                self.values.len() - 1
-            }
+            _ => self.do_intern(v),
         }
+    }
+
+    /// Actually does the thing described above
+    fn do_intern(&mut self, v: Value) -> usize {
+        self.values.push(v);
+        self.values.len() - 1
     }
 
     /// Given a position in the arena, returns a reference to the value at that location.
     pub fn value_ref(&self, at: usize) -> &Value {
-        match self.values[at] {
-            ArenaValue::Absent => panic!("value_ref on absent value."),
-            ArenaValue::Present(ref b) => b.borrow(),
+        match self.values.get(at) {
+            None => panic!("Tried to access invalid arena location {}", at),
+            Some(v) => v.borrow(),
         }
     }
 
@@ -52,15 +56,16 @@ impl Arena {
     pub fn new() -> Arena {
         Arena {
             values: vec![
-                ArenaValue::Present(Box::new(Value::Unspecific)),
-                ArenaValue::Present(Box::new(Value::EmptyList)),
-                ArenaValue::Present(Box::new(Value::Boolean(false))),
-                ArenaValue::Present(Box::new(Value::Boolean(true))),
+                Value::Unspecific,
+                Value::EmptyList,
+                Value::Boolean(false),
+                Value::Boolean(true),
             ],
+            symbol_map: HashMap::new(),
             unspecific: 0,
             empty_list: 1,
-            fal: 2,
-            tru: 3,
+            f: 2,
+            t: 3,
         }
     }
 
@@ -71,17 +76,6 @@ impl Arena {
 
     pub fn intern_pair(&mut self, car: usize, cdr: usize) -> usize {
         self.intern(Value::Pair(RefCell::new(car), RefCell::new(cdr)))
-    }
-
-    /// Returns the address of the first `Absent` value in the arena, or an empty optional if there
-    /// is none.
-    fn find_space(&self) -> Option<usize> {
-        self.values
-            .iter()
-            .enumerate()
-            .filter(|(_index, value)| **value == ArenaValue::Absent)
-            .nth(0)
-            .map(|(index, _value)| index)
     }
 }
 
@@ -97,16 +91,6 @@ mod tests {
     fn add_empty() {
         let mut arena = Arena::new();
         assert_eq!(BASE_ENTRY, arena.intern(Value::EmptyList));
-    }
-
-    #[test]
-    fn add_remove() {
-        let mut arena = Arena::new();
-        assert_eq!(BASE_ENTRY, arena.intern(Value::EmptyList));
-        assert_eq!(BASE_ENTRY + 1, arena.intern(Value::EmptyList));
-        assert_eq!(BASE_ENTRY + 2, arena.intern(Value::EmptyList));
-        arena.values[BASE_ENTRY + 1] = ArenaValue::Absent;
-        assert_eq!(BASE_ENTRY + 1, arena.intern(Value::EmptyList));
     }
 
     #[test]

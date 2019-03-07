@@ -20,7 +20,7 @@ pub fn cons(arena: &mut Arena, args: Vec<usize>) -> Result<usize, String> {
 pub fn car(arena: &mut Arena, args: Vec<usize>) -> Result<usize, String> {
     let args = with_check_len(args, Some(1), Some(1))?;
     match arena.value_ref(args[0]) {
-        Value::Pair(car, _) => Ok(car.borrow().clone()),
+        Value::Pair(car, _) => Ok(*car.borrow()),
         _ => Err(format!(
             "Called car on a non-pair: {}",
             arena.value_ref(args[0]).pretty_print(arena)
@@ -31,7 +31,7 @@ pub fn car(arena: &mut Arena, args: Vec<usize>) -> Result<usize, String> {
 pub fn cdr(arena: &mut Arena, args: Vec<usize>) -> Result<usize, String> {
     let args = with_check_len(args, Some(1), Some(1))?;
     match arena.value_ref(args[0]) {
-        Value::Pair(_, cdr) => Ok(cdr.borrow().clone()),
+        Value::Pair(_, cdr) => Ok(*cdr.borrow()),
         _ => Err(format!(
             "Called cdr on a non-pair: {}",
             arena.value_ref(args[0]).pretty_print(arena)

@@ -7,3 +7,6 @@ publish = false
 
 [dependencies]
 rustyline = "3.0.0"
+
+[profile.release]
+debug = true

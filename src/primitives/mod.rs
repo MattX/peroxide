@@ -153,10 +153,6 @@ impl PartialEq for Primitive {
     fn eq(&self, other: &Primitive) -> bool {
         self.name == other.name
     }
-
-    fn ne(&self, other: &Primitive) -> bool {
-        self.name != other.name
-    }
 }
 
 pub fn register_primitives(arena: &mut Arena, e: &mut Environment) {

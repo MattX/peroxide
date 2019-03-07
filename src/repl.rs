@@ -13,8 +13,8 @@ pub enum GetLineError {
 
 pub trait Repl {
     fn get_line(&mut self, prompt: &str, prefill: &str) -> Result<String, GetLineError>;
-    fn add_to_history(&mut self, data: &str) -> ();
-    fn save_history(&mut self) -> ();
+    fn add_to_history(&mut self, data: &str);
+    fn save_history(&mut self);
 }
 
 pub struct ReadlineRepl {
@@ -48,11 +48,11 @@ impl Repl for ReadlineRepl {
             })
     }
 
-    fn add_to_history(&mut self, data: &str) -> () {
+    fn add_to_history(&mut self, data: &str) {
         self.editor.add_history_entry(data);
     }
 
-    fn save_history(&mut self) -> () {
+    fn save_history(&mut self) {
         self.history_location
             .as_ref()
             .map(|hl| self.editor.save_history(hl));
@@ -76,9 +76,9 @@ impl Repl for StdIoRepl {
         }
     }
 
-    fn add_to_history(&mut self, _data: &str) -> () {}
+    fn add_to_history(&mut self, _data: &str) {}
 
-    fn save_history(&mut self) -> () {}
+    fn save_history(&mut self) {}
 }
 
 pub struct FileRepl {
@@ -107,7 +107,7 @@ impl Repl for FileRepl {
         }
     }
 
-    fn add_to_history(&mut self, _data: &str) -> () {}
+    fn add_to_history(&mut self, _data: &str) {}
 
-    fn save_history(&mut self) -> () {}
+    fn save_history(&mut self) {}
 }

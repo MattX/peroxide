@@ -21,7 +21,7 @@ pub fn evaluate(
     match arena.value_ref(value).clone() {
         Value::Symbol(s) => evaluate_variable(arena, &s, environment, continuation),
         Value::Pair(_, _) => evaluate_pair(arena, value, environment, continuation),
-        Value::EmptyList => Err(format!("Syntax error: applying empty list.")),
+        Value::EmptyList => Err("Syntax error: applying empty list.".to_string()),
         _ => Ok(Bounce::Resume {
             value,
             continuation,
@@ -38,7 +38,7 @@ pub fn evaluate_arguments(
     let args = arena
         .value_ref(args_r)
         .pair_to_vec(arena)
-        .expect(&format!("Argument evaluation didn't produce a list."));
+        .unwrap_or_else(|_| panic!("Argument evaluation didn't produce a list."));
 
     if args.is_empty() {
         Ok(Bounce::Resume {
@@ -114,7 +114,7 @@ fn evaluate_variable(
         let value = e
             .borrow()
             .get(arena, name)
-            .ok_or(format!("Undefined value: {}.", name))?;
+            .ok_or_else(|| format!("Undefined value: {}.", name))?;
         Ok(Bounce::Resume {
             value,
             continuation,

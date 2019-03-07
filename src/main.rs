@@ -26,7 +26,7 @@ mod trampoline;
 mod util;
 mod value;
 
-fn main() -> () {
+fn main() {
     let args: Vec<String> = env::args().collect();
     match do_main(args) {
         Err(e) => {
@@ -61,7 +61,7 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
     let cont = arena.intern_continuation(Continuation::TopLevel);
 
     loop {
-        let result = handle_one_expr_wrap(&mut repl, &mut arena, environment_r, cont);
+        let result = handle_one_expr_wrap(&mut *repl, &mut arena, environment_r, cont);
         if !result {
             break;
         }
@@ -73,7 +73,7 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
 
 // Returns true if the REPL loop should continue, false otherwise.
 fn handle_one_expr_wrap(
-    repl: &mut Box<Repl>,
+    repl: &mut Repl,
     arena: &mut Arena,
     environment: usize,
     continuation: usize,
@@ -84,7 +84,7 @@ fn handle_one_expr_wrap(
 }
 
 fn handle_one_expr(
-    repl: &mut Box<Repl>,
+    repl: &mut Repl,
     arena: &mut Arena,
     environment: usize,
     continuation: usize,
@@ -136,7 +136,7 @@ fn handle_one_expr(
     Ok(true)
 }
 
-fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment_r: usize, cont_r: usize) -> () {
+fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment_r: usize, cont_r: usize) {
     for token_vector in toks {
         match parse::parse(arena, &token_vector) {
             Ok(value) => {
@@ -164,7 +164,7 @@ fn parse_args(args: &[&str]) -> Result<Options, String> {
     let (mut positional, flags): (Vec<&str>, Vec<&str>) =
         args.iter().skip(1).partition(|s| !s.starts_with("--"));
 
-    let enable_readline = !flags.iter().any(|&x| x == "--disable-readline");
+    let enable_readline = !flags.iter().any(|&x| x == "--no-readline");
     let input_file = if positional.len() <= 1 {
         positional.pop().map(|x| x.to_string())
     } else {

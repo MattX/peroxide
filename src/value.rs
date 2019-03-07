@@ -73,7 +73,7 @@ impl Value {
                     if let Value::EmptyList = arena.value_ref(*b.borrow().deref()) {
                         s.push_str(")");
                     } else {
-                        s.push_str(&format!(" "));
+                        s.push_str(" ");
                         _print_pair(arena, arena.value_ref(*b.borrow().deref()), s);
                     }
                 }
@@ -103,7 +103,7 @@ impl Value {
         if let Value::Vector(vals) = self {
             let contents = vals
                 .iter()
-                .map(|e| format!("{}", arena.value_ref(*e.borrow()).pretty_print(arena)))
+                .map(|e| arena.value_ref(*e.borrow()).pretty_print(arena))
                 .collect::<Vec<String>>()
                 .join(" ");
             format!("#({})", contents)
@@ -207,10 +207,10 @@ impl Formals {
 
     pub fn bind(&self, arena: &mut Arena, args: &[usize]) -> Result<Vec<(String, usize)>, String> {
         if args.len() < self.values.len() {
-            return Err(format!("Too few arguments for application."));
+            return Err("Too few arguments for application.".to_string());
         }
         if args.len() > self.values.len() && self.rest.is_none() {
-            return Err(format!("Too many arguments for application."));
+            return Err("Too many arguments for application.".to_string());
         }
 
         let mut ans: Vec<_> = self

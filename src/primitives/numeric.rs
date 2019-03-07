@@ -98,6 +98,7 @@ macro_rules! prim_monotonic {
 
 prim_monotonic!(equal, equal2);
 fn equal2(a: &Value, b: &Value) -> bool {
+    #![allow(clippy::float_cmp)]
     match cast_same(a, b) {
         (Value::Integer(ia), Value::Integer(ib)) => ia == ib,
         (Value::Real(fa), Value::Real(fb)) => fa == fb,
@@ -183,9 +184,9 @@ fn cast_same(a: &Value, b: &Value) -> (Value, Value) {
 
 /// Turns a numeric value into a float.
 fn as_float(n: &Value) -> Value {
-    match n {
-        &Value::Integer(i) => Value::Real(i as f64),
-        &Value::Real(f) => Value::Real(f),
+    match *n {
+        Value::Integer(i) => Value::Real(i as f64),
+        Value::Real(f) => Value::Real(f),
         _ => panic!("Non-numeric type passed to as_float"),
     }
 }

@@ -74,7 +74,7 @@ pub fn lex(input: &str) -> Result<Vec<Token>, String> {
     Ok(tokens)
 }
 
-fn consume_leading_spaces<I>(it: &mut Peekable<I>) -> ()
+fn consume_leading_spaces<I>(it: &mut Peekable<I>)
 where
     I: Iterator<Item = char>,
 {
@@ -116,10 +116,12 @@ where
     } else if token == "..." {
         Ok(Token::Ellipsis)
     } else {
-        token.parse::<i64>().map(|i| Token::Integer(i)).or(token
-            .parse::<f64>()
-            .map(|f| Token::Real(f))
-            .map_err(|e| e.description().to_string()))
+        token.parse::<i64>().map(Token::Integer).or_else(|_| {
+            token
+                .parse::<f64>()
+                .map(Token::Real)
+                .map_err(|e| e.description().to_string())
+        })
     }
 }
 
@@ -136,7 +138,7 @@ where
             '\\' => {
                 let seq = take_delimited_token(it, 1);
                 match seq.len() {
-                    0 => Err(format!("Unexpected end of token.")),
+                    0 => Err("Unexpected end of token.".to_string()),
                     1 => Ok(Token::Character(seq[0])),
                     _ => {
                         let descriptor: String = seq.into_iter().collect();
@@ -154,7 +156,7 @@ where
             _ => Err(format!("Unknown token form: `#{}...`.", c)),
         }
     } else {
-        Err(format!("Unexpected end of #-token."))
+        Err("Unexpected end of #-token.".to_string())
     }
 }
 
@@ -170,7 +172,7 @@ where
     let mut found_end: bool = false;
     let mut escaped: bool = false;
     let mut result: String = String::new();
-    while let Some(c) = it.next() {
+    for c in it {
         if escaped {
             let r = match c {
                 'n' => '\n',
@@ -215,7 +217,7 @@ pub fn segment(toks: Vec<Token>) -> Result<SegmentationResult, String> {
         }
         current_segment.push(tok);
         if depth < 0 {
-            return Err(format!("Syntax error: negative parenthesis depth."));
+            return Err("Syntax error: negative parenthesis depth.".to_string());
         } else if depth == 0 {
             segments.push(current_segment);
             current_segment = Vec::new();

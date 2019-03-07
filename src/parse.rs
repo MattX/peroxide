@@ -89,7 +89,9 @@ where
             }
         }
     } else {
-        Err(ParseResult::ParseError(format!("Unexpected end of list.")))
+        Err(ParseResult::ParseError(
+            "Unexpected end of list.".to_string(),
+        ))
     }
 }
 
@@ -100,9 +102,9 @@ where
     let mut result: Vec<RefCell<usize>> = Vec::new();
 
     if None == it.peek() {
-        return Err(ParseResult::ParseError(format!(
-            "Unexpected end of vector."
-        )));
+        return Err(ParseResult::ParseError(
+            "Unexpected end of vector.".to_string(),
+        ));
     }
 
     while let Some(&t) = it.peek() {
