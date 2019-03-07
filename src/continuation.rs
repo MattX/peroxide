@@ -78,27 +78,7 @@ impl Continuation {
                 define,
                 environment,
                 continuation,
-            } => match arena.value_ref(environment) {
-                Value::Environment(e) => {
-                    let success_cont = Ok(Bounce::Resume {
-                        value: arena.unspecific,
-                        continuation,
-                    });
-                    if define {
-                        e.borrow_mut().define(name, value_r);
-                        success_cont
-                    } else {
-                        match e.borrow_mut().set(arena, name, value_r) {
-                            Ok(_) => success_cont,
-                            Err(s) => Err(format!("Cannot set {}: {}", name, s)),
-                        }
-                    }
-                }
-                _ => panic!(
-                    "Expected environment, got {}.",
-                    arena.value_ref(environment).pretty_print(arena)
-                ),
-            },
+            } => resume_set_cont(arena, name, define, value_r, environment, continuation),
 
             Continuation::EvFun {
                 args,
@@ -138,57 +118,94 @@ impl Continuation {
             }
 
             Continuation::Apply {
-                fun: fun_r,
-                continuation,
-                ..
-            } => {
-                let fun = arena.value_ref(fun_r).clone();
-                let vec_args = arena
-                    .value_ref(value_r)
-                    .clone()
-                    .pair_to_vec(arena)
-                    .expect("Function arguments are not a list, which should never happen.");
-                match fun {
-                    Value::Lambda {
-                        environment: lambda_environment,
-                        formals,
-                        body,
-                    } => {
-                        let bound_formals = formals
-                            .bind(arena, &vec_args)
-                            .map_err(|s| format!("Error binding function arguments: {}.", s))?;
-
-                        let env = Environment::new_initial(Some(lambda_environment), bound_formals);
-                        let env_r = arena.intern(Value::Environment(RefCell::new(env)));
-                        evaluate_begin(arena, &body, env_r, continuation)
-                    }
-
-                    Value::Primitive(p) => {
-                        let result = (p.implementation)(arena, vec_args)?;
-                        Ok(Bounce::Resume {
-                            value: result,
-                            continuation,
-                        })
-                    }
-
-                    Value::Continuation(_) => {
-                        let vec_args = with_check_len(vec_args, Some(1), Some(1))
-                            .map_err(|e| format!("Error when invoking continuation: {}.", e))?;
-                        Ok(Bounce::Resume {
-                            value: vec_args[0],
-                            continuation: fun_r,
-                        })
-                    }
-
-                    _ => Err(format!(
-                        "Tried to apply non-function: {}.",
-                        fun.pretty_print(arena)
-                    )),
-                }
-            }
+                fun, continuation, ..
+            } => resume_apply_cont(arena, fun, value_r, continuation),
 
             Continuation::TopLevel => Ok(Bounce::Done(value_r)),
         }
+    }
+}
+
+fn resume_set_cont(
+    arena: &mut Arena,
+    name: &str,
+    define: bool,
+    value: usize,
+    environment: usize,
+    continuation: usize,
+) -> Result<Bounce, String> {
+    match arena.value_ref(environment) {
+        Value::Environment(e) => {
+            let success_cont = Ok(Bounce::Resume {
+                value: arena.unspecific,
+                continuation,
+            });
+            if define {
+                e.borrow_mut().define(name, value);
+                success_cont
+            } else {
+                match e.borrow_mut().set(arena, name, value) {
+                    Ok(_) => success_cont,
+                    Err(s) => Err(format!("Cannot set {}: {}", name, s)),
+                }
+            }
+        }
+        _ => panic!(
+            "Expected environment, got {}.",
+            arena.value_ref(environment).pretty_print(arena)
+        ),
+    }
+}
+
+fn resume_apply_cont(
+    arena: &mut Arena,
+    fun_r: usize,
+    value_r: usize,
+    continuation: usize,
+) -> Result<Bounce, String> {
+    let fun = arena.value_ref(fun_r).clone();
+    let vec_args = arena
+        .value_ref(value_r)
+        .clone()
+        .pair_to_vec(arena)
+        .expect("Function arguments are not a list, which should never happen.");
+
+    match fun {
+        Value::Lambda {
+            environment: lambda_environment,
+            formals,
+            body,
+        } => {
+            let bound_formals = formals
+                .bind(arena, &vec_args)
+                .map_err(|s| format!("Error binding function arguments: {}.", s))?;
+
+            let env = Environment::new_initial(Some(lambda_environment), bound_formals);
+            let env_r = arena.intern(Value::Environment(RefCell::new(env)));
+            evaluate_begin(arena, &body, env_r, continuation)
+        }
+
+        Value::Primitive(p) => {
+            let result = (p.implementation)(arena, vec_args)?;
+            Ok(Bounce::Resume {
+                value: result,
+                continuation,
+            })
+        }
+
+        Value::Continuation(_) => {
+            let vec_args = with_check_len(vec_args, Some(1), Some(1))
+                .map_err(|e| format!("Error when invoking continuation: {}.", e))?;
+            Ok(Bounce::Resume {
+                value: vec_args[0],
+                continuation: fun_r,
+            })
+        }
+
+        _ => Err(format!(
+            "Tried to apply non-function: {}.",
+            fun.pretty_print(arena)
+        )),
     }
 }
 

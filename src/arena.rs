@@ -53,7 +53,7 @@ impl Arena {
     }
 
     /// Instantiate a new arena
-    pub fn new() -> Arena {
+    pub fn new() -> Self {
         Arena {
             values: vec![
                 Value::Unspecific,
@@ -76,6 +76,12 @@ impl Arena {
 
     pub fn intern_pair(&mut self, car: usize, cdr: usize) -> usize {
         self.intern(Value::Pair(RefCell::new(car), RefCell::new(cdr)))
+    }
+}
+
+impl Default for Arena {
+    fn default() -> Self {
+        Arena::new()
     }
 }
 
