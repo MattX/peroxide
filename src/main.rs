@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::env;
 
 use arena::Arena;
+use ast::to_syntax_element;
 use continuation::Continuation;
 use environment::Environment;
 use lex::SegmentationResult;
@@ -15,6 +16,7 @@ use trampoline::evaluate_toplevel;
 use value::Value;
 
 mod arena;
+mod ast;
 mod continuation;
 mod environment;
 mod eval;
@@ -141,8 +143,7 @@ fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment_r: usize, cont_r: u
         match parse::parse(arena, &token_vector) {
             Ok(value) => {
                 let value_r = arena.intern(value);
-                let result = evaluate_toplevel(arena, value_r, environment_r, cont_r)
-                    .map(|x| arena.value_ref(x).pretty_print(arena));
+                let result = ast::to_syntax_element(arena, value_r).map(|v| format!("{:?}", v));
                 match result {
                     Ok(x) => println!(" => {}", x),
                     Err(x) => println!(" !> {}", x),

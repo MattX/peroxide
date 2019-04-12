@@ -1,0 +1,214 @@
+//! Turns a List representing a toplevel element in a Scheme program into an AST.
+//!
+//! Two things we don't support right now and will probably need to:
+//!  * Macro support! Besides the macroexpansion processor, we need to keep track of which macros
+//!    have been declared in the branch we are in as we construct the tree. This also means
+//!    two-way communication with the caller for toplevel macro defines.
+//!  * A similar but simpler concern is keeping track of any keywords that have been redefined.
+//!
+//! Once the data has been read, we can drop all of the code we've read and keep only the quotes.
+//! I think the easiest way to do this would be to use two separate arenas for the pre-AST and
+//! post-AST values.
+//!
+//! Another small thing is dealing with recursive trees as allowed by R7RS.
+
+use arena::Arena;
+use util::{extract_single, with_check_len};
+use value::Value;
+
+#[derive(Debug)]
+pub enum SyntaxElement {
+    Reference(Box<Reference>),
+    Quote(Box<Quote>),
+    If(Box<If>),
+    Begin(Box<Begin>),
+    Lambda(Box<Lambda>),
+    Define(Box<Define>),
+    Set(Box<Set>),
+    Application(Box<Application>),
+}
+
+#[derive(Debug)]
+pub struct Reference {
+    variable: String,
+}
+
+#[derive(Debug)]
+pub struct Quote {
+    quoted: usize,
+}
+
+#[derive(Debug)]
+pub struct If {
+    cond: SyntaxElement,
+    t: SyntaxElement,
+    f: Option<SyntaxElement>,
+}
+
+#[derive(Debug)]
+pub struct Begin {
+    expressions: Vec<SyntaxElement>,
+}
+
+#[derive(Debug)]
+pub struct Lambda {
+    formals: Formals,
+    expressions: Vec<SyntaxElement>,
+}
+
+#[derive(Debug)]
+pub struct Define {
+    variable: String,
+    value: SyntaxElement,
+}
+
+#[derive(Debug)]
+pub struct Set {
+    variable: String,
+    value: SyntaxElement,
+}
+
+#[derive(Debug)]
+pub struct Application {
+    function: SyntaxElement,
+    args: Vec<SyntaxElement>,
+}
+
+/// Structure that holds a function's formal argument list.
+/// `(x y z)` will be represented as `Formals { values: [x, y, z], rest: None }`
+/// `(x y . z)` will be represented as `Formals { values: [x, y], rest: Some(z) }`
+#[derive(Debug)]
+pub struct Formals {
+    values: Vec<String>,
+    rest: Option<String>,
+}
+
+pub fn to_syntax_element(arena: &Arena, value: usize) -> Result<SyntaxElement, String> {
+    match arena.value_ref(value) {
+        Value::Symbol(s) => Ok(SyntaxElement::Reference(Box::new(Reference {
+            variable: s.clone(),
+        }))),
+        Value::EmptyList => Err("Cannot evaluate empty list".into()),
+        Value::Pair(car, cdr) => pair_to_syntax_element(arena, *car.borrow(), *cdr.borrow()),
+        _ => Ok(SyntaxElement::Quote(Box::new(Quote { quoted: value }))),
+    }
+}
+
+fn pair_to_syntax_element(arena: &Arena, car: usize, cdr: usize) -> Result<SyntaxElement, String> {
+    let rest = arena.value_ref(cdr).pair_to_vec(arena)?;
+    match arena.value_ref(car) {
+        Value::Symbol(s) => match s.as_ref() {
+            "quote" => parse_quote(rest),
+            "if" => parse_if(arena, rest),
+            "begin" => parse_begin(arena, rest),
+            "lambda" => parse_lambda(arena, rest),
+            "set!" => parse_set(arena, rest, false),
+            "define" => parse_set(arena, rest, true),
+            _ => parse_application(arena, car, rest),
+        },
+        _ => parse_application(arena, car, rest),
+    }
+}
+
+fn parse_quote(rest: Vec<usize>) -> Result<SyntaxElement, String> {
+    let quoted = extract_single(rest)?;
+    Ok(SyntaxElement::Quote(Box::new(Quote { quoted })))
+}
+
+fn parse_if(arena: &Arena, rest: Vec<usize>) -> Result<SyntaxElement, String> {
+    let mut args = with_check_len(rest, Some(2), Some(3))?;
+    let cond = to_syntax_element(arena, args[0])?;
+    let t = to_syntax_element(arena, args[1])?;
+    let f_s: Option<Result<_, _>> = args.get(2).map(|e| to_syntax_element(arena, *e));
+
+    // This dark magic swaps the option and the result (then `?`s the result)
+    // https://doc.rust-lang.org/rust-by-example/error/multiple_error_types/option_result.html
+    let f: Option<_> = f_s.map_or(Ok(None), |r| r.map(Some))?;
+    Ok(SyntaxElement::If(Box::new(If { cond, t, f })))
+}
+
+fn parse_begin(arena: &Arena, rest: Vec<usize>) -> Result<SyntaxElement, String> {
+    let rest = with_check_len(rest, Some(1), None)?;
+    let expressions = rest
+        .into_iter()
+        .map(|e| to_syntax_element(arena, e))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(SyntaxElement::Begin(Box::new(Begin { expressions })))
+}
+
+fn parse_lambda(arena: &Arena, rest: Vec<usize>) -> Result<SyntaxElement, String> {
+    let mut rest = with_check_len(rest, Some(2), None)?;
+    let args = rest.split_off(1);
+    let formals = parse_formals(arena, rest[0])?;
+    let expressions = args
+        .into_iter()
+        .map(|e| to_syntax_element(arena, e))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(SyntaxElement::Lambda(Box::new(Lambda {
+        formals,
+        expressions,
+    })))
+}
+
+fn parse_set(arena: &Arena, rest: Vec<usize>, define: bool) -> Result<SyntaxElement, String> {
+    let rest = with_check_len(rest, Some(2), Some(2))?;
+    if let Value::Symbol(s) = arena.value_ref(rest[0]) {
+        let variable = s.clone();
+        let value = to_syntax_element(arena, rest[1])?;
+        Ok(if define {
+            SyntaxElement::Define(Box::new(Define { variable, value }))
+        } else {
+            SyntaxElement::Set(Box::new(Set { variable, value }))
+        })
+    } else {
+        Err(format!(
+            "Expected symbol as target of define/set!, got {}",
+            arena.value_ref(rest[0]).pretty_print(arena)
+        ))
+    }
+}
+
+fn parse_application(arena: &Arena, fun: usize, rest: Vec<usize>) -> Result<SyntaxElement, String> {
+    let function = to_syntax_element(arena, fun)?;
+    let args = rest
+        .into_iter()
+        .map(|e| to_syntax_element(arena, e))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(SyntaxElement::Application(Box::new(Application {
+        function,
+        args,
+    })))
+}
+
+fn parse_formals(arena: &Arena, formals: usize) -> Result<Formals, String> {
+    let mut values = Vec::new();
+    let mut formal = formals;
+    loop {
+        match arena.value_ref(formal) {
+            Value::Symbol(s) => {
+                return Ok(Formals {
+                    values,
+                    rest: Some(s.clone()),
+                });
+            }
+            Value::EmptyList => return Ok(Formals { values, rest: None }),
+            Value::Pair(car, cdr) => {
+                if let Value::Symbol(s) = arena.value_ref(*car.borrow()) {
+                    values.push(s.clone());
+                    formal = *cdr.borrow();
+                } else {
+                    return Err(format!(
+                        "Malformed formals: {}.",
+                        arena.value_ref(formals).pretty_print(arena)
+                    ));
+                }
+            }
+            _ => {
+                return Err(format!(
+                    "Malformed formals: {}.",
+                    arena.value_ref(formals).pretty_print(arena)
+                ));
+            }
+        }
+    }
+}
