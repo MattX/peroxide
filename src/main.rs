@@ -5,28 +5,25 @@ use std::env;
 
 use arena::Arena;
 use ast::to_syntax_element;
-use continuation::Continuation;
 use environment::Environment;
 use lex::SegmentationResult;
 use lex::Token;
 use primitives::register_primitives;
 use repl::GetLineError;
 use repl::{FileRepl, ReadlineRepl, Repl, StdIoRepl};
-use trampoline::evaluate_toplevel;
 use value::Value;
 
 mod arena;
 mod ast;
-mod continuation;
+mod compile;
 mod environment;
-mod eval;
 mod lex;
 mod parse;
 mod primitives;
 mod repl;
-mod trampoline;
 mod util;
 mod value;
+mod vm;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -60,10 +57,8 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
     register_primitives(&mut arena, &mut environment);
     let environment_r = arena.intern(Value::Environment(RefCell::new(environment)));
 
-    let cont = arena.intern_continuation(Continuation::TopLevel);
-
     loop {
-        let result = handle_one_expr_wrap(&mut *repl, &mut arena, environment_r, cont);
+        let result = handle_one_expr_wrap(&mut *repl, &mut arena, environment_r);
         if !result {
             break;
         }
@@ -74,23 +69,13 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
 }
 
 // Returns true if the REPL loop should continue, false otherwise.
-fn handle_one_expr_wrap(
-    repl: &mut Repl,
-    arena: &mut Arena,
-    environment: usize,
-    continuation: usize,
-) -> bool {
-    handle_one_expr(repl, arena, environment, continuation)
+fn handle_one_expr_wrap(repl: &mut Repl, arena: &mut Arena, environment: usize) -> bool {
+    handle_one_expr(repl, arena, environment)
         .map_err(|e| println!("Error: {}", e))
         .unwrap_or(true)
 }
 
-fn handle_one_expr(
-    repl: &mut Repl,
-    arena: &mut Arena,
-    environment: usize,
-    continuation: usize,
-) -> Result<bool, String> {
+fn handle_one_expr(repl: &mut Repl, arena: &mut Arena, environment: usize) -> Result<bool, String> {
     let mut current_expr_string: Vec<String> = Vec::new();
     let mut exprs: Vec<Vec<Token>> = Vec::new();
     let mut pending_expr: Vec<Token> = Vec::new();
@@ -134,11 +119,11 @@ fn handle_one_expr(
     }
 
     repl.add_to_history(&current_expr_string.join("\n"));
-    rep(arena, exprs, environment, continuation);
+    rep(arena, exprs, environment);
     Ok(true)
 }
 
-fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment_r: usize, cont_r: usize) {
+fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment_r: usize) {
     for token_vector in toks {
         match parse::parse(arena, &token_vector) {
             Ok(value) => {

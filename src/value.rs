@@ -3,7 +3,6 @@ use std::fmt;
 use std::ops::Deref;
 
 use arena::Arena;
-use continuation::Continuation;
 use environment::Environment;
 use primitives::Primitive;
 
@@ -20,7 +19,6 @@ pub enum Value {
     Pair(RefCell<usize>, RefCell<usize>),
     Vector(Vec<RefCell<usize>>),
     Environment(RefCell<Environment>),
-    Continuation(Continuation),
     Lambda {
         environment: usize,
         formals: Formals,

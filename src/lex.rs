@@ -197,6 +197,13 @@ where
     }
 }
 
+// This can be extended to support R7RS comments and other stuff
+pub enum BracketType {
+    List,
+    Vector,
+    Quote,
+}
+
 pub struct SegmentationResult {
     pub segments: Vec<Vec<Token>>,
     pub remainder: Vec<Token>,
@@ -204,21 +211,41 @@ pub struct SegmentationResult {
 }
 
 pub fn segment(toks: Vec<Token>) -> Result<SegmentationResult, String> {
-    let mut depth: i64 = 0;
     let mut segments = Vec::new();
     let mut current_segment = Vec::new();
+    let mut brackets = Vec::new();
 
     for tok in toks.into_iter() {
-        match tok {
-            Token::OpenParen => depth += 1,
-            Token::OpenVector => depth += 1,
-            Token::ClosingParen => depth -= 1,
-            _ => (),
+        current_segment.push(tok.clone());
+
+        match brackets.last() {
+            Some(BracketType::Quote) => brackets.pop(),
+            _ => None,
+        };
+
+        let bracket_type = match tok {
+            Token::OpenParen => Some(BracketType::List),
+            Token::OpenVector => Some(BracketType::Vector),
+            Token::Quote | Token::QuasiQuote | Token::Unquote | Token::UnquoteSplicing => {
+                Some(BracketType::Quote)
+            }
+            _ => None,
+        };
+
+        if let Some(t) = bracket_type {
+            brackets.push(t);
+        } else if let Token::ClosingParen = tok {
+            match brackets.pop() {
+                Some(BracketType::List) | Some(BracketType::Vector) => (),
+                _ => return Err("Unbalanced right parenthesis".into()),
+            };
+            match brackets.last() {
+                Some(BracketType::Quote) => brackets.pop(),
+                _ => None,
+            };
         }
-        current_segment.push(tok);
-        if depth < 0 {
-            return Err("Syntax error: negative parenthesis depth.".to_string());
-        } else if depth == 0 {
+
+        if brackets.is_empty() {
             segments.push(current_segment);
             current_segment = Vec::new();
         }
@@ -227,7 +254,7 @@ pub fn segment(toks: Vec<Token>) -> Result<SegmentationResult, String> {
     Ok(SegmentationResult {
         segments,
         remainder: current_segment,
-        depth: depth as u64,
+        depth: brackets.len() as u64,
     })
 }
 
