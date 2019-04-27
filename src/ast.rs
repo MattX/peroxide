@@ -1,7 +1,7 @@
 //! Turns a List representing a toplevel element in a Scheme program into an AST.
 //!
 //! Two things we don't support right now and will probably need to:
-//!  * Macro support! Besides the macroexpansion processor, we need to keep track of which macros
+//!  * Macro support. Besides the macroexpansion processor, we need to keep track of which macros
 //!    have been declared in the branch we are in as we construct the tree. This also means
 //!    two-way communication with the caller for toplevel macro defines.
 //!  * A similar but simpler concern is keeping track of any keywords that have been redefined.
@@ -30,48 +30,48 @@ pub enum SyntaxElement {
 
 #[derive(Debug)]
 pub struct Reference {
-    variable: String,
+    pub variable: String,
 }
 
 #[derive(Debug)]
 pub struct Quote {
-    quoted: usize,
+    pub quoted: usize,
 }
 
 #[derive(Debug)]
 pub struct If {
-    cond: SyntaxElement,
-    t: SyntaxElement,
-    f: Option<SyntaxElement>,
+    pub cond: SyntaxElement,
+    pub t: SyntaxElement,
+    pub f: Option<SyntaxElement>,
 }
 
 #[derive(Debug)]
 pub struct Begin {
-    expressions: Vec<SyntaxElement>,
+    pub expressions: Vec<SyntaxElement>,
 }
 
 #[derive(Debug)]
 pub struct Lambda {
-    formals: Formals,
-    expressions: Vec<SyntaxElement>,
+    pub formals: Formals,
+    pub expressions: Vec<SyntaxElement>,
 }
 
 #[derive(Debug)]
 pub struct Define {
-    variable: String,
-    value: SyntaxElement,
+    pub variable: String,
+    pub value: SyntaxElement,
 }
 
 #[derive(Debug)]
 pub struct Set {
-    variable: String,
-    value: SyntaxElement,
+    pub variable: String,
+    pub value: SyntaxElement,
 }
 
 #[derive(Debug)]
 pub struct Application {
-    function: SyntaxElement,
-    args: Vec<SyntaxElement>,
+    pub function: SyntaxElement,
+    pub args: Vec<SyntaxElement>,
 }
 
 /// Structure that holds a function's formal argument list.

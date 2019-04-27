@@ -5,6 +5,7 @@ use std::env;
 
 use arena::Arena;
 use ast::to_syntax_element;
+use compile::compile;
 use environment::Environment;
 use lex::SegmentationResult;
 use lex::Token;
@@ -12,6 +13,7 @@ use primitives::register_primitives;
 use repl::GetLineError;
 use repl::{FileRepl, ReadlineRepl, Repl, StdIoRepl};
 use value::Value;
+use vm::{run, Instruction};
 
 mod arena;
 mod ast;
@@ -128,13 +130,29 @@ fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment_r: usize) {
         match parse::parse(arena, &token_vector) {
             Ok(value) => {
                 let value_r = arena.intern(value);
-                let result = ast::to_syntax_element(arena, value_r).map(|v| format!("{:?}", v));
+                let result = ast::to_syntax_element(arena, value_r);
                 match result {
-                    Ok(x) => println!(" => {}", x),
-                    Err(x) => println!(" !> {}", x),
+                    Ok(tree) => {
+                        println!(" => {:?}", tree);
+                        let mut compiled = Vec::new();
+                        match compile(&tree, &mut compiled) {
+                            Ok(()) => {
+                                compiled.push(Instruction::Finish);
+                                println!(" => {:?}", compiled);
+                                match vm::run(arena, compiled) {
+                                    Ok(v) => {
+                                        println!(" => {}", arena.value_ref(v).pretty_print(arena))
+                                    }
+                                    Err(e) => println!("Runtime error: {:?}", e),
+                                }
+                            }
+                            Err(e) => println!("Compilation error: {}", e),
+                        }
+                    }
+                    Err(e) => println!("Syntax error: {}", e),
                 }
             }
-            Err(s) => println!("Parsing error: {:?}", s),
+            Err(e) => println!("Parsing error: {:?}", e),
         }
     }
 }
