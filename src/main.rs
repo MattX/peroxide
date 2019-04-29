@@ -1,19 +1,14 @@
 extern crate rustyline;
 
-use std::cell::RefCell;
 use std::env;
 
 use arena::Arena;
-use ast::to_syntax_element;
-use compile::compile;
 use environment::Environment;
 use lex::SegmentationResult;
 use lex::Token;
-use primitives::register_primitives;
 use repl::GetLineError;
 use repl::{FileRepl, ReadlineRepl, Repl, StdIoRepl};
-use value::Value;
-use vm::{run, Instruction};
+use vm::Instruction;
 
 mod arena;
 mod ast;
@@ -56,12 +51,10 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
     let mut arena = Arena::new();
 
     let mut environment = Environment::new(None);
-    register_primitives(&mut arena, &mut environment);
-    let environment_r = arena.intern(Value::Environment(RefCell::new(environment)));
+    primitives::register_primitives(&mut environment);
 
     loop {
-        let result = handle_one_expr_wrap(&mut *repl, &mut arena, environment_r);
-        if !result {
+        if !handle_one_expr_wrap(&mut *repl, &mut arena, &mut environment) {
             break;
         }
     }
@@ -71,13 +64,17 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
 }
 
 // Returns true if the REPL loop should continue, false otherwise.
-fn handle_one_expr_wrap(repl: &mut Repl, arena: &mut Arena, environment: usize) -> bool {
+fn handle_one_expr_wrap(repl: &mut Repl, arena: &mut Arena, environment: &mut Environment) -> bool {
     handle_one_expr(repl, arena, environment)
         .map_err(|e| println!("Error: {}", e))
         .unwrap_or(true)
 }
 
-fn handle_one_expr(repl: &mut Repl, arena: &mut Arena, environment: usize) -> Result<bool, String> {
+fn handle_one_expr(
+    repl: &mut Repl,
+    arena: &mut Arena,
+    environment: &mut Environment,
+) -> Result<bool, String> {
     let mut current_expr_string: Vec<String> = Vec::new();
     let mut exprs: Vec<Vec<Token>> = Vec::new();
     let mut pending_expr: Vec<Token> = Vec::new();
@@ -125,7 +122,7 @@ fn handle_one_expr(repl: &mut Repl, arena: &mut Arena, environment: usize) -> Re
     Ok(true)
 }
 
-fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment_r: usize) {
+fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment: &mut Environment) {
     for token_vector in toks {
         match parse::parse(arena, &token_vector) {
             Ok(value) => {
@@ -135,7 +132,7 @@ fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment_r: usize) {
                     Ok(tree) => {
                         println!(" => {:?}", tree);
                         let mut compiled = Vec::new();
-                        match compile(&tree, &mut compiled) {
+                        match compile::compile(&tree, &mut compiled, environment, true) {
                             Ok(()) => {
                                 compiled.push(Instruction::Finish);
                                 println!(" => {:?}", compiled);

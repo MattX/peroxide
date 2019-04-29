@@ -60,7 +60,6 @@ use environment::Environment;
 use primitives::numeric::*;
 use primitives::object::*;
 use primitives::pair::*;
-use value::Value;
 
 mod numeric;
 mod object;
@@ -155,8 +154,8 @@ impl PartialEq for Primitive {
     }
 }
 
-pub fn register_primitives(arena: &mut Arena, e: &mut Environment) {
+pub fn register_primitives(e: &mut Environment) {
     for p in PRIMITIVES.iter() {
-        e.define(p.name, arena.intern(Value::Primitive(p.clone())))
+        e.define(p.name)
     }
 }

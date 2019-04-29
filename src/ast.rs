@@ -4,11 +4,14 @@
 //!  * Macro support. Besides the macroexpansion processor, we need to keep track of which macros
 //!    have been declared in the branch we are in as we construct the tree. This also means
 //!    two-way communication with the caller for toplevel macro defines.
+//!    I'm also not sure how to handle hygiene for macros.
 //!  * A similar but simpler concern is keeping track of any keywords that have been redefined.
 //!
 //! Once the data has been read, we can drop all of the code we've read and keep only the quotes.
 //! I think the easiest way to do this would be to use two separate arenas for the pre-AST and
 //! post-AST values.
+//!
+//! TODO add support for Lambda defines.
 //!
 //! Another small thing is dealing with recursive trees as allowed by R7RS.
 
@@ -116,7 +119,7 @@ fn parse_quote(rest: Vec<usize>) -> Result<SyntaxElement, String> {
 }
 
 fn parse_if(arena: &Arena, rest: Vec<usize>) -> Result<SyntaxElement, String> {
-    let mut args = with_check_len(rest, Some(2), Some(3))?;
+    let args = with_check_len(rest, Some(2), Some(3))?;
     let cond = to_syntax_element(arena, args[0])?;
     let t = to_syntax_element(arena, args[1])?;
     let f_s: Option<Result<_, _>> = args.get(2).map(|e| to_syntax_element(arena, *e));

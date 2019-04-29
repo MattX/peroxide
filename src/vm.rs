@@ -5,8 +5,14 @@ pub enum Instruction {
     Constant(usize),
     JumpFalse(usize),
     Jump(usize),
+    DeepArgumentSet { depth: usize, index: usize },
     NoOp,
     Finish,
+}
+
+pub struct ActivationFrame {
+    pub values: Vec<usize>,
+    pub rest: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -31,6 +37,7 @@ pub fn run(arena: &mut Arena, code: Vec<Instruction>) -> Result<usize, String> {
                 }
             }
             Instruction::Jump(offset) => vm.pc += offset,
+            Instruction::DeepArgumentSet { depth, index } => {}
             Instruction::NoOp => return Err("NoOp encountered.".into()),
             Instruction::Finish => break,
         }
