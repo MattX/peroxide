@@ -3,7 +3,7 @@ use std::fmt;
 use std::ops::Deref;
 
 use arena::Arena;
-use environment::Environment;
+use environment::{ActivationFrame, Environment};
 use primitives::Primitive;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -18,13 +18,13 @@ pub enum Value {
     EmptyList,
     Pair(RefCell<usize>, RefCell<usize>),
     Vector(Vec<RefCell<usize>>),
-    Environment(RefCell<Environment>),
     Lambda {
+        name: String,
+        code: usize,
         environment: usize,
-        formals: Formals,
-        body: Vec<usize>,
     },
     Primitive(Primitive),
+    ActivationFrame(RefCell<ActivationFrame>),
 }
 
 impl fmt::Display for Value {
@@ -150,11 +150,11 @@ impl Value {
         }
     }
 
-    pub fn from_vec(arena: &mut Arena, vals: &[usize]) -> usize {
+    pub fn list_from_vec(arena: &mut Arena, vals: &[usize]) -> usize {
         if vals.is_empty() {
             arena.empty_list
         } else {
-            let rest = Value::from_vec(arena, &vals[1..]);
+            let rest = Value::list_from_vec(arena, &vals[1..]);
             arena.intern(Value::Pair(RefCell::new(vals[0]), RefCell::new(rest)))
         }
     }
@@ -219,7 +219,10 @@ impl Formals {
             .collect();
         if let Some(ref r) = self.rest {
             let num_collected = ans.len();
-            ans.push((r.clone(), Value::from_vec(arena, &args[num_collected..])))
+            ans.push((
+                r.clone(),
+                Value::list_from_vec(arena, &args[num_collected..]),
+            ))
         }
         Ok(ans)
     }

@@ -82,8 +82,8 @@ pub struct Application {
 /// `(x y . z)` will be represented as `Formals { values: [x, y], rest: Some(z) }`
 #[derive(Debug)]
 pub struct Formals {
-    values: Vec<String>,
-    rest: Option<String>,
+    pub values: Vec<String>,
+    pub rest: Option<String>,
 }
 
 pub fn to_syntax_element(arena: &Arena, value: usize) -> Result<SyntaxElement, String> {

@@ -1,13 +1,16 @@
+extern crate core;
 extern crate rustyline;
 
 use std::env;
 
 use arena::Arena;
-use environment::Environment;
+use environment::{Environment, RcEnv};
 use lex::SegmentationResult;
 use lex::Token;
 use repl::GetLineError;
 use repl::{FileRepl, ReadlineRepl, Repl, StdIoRepl};
+use std::cell::RefCell;
+use std::rc::Rc;
 use vm::Instruction;
 
 mod arena;
@@ -52,9 +55,10 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
 
     let mut environment = Environment::new(None);
     primitives::register_primitives(&mut environment);
+    let rc_env = Rc::new(RefCell::new(environment));
 
     loop {
-        if !handle_one_expr_wrap(&mut *repl, &mut arena, &mut environment) {
+        if !handle_one_expr_wrap(&mut *repl, &mut arena, rc_env.clone()) {
             break;
         }
     }
@@ -64,17 +68,13 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
 }
 
 // Returns true if the REPL loop should continue, false otherwise.
-fn handle_one_expr_wrap(repl: &mut Repl, arena: &mut Arena, environment: &mut Environment) -> bool {
+fn handle_one_expr_wrap(repl: &mut Repl, arena: &mut Arena, environment: RcEnv) -> bool {
     handle_one_expr(repl, arena, environment)
         .map_err(|e| println!("Error: {}", e))
         .unwrap_or(true)
 }
 
-fn handle_one_expr(
-    repl: &mut Repl,
-    arena: &mut Arena,
-    environment: &mut Environment,
-) -> Result<bool, String> {
+fn handle_one_expr(repl: &mut Repl, arena: &mut Arena, environment: RcEnv) -> Result<bool, String> {
     let mut current_expr_string: Vec<String> = Vec::new();
     let mut exprs: Vec<Vec<Token>> = Vec::new();
     let mut pending_expr: Vec<Token> = Vec::new();
@@ -122,7 +122,7 @@ fn handle_one_expr(
     Ok(true)
 }
 
-fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment: &mut Environment) {
+fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment: RcEnv) {
     for token_vector in toks {
         match parse::parse(arena, &token_vector) {
             Ok(value) => {
@@ -132,8 +132,8 @@ fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment: &mut Environment) 
                     Ok(tree) => {
                         println!(" => {:?}", tree);
                         let mut compiled = Vec::new();
-                        match compile::compile(&tree, &mut compiled, environment, true) {
-                            Ok(()) => {
+                        match compile::compile(&tree, &mut compiled, environment.clone(), true) {
+                            Ok(_) => {
                                 compiled.push(Instruction::Finish);
                                 println!(" => {:?}", compiled);
                                 match vm::run(arena, compiled) {
