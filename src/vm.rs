@@ -21,6 +21,7 @@ pub enum Instruction {
     PopFunction,
     FunctionInvoke,
     CreateFrame(usize),
+    ExtendFrame,
     NoOp,
     Finish,
 }
@@ -62,7 +63,8 @@ pub fn run(
             Instruction::Jump(offset) => vm.pc += offset,
             Instruction::DeepArgumentSet { depth, index } => {
                 if let Value::ActivationFrame(af) = arena.value_ref(vm.env) {
-                    af.borrow_mut().set(arena, depth, index, vm.value)
+                    af.borrow_mut().set(arena, depth, index, vm.value);
+                    vm.value = arena.unspecific;
                 } else {
                     panic!("Environment is not an activation frame.");
                 }
@@ -154,6 +156,14 @@ pub fn run(
                     frame.values[i] = vm.stack.pop().expect("Too few values on stack.");
                 }
                 vm.value = arena.intern(Value::ActivationFrame(RefCell::new(frame)));
+            }
+            Instruction::ExtendFrame => {
+                if let Value::ActivationFrame(af) = arena.value_ref(vm.env) {
+                    af.borrow_mut().values.push(vm.value);
+                    vm.value = arena.unspecific;
+                } else {
+                    panic!("Environment is not an activation frame.");
+                }
             }
             Instruction::NoOp => return Err("NoOp encountered.".into()),
             Instruction::Finish => break,

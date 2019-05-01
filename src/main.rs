@@ -60,9 +60,10 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
             values: vec![],
         }))),
     };
+    let mut code = Vec::new();
 
     loop {
-        if !handle_one_expr_wrap(&mut *repl, &mut arena, &mut environment) {
+        if !handle_one_expr_wrap(&mut *repl, &mut arena, &mut environment, &mut code) {
             break;
         }
     }
@@ -72,8 +73,13 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
 }
 
 // Returns true if the REPL loop should continue, false otherwise.
-fn handle_one_expr_wrap(repl: &mut Repl, arena: &mut Arena, environment: &mut CombinedEnv) -> bool {
-    handle_one_expr(repl, arena, environment)
+fn handle_one_expr_wrap(
+    repl: &mut Repl,
+    arena: &mut Arena,
+    environment: &mut CombinedEnv,
+    code: &mut Vec<Instruction>,
+) -> bool {
+    handle_one_expr(repl, arena, environment, code)
         .map_err(|e| println!("Error: {}", e))
         .unwrap_or(true)
 }
@@ -82,6 +88,7 @@ fn handle_one_expr(
     repl: &mut Repl,
     arena: &mut Arena,
     environment: &mut CombinedEnv,
+    code: &mut Vec<Instruction>,
 ) -> Result<bool, String> {
     let mut current_expr_string: Vec<String> = Vec::new();
     let mut exprs: Vec<Vec<Token>> = Vec::new();
@@ -126,11 +133,16 @@ fn handle_one_expr(
     }
 
     repl.add_to_history(&current_expr_string.join("\n"));
-    let _ = rep(arena, exprs, environment);
+    let _ = rep(arena, exprs, environment, code);
     Ok(true)
 }
 
-fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment: &mut CombinedEnv) -> Result<(), ()> {
+fn rep(
+    arena: &mut Arena,
+    toks: Vec<Vec<Token>>,
+    environment: &mut CombinedEnv,
+    code: &mut Vec<Instruction>,
+) -> Result<(), ()> {
     for token_vector in toks {
         let parse_value =
             parse::parse(arena, &token_vector).map_err(|e| println!("Parsing error: {:?}", e))?;
@@ -138,18 +150,12 @@ fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment: &mut CombinedEnv) 
         let syntax_tree =
             ast::to_syntax_element(arena, value_r).map_err(|e| println!("Syntax error: {}", e))?;
         println!(" => {:?}", syntax_tree);
-        let mut compiled = Vec::new();
-        compile::compile(
-            &syntax_tree,
-            &mut compiled,
-            environment.env.clone(),
-            true,
-            true,
-        )
-        .map_err(|e| println!("Compilation error: {}", e))?;
-        compiled.push(Instruction::Finish);
-        println!(" => {:?}", compiled);
-        match vm::run(arena, &compiled, 0, environment.frame) {
+        let start_pc = code.len();
+        compile::compile(&syntax_tree, code, environment.env.clone(), true, true)
+            .map_err(|e| println!("Compilation error: {}", e))?;
+        code.push(Instruction::Finish);
+        println!(" => {:?}", &code[start_pc..code.len()]);
+        match vm::run(arena, code, start_pc, environment.frame) {
             Ok(v) => println!(" => {}", arena.value_ref(v).pretty_print(arena)),
             Err(e) => println!("Runtime error: {:?}", e),
         }

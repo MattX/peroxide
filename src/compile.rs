@@ -21,7 +21,7 @@ pub fn compile(
         SyntaxElement::If(i) => {
             compile(&i.cond, to, env.clone(), false, false)?;
             let conditional_jump_idx = to.len();
-            to.push(Instruction::NoOp); // Will later be rewritten as a conditional jump
+            to.push(Instruction::NoOp); // Is rewritten as a conditional jump below
             compile(&i.t, to, env.clone(), tail, false)?;
             let mut true_end = to.len();
             if let Some(ref f) = i.f {
@@ -39,7 +39,6 @@ pub fn compile(
             if let Some((depth, index)) = env.borrow().get(&s.variable) {
                 compile(&s.value, to, env.clone(), false, false)?;
                 to.push(Instruction::DeepArgumentSet { depth, index });
-            // TODO push `unspecific` here
             } else {
                 return Err(format!("Undefined value {}.", &s.variable));
             }
@@ -77,7 +76,24 @@ pub fn compile(
             to.push(Instruction::Return);
             to[skip_pos] = Instruction::Jump(to.len() - skip_pos - 1);
         }
-        SyntaxElement::Define(_) => return Err("Defines are not yet supported".into()),
+        SyntaxElement::Define(d) => {
+            if toplevel {
+                // TODO refactor this to share code with set!
+                // The prt here doesn't sound super useful but it makes sure the borrow doesn't
+                // live into the `else` block, where it would conflict with the borrow_mut.
+                let ptr = env.borrow().get(&d.variable).clone();
+                if let Some((depth, index)) = ptr {
+                    compile(&d.value, to, env.clone(), false, false)?;
+                    to.push(Instruction::DeepArgumentSet { depth, index });
+                } else {
+                    env.borrow_mut().define(&d.variable);
+                    compile(&d.value, to, env.clone(), false, false)?;
+                    to.push(Instruction::ExtendFrame);
+                }
+            } else {
+                return Err("Non-top-level defines not yet supported.".into());
+            }
+        }
         SyntaxElement::Application(a) => {
             compile(&a.function, to, env.clone(), false, false)?;
             to.push(Instruction::PushValue);
