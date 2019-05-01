@@ -1,15 +1,15 @@
 use arena::Arena;
-use util::with_check_len;
+use util::check_len;
 use value::Value;
 
-pub fn eq_p(arena: &mut Arena, args: Vec<usize>) -> Result<usize, String> {
-    let args = with_check_len(args, Some(2), Some(2))?;
+pub fn eq_p(arena: &mut Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(2), Some(2))?;
     Ok(arena.intern(Value::Boolean(args[0] == args[1])))
 }
 
-pub fn eqv_p(arena: &mut Arena, args: Vec<usize>) -> Result<usize, String> {
+pub fn eqv_p(arena: &mut Arena, args: &[usize]) -> Result<usize, String> {
     #![allow(clippy::float_cmp)]
-    let args = with_check_len(args, Some(2), Some(2))?;
+    check_len(args, Some(2), Some(2))?;
     let ans = match (arena.value_ref(args[0]), arena.value_ref(args[1])) {
         // This comparison is in the same order as the R5RS one for ease of
         // verification.

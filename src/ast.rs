@@ -16,7 +16,7 @@
 //! Another small thing is dealing with recursive trees as allowed by R7RS.
 
 use arena::Arena;
-use util::{extract_single, with_check_len};
+use util::{check_len, extract_single};
 use value::Value;
 
 #[derive(Debug)]
@@ -119,10 +119,10 @@ fn parse_quote(rest: Vec<usize>) -> Result<SyntaxElement, String> {
 }
 
 fn parse_if(arena: &Arena, rest: Vec<usize>) -> Result<SyntaxElement, String> {
-    let args = with_check_len(rest, Some(2), Some(3))?;
-    let cond = to_syntax_element(arena, args[0])?;
-    let t = to_syntax_element(arena, args[1])?;
-    let f_s: Option<Result<_, _>> = args.get(2).map(|e| to_syntax_element(arena, *e));
+    check_len(&rest, Some(2), Some(3))?;
+    let cond = to_syntax_element(arena, rest[0])?;
+    let t = to_syntax_element(arena, rest[1])?;
+    let f_s: Option<Result<_, _>> = rest.get(2).map(|e| to_syntax_element(arena, *e));
 
     // This dark magic swaps the option and the result (then `?`s the result)
     // https://doc.rust-lang.org/rust-by-example/error/multiple_error_types/option_result.html
@@ -131,7 +131,7 @@ fn parse_if(arena: &Arena, rest: Vec<usize>) -> Result<SyntaxElement, String> {
 }
 
 fn parse_begin(arena: &Arena, rest: Vec<usize>) -> Result<SyntaxElement, String> {
-    let rest = with_check_len(rest, Some(1), None)?;
+    check_len(&rest, Some(1), None)?;
     let expressions = rest
         .into_iter()
         .map(|e| to_syntax_element(arena, e))
@@ -140,7 +140,8 @@ fn parse_begin(arena: &Arena, rest: Vec<usize>) -> Result<SyntaxElement, String>
 }
 
 fn parse_lambda(arena: &Arena, rest: Vec<usize>) -> Result<SyntaxElement, String> {
-    let mut rest = with_check_len(rest, Some(2), None)?;
+    check_len(&rest, Some(2), None)?;
+    let mut rest = rest;
     let args = rest.split_off(1);
     let formals = parse_formals(arena, rest[0])?;
     let expressions = args
@@ -154,7 +155,7 @@ fn parse_lambda(arena: &Arena, rest: Vec<usize>) -> Result<SyntaxElement, String
 }
 
 fn parse_set(arena: &Arena, rest: Vec<usize>, define: bool) -> Result<SyntaxElement, String> {
-    let rest = with_check_len(rest, Some(2), Some(2))?;
+    check_len(&rest, Some(2), Some(2))?;
     if let Value::Symbol(s) = arena.value_ref(rest[0]) {
         let variable = s.clone();
         let value = to_syntax_element(arena, rest[1])?;

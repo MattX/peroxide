@@ -51,6 +51,18 @@ impl Arena {
         }
     }
 
+    pub fn swap_out(&mut self, at: usize) -> Value {
+        std::mem::replace(&mut self.values[at], Value::Unspecific)
+    }
+
+    pub fn swap_in(&mut self, at: usize, v: Value) {
+        if let Value::Unspecific = self.values[at] {
+            self.values[at] = v;
+        } else {
+            panic!("Swapping in non-unspecific value");
+        }
+    }
+
     /// Instantiate a new arena
     pub fn new() -> Self {
         Arena {

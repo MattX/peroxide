@@ -1,9 +1,5 @@
 /// Checks that a vector has at least `min`, at most `max` entries.
-pub fn with_check_len<T>(
-    v: Vec<T>,
-    min: Option<usize>,
-    max: Option<usize>,
-) -> Result<Vec<T>, String> {
+pub fn check_len<T>(v: &[T], min: Option<usize>, max: Option<usize>) -> Result<(), String> {
     if let Some(m) = min {
         if v.len() < m {
             return Err(format!("Too few values, expecting at least {}.", m));
@@ -14,7 +10,7 @@ pub fn with_check_len<T>(
             return Err(format!("Too many values, expecting at most {}.", m));
         }
     };
-    Ok(v)
+    Ok(())
 }
 
 /// Extracts a single element from a length 1 vector, or fails.

@@ -1,12 +1,12 @@
 use arena::Arena;
-use util::with_check_len;
+use util::check_len;
 use value::Value;
 
 /// Generates a numeric primitive that runs a simple fold. The provided folder must be a function
 /// (&Value, &Value) -> Value
 macro_rules! prim_fold_0 {
     ($name:ident, $folder:ident, $fold_initial:expr) => {
-        pub fn $name(arena: &mut Arena, args: Vec<usize>) -> Result<usize, String> {
+        pub fn $name(arena: &mut Arena, args: &[usize]) -> Result<usize, String> {
             let values = numeric_vec(arena, args)?;
             Ok(arena.intern(values.iter().fold($fold_initial, |a, b| $folder(&a, &b))))
         }
@@ -41,9 +41,11 @@ fn mul2(a: &Value, b: &Value) -> Value {
 /// Like [prim_fold_0], but uses the first element of the list as the fold initializer
 macro_rules! prim_fold_1 {
     ($name:ident, $folder:ident) => {
-        pub fn $name(arena: &mut Arena, args: Vec<usize>) -> Result<usize, String> {
-            let values: Vec<Value> = with_check_len(numeric_vec(arena, args)?, Some(1), None)
+        pub fn $name(arena: &mut Arena, args: &[usize]) -> Result<usize, String> {
+            let values: Vec<Value> = numeric_vec(arena, args)?;
+            check_len(&values, Some(1), None)
                 .map_err(|e| format!("{}: {}", stringify!($name), e))?;
+            // TODO can rewrite the thing below without cloning
             let first = values
                 .first()
                 .expect("with_check_len is broken my bois")
@@ -87,8 +89,9 @@ fn div2(a: &Value, b: &Value) -> Value {
 /// function to wrap.
 macro_rules! prim_monotonic {
     ($name:ident, $pair:ident) => {
-        pub fn $name(arena: &mut Arena, args: Vec<usize>) -> Result<usize, String> {
-            let values: Vec<Value> = with_check_len(numeric_vec(arena, args)?, Some(2), None)
+        pub fn $name(arena: &mut Arena, args: &[usize]) -> Result<usize, String> {
+            let values: Vec<Value> = numeric_vec(arena, args)?;
+            check_len(&values, Some(2), None)
                 .map_err(|e| format!("{}: {}", stringify!($name), e))?;
             let ans = values.windows(2).all(|x| $pair(&x[0], &x[1]));
             Ok(arena.intern(Value::Boolean(ans)))
@@ -159,9 +162,9 @@ fn greater_than_equal2(a: &Value, b: &Value) -> bool {
 
 /// Takes an argument list (vector of arena pointers), returns a vector of numeric values or
 /// an error.
-fn numeric_vec(arena: &mut Arena, args: Vec<usize>) -> Result<Vec<Value>, String> {
-    args.into_iter()
-        .map(|v| verify_numeric(arena.value_ref(v).clone()))
+fn numeric_vec(arena: &mut Arena, args: &[usize]) -> Result<Vec<Value>, String> {
+    args.iter()
+        .map(|v| verify_numeric(arena.value_ref(*v).clone()))
         .collect::<Result<Vec<_>, _>>()
 }
 

@@ -135,16 +135,30 @@ pub fn run(
                 }
             }
             Instruction::FunctionInvoke => {
-                // TODO handle non-lambda here, and TR stuff
-                match arena.value_ref(vm.fun) {
+                // TODO remove cloning :p
+                let fun = arena.value_ref(vm.fun).clone();
+                match fun {
                     Value::Lambda {
                         code, environment, ..
                     } => {
                         vm.return_stack.push(vm.pc);
-                        vm.env = *environment;
-                        vm.pc = *code;
+                        vm.env = environment;
+                        vm.pc = code;
                     }
-                    _ => return Err("Cannot invoke non-lambdas yet".into()),
+                    Value::Primitive(p) => {
+                        if let Value::ActivationFrame(af) = arena.swap_out(vm.value) {
+                            let values = &af.borrow().values;
+                            vm.value = (p.implementation)(arena, &values[0..values.len() - 1])?;
+                        } else {
+                            panic!("Primitive called on non-activation frame.");
+                        }
+                    }
+                    _ => {
+                        return Err(format!(
+                            "Cannot invoke non-function: {}",
+                            fun.pretty_print(arena)
+                        ));
+                    }
                 }
             }
             Instruction::CreateFrame(size) => {
