@@ -4,13 +4,14 @@ extern crate rustyline;
 use std::env;
 
 use arena::Arena;
-use environment::{Environment, RcEnv};
+use environment::{ActivationFrame, CombinedEnv, Environment, RcEnv};
 use lex::SegmentationResult;
 use lex::Token;
 use repl::GetLineError;
 use repl::{FileRepl, ReadlineRepl, Repl, StdIoRepl};
 use std::cell::RefCell;
 use std::rc::Rc;
+use value::Value;
 use vm::Instruction;
 
 mod arena;
@@ -52,13 +53,16 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
     };
 
     let mut arena = Arena::new();
-
-    let mut environment = Environment::new(None);
-    primitives::register_primitives(&mut environment);
-    let rc_env = Rc::new(RefCell::new(environment));
+    let mut environment = CombinedEnv {
+        env: Rc::new(RefCell::new(Environment::new(None))),
+        frame: arena.intern(Value::ActivationFrame(RefCell::new(ActivationFrame {
+            parent: None,
+            values: vec![],
+        }))),
+    };
 
     loop {
-        if !handle_one_expr_wrap(&mut *repl, &mut arena, rc_env.clone()) {
+        if !handle_one_expr_wrap(&mut *repl, &mut arena, &mut environment) {
             break;
         }
     }
@@ -68,13 +72,17 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
 }
 
 // Returns true if the REPL loop should continue, false otherwise.
-fn handle_one_expr_wrap(repl: &mut Repl, arena: &mut Arena, environment: RcEnv) -> bool {
+fn handle_one_expr_wrap(repl: &mut Repl, arena: &mut Arena, environment: &mut CombinedEnv) -> bool {
     handle_one_expr(repl, arena, environment)
         .map_err(|e| println!("Error: {}", e))
         .unwrap_or(true)
 }
 
-fn handle_one_expr(repl: &mut Repl, arena: &mut Arena, environment: RcEnv) -> Result<bool, String> {
+fn handle_one_expr(
+    repl: &mut Repl,
+    arena: &mut Arena,
+    environment: &mut CombinedEnv,
+) -> Result<bool, String> {
     let mut current_expr_string: Vec<String> = Vec::new();
     let mut exprs: Vec<Vec<Token>> = Vec::new();
     let mut pending_expr: Vec<Token> = Vec::new();
@@ -118,11 +126,11 @@ fn handle_one_expr(repl: &mut Repl, arena: &mut Arena, environment: RcEnv) -> Re
     }
 
     repl.add_to_history(&current_expr_string.join("\n"));
-    rep(arena, exprs, environment);
+    let _ = rep(arena, exprs, environment);
     Ok(true)
 }
 
-fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment: RcEnv) -> Result<(), ()> {
+fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment: &mut CombinedEnv) -> Result<(), ()> {
     for token_vector in toks {
         let parse_value =
             parse::parse(arena, &token_vector).map_err(|e| println!("Parsing error: {:?}", e))?;
@@ -131,11 +139,17 @@ fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment: RcEnv) -> Result<(
             ast::to_syntax_element(arena, value_r).map_err(|e| println!("Syntax error: {}", e))?;
         println!(" => {:?}", syntax_tree);
         let mut compiled = Vec::new();
-        compile::compile(&syntax_tree, &mut compiled, environment.clone(), true)
-            .map_err(|e| println!("Compilation error: {}", e))?;
+        compile::compile(
+            &syntax_tree,
+            &mut compiled,
+            environment.env.clone(),
+            true,
+            true,
+        )
+        .map_err(|e| println!("Compilation error: {}", e))?;
         compiled.push(Instruction::Finish);
         println!(" => {:?}", compiled);
-        match vm::run(arena, &compiled, 0) {
+        match vm::run(arena, &compiled, 0, environment.frame) {
             Ok(v) => println!(" => {}", arena.value_ref(v).pretty_print(arena)),
             Err(e) => println!("Runtime error: {:?}", e),
         }

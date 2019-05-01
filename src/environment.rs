@@ -1,3 +1,8 @@
+//! Environments are split into two parts for performance reasons:
+//!  * The `Environment` struct holds a mapping of names to (depth, index) coordinates
+//!  * The `ActivationFrame` struct holds a mapping of (depth, index) coordinates to locations
+//!    in the Arena.
+
 use arena::Arena;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -27,9 +32,10 @@ impl Environment {
         env
     }
 
-    pub fn define(&mut self, name: &str) {
+    pub fn define(&mut self, name: &str) -> usize {
         let value_index = self.values.len();
         self.values.insert(name.to_string(), value_index);
+        self.values.len() - 1
     }
 
     pub fn get(&self, name: &str) -> Option<(usize, usize)> {
@@ -81,4 +87,9 @@ impl ActivationFrame {
             panic!("Accessing depth with no parent.");
         }
     }
+}
+
+pub struct CombinedEnv {
+    pub env: RcEnv,
+    pub frame: usize,
 }

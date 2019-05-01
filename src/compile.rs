@@ -1,15 +1,17 @@
-use ast::Begin;
 use ast::SyntaxElement;
 use environment::{Environment, RcEnv};
 use std::cell::RefCell;
 use std::rc::Rc;
 use vm::Instruction;
 
+/// This needs an RcEnv, not an &mut Env, because the Environment's count can get increased
+/// through creating children environments.
 pub fn compile(
     tree: &SyntaxElement,
     to: &mut Vec<Instruction>,
     env: RcEnv,
     tail: bool,
+    toplevel: bool,
 ) -> Result<usize, String> {
     let initial_len = to.len();
     match tree {
@@ -17,15 +19,15 @@ pub fn compile(
             to.push(Instruction::Constant(q.quoted));
         }
         SyntaxElement::If(i) => {
-            compile(&i.cond, to, env.clone(), false)?;
+            compile(&i.cond, to, env.clone(), false, false)?;
             let conditional_jump_idx = to.len();
             to.push(Instruction::NoOp); // Will later be rewritten as a conditional jump
-            compile(&i.t, to, env.clone(), tail)?;
+            compile(&i.t, to, env.clone(), tail, false)?;
             let mut true_end = to.len();
             if let Some(ref f) = i.f {
                 to.push(Instruction::NoOp);
                 true_end += 1;
-                compile(f, to, env.clone(), tail)?;
+                compile(f, to, env.clone(), tail, false)?;
                 to[true_end - 1] = Instruction::Jump(to.len() - true_end);
             }
             to[conditional_jump_idx] = Instruction::JumpFalse(true_end - conditional_jump_idx - 1);
@@ -35,9 +37,9 @@ pub fn compile(
         }
         SyntaxElement::Set(s) => {
             if let Some((depth, index)) = env.borrow().get(&s.variable) {
-                compile(&s.value, to, env.clone(), false)?;
+                compile(&s.value, to, env.clone(), false, false)?;
                 to.push(Instruction::DeepArgumentSet { depth, index });
-            // TODO push unspecific here
+            // TODO push `unspecific` here
             } else {
                 return Err(format!("Undefined value {}.", &s.variable));
             }
@@ -77,10 +79,10 @@ pub fn compile(
         }
         SyntaxElement::Define(_) => return Err("Defines are not yet supported".into()),
         SyntaxElement::Application(a) => {
-            compile(&a.function, to, env.clone(), false);
+            compile(&a.function, to, env.clone(), false, false)?;
             to.push(Instruction::PushValue);
             for instr in a.args.iter() {
-                compile(instr, to, env.clone(), false);
+                compile(instr, to, env.clone(), false, false)?;
                 to.push(Instruction::PushValue);
             }
             to.push(Instruction::CreateFrame(a.args.len()));
@@ -101,13 +103,15 @@ fn compile_sequence(
 ) -> Result<usize, String> {
     let initial_len = to.len();
     for instr in expressions[..expressions.len() - 1].iter() {
-        compile(instr, to, env.clone(), false)?;
+        compile(instr, to, env.clone(), false, false)?;
     }
     compile(
+        // This should have been caught at the syntax step.
         expressions.last().expect("Empty sequence."),
         to,
         env.clone(),
         tail,
+        false,
     )?;
     Ok(to.len() - initial_len)
 }

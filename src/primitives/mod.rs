@@ -156,6 +156,6 @@ impl PartialEq for Primitive {
 
 pub fn register_primitives(e: &mut Environment) {
     for p in PRIMITIVES.iter() {
-        e.define(p.name)
+        e.define(p.name);
     }
 }

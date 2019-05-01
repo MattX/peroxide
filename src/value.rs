@@ -3,7 +3,7 @@ use std::fmt;
 use std::ops::Deref;
 
 use arena::Arena;
-use environment::{ActivationFrame, Environment};
+use environment::ActivationFrame;
 use primitives::Primitive;
 
 #[derive(Debug, PartialEq, Clone)]

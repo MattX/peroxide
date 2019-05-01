@@ -1,8 +1,6 @@
 use arena::Arena;
-use core::borrow::{Borrow, BorrowMut};
 use environment::ActivationFrame;
 use std::cell::RefCell;
-use std::rc::Rc;
 use value::Value;
 use value::Value::Lambda;
 
@@ -38,17 +36,19 @@ struct Vm<'a> {
     fun: usize,
 }
 
-pub fn run(arena: &mut Arena, code: &[Instruction], pc: usize) -> Result<usize, String> {
+pub fn run(
+    arena: &mut Arena,
+    code: &[Instruction],
+    pc: usize,
+    env: usize,
+) -> Result<usize, String> {
     let mut vm = Vm {
         value: arena.unspecific,
         code,
         pc,
         return_stack: Vec::new(),
         stack: Vec::new(),
-        env: arena.intern(Value::ActivationFrame(RefCell::new(ActivationFrame {
-            parent: None,
-            values: vec![],
-        }))),
+        env,
         fun: 0,
     };
     loop {
@@ -74,7 +74,7 @@ pub fn run(arena: &mut Arena, code: &[Instruction], pc: usize) -> Result<usize, 
                     panic!("Environment is not an activation frame.");
                 }
             }
-            Instruction::CheckArity { arity, dotted } => {
+            Instruction::CheckArity { arity, .. } => {
                 if let Value::ActivationFrame(af) = arena.value_ref(vm.value) {
                     let actual = af.borrow().values.len();
                     if actual != arity + 1 {
@@ -113,7 +113,7 @@ pub fn run(arena: &mut Arena, code: &[Instruction], pc: usize) -> Result<usize, 
                     .stack
                     .pop()
                     .expect("Restoring env with no values on stack.");
-                if let Value::ActivationFrame(af) = arena.value_ref(env_r) {
+                if let Value::ActivationFrame(_) = arena.value_ref(env_r) {
                     vm.env = env_r;
                 } else {
                     panic!("Restoring non-activation frame.");
