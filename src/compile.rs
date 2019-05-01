@@ -37,6 +37,7 @@ pub fn compile(
             if let Some((depth, index)) = env.borrow().get(&s.variable) {
                 compile(&s.value, to, env.clone(), false)?;
                 to.push(Instruction::DeepArgumentSet { depth, index });
+            // TODO push unspecific here
             } else {
                 return Err(format!("Undefined value {}.", &s.variable));
             }
@@ -74,7 +75,20 @@ pub fn compile(
             to.push(Instruction::Return);
             to[skip_pos] = Instruction::Jump(to.len() - skip_pos - 1);
         }
-        _ => return Err(format!("Can't compile {:?}.", tree)),
+        SyntaxElement::Define(_) => return Err("Defines are not yet supported".into()),
+        SyntaxElement::Application(a) => {
+            compile(&a.function, to, env.clone(), false);
+            to.push(Instruction::PushValue);
+            for instr in a.args.iter() {
+                compile(instr, to, env.clone(), false);
+                to.push(Instruction::PushValue);
+            }
+            to.push(Instruction::CreateFrame(a.args.len()));
+            to.push(Instruction::PopFunction);
+            to.push(Instruction::PreserveEnv);
+            to.push(Instruction::FunctionInvoke);
+            to.push(Instruction::RestoreEnv);
+        }
     }
     Ok(to.len() - initial_len)
 }

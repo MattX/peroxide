@@ -122,36 +122,25 @@ fn handle_one_expr(repl: &mut Repl, arena: &mut Arena, environment: RcEnv) -> Re
     Ok(true)
 }
 
-fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment: RcEnv) {
+fn rep(arena: &mut Arena, toks: Vec<Vec<Token>>, environment: RcEnv) -> Result<(), ()> {
     for token_vector in toks {
-        match parse::parse(arena, &token_vector) {
-            Ok(value) => {
-                let value_r = arena.intern(value);
-                let result = ast::to_syntax_element(arena, value_r);
-                match result {
-                    Ok(tree) => {
-                        println!(" => {:?}", tree);
-                        let mut compiled = Vec::new();
-                        match compile::compile(&tree, &mut compiled, environment.clone(), true) {
-                            Ok(_) => {
-                                compiled.push(Instruction::Finish);
-                                println!(" => {:?}", compiled);
-                                match vm::run(arena, compiled) {
-                                    Ok(v) => {
-                                        println!(" => {}", arena.value_ref(v).pretty_print(arena))
-                                    }
-                                    Err(e) => println!("Runtime error: {:?}", e),
-                                }
-                            }
-                            Err(e) => println!("Compilation error: {}", e),
-                        }
-                    }
-                    Err(e) => println!("Syntax error: {}", e),
-                }
-            }
-            Err(e) => println!("Parsing error: {:?}", e),
+        let parse_value =
+            parse::parse(arena, &token_vector).map_err(|e| println!("Parsing error: {:?}", e))?;
+        let value_r = arena.intern(parse_value);
+        let syntax_tree =
+            ast::to_syntax_element(arena, value_r).map_err(|e| println!("Syntax error: {}", e))?;
+        println!(" => {:?}", syntax_tree);
+        let mut compiled = Vec::new();
+        compile::compile(&syntax_tree, &mut compiled, environment.clone(), true)
+            .map_err(|e| println!("Compilation error: {}", e))?;
+        compiled.push(Instruction::Finish);
+        println!(" => {:?}", compiled);
+        match vm::run(arena, &compiled, 0) {
+            Ok(v) => println!(" => {}", arena.value_ref(v).pretty_print(arena)),
+            Err(e) => println!("Runtime error: {:?}", e),
         }
     }
+    Ok(())
 }
 
 #[derive(Debug)]
