@@ -81,7 +81,9 @@ pub fn compile(
                 // TODO refactor this to share code with set!
                 // The prt here doesn't sound super useful but it makes sure the borrow doesn't
                 // live into the `else` block, where it would conflict with the borrow_mut.
-                let ptr = env.borrow().get(&d.variable).clone();
+                // Some((usize, usize)) is a Copy type, so the borrow can be dropped.
+
+                let ptr = env.borrow().get(&d.variable);
                 if let Some((depth, index)) = ptr {
                     compile(&d.value, to, env.clone(), false, false)?;
                     to.push(Instruction::DeepArgumentSet { depth, index });

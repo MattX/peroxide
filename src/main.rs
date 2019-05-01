@@ -4,9 +4,10 @@ extern crate rustyline;
 use std::env;
 
 use arena::Arena;
-use environment::{ActivationFrame, CombinedEnv, Environment, RcEnv};
+use environment::{ActivationFrame, CombinedEnv, Environment};
 use lex::SegmentationResult;
 use lex::Token;
+use primitives::register_primitives;
 use repl::GetLineError;
 use repl::{FileRepl, ReadlineRepl, Repl, StdIoRepl};
 use std::cell::RefCell;
@@ -60,10 +61,11 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
             values: vec![],
         }))),
     };
+    register_primitives(&mut arena, &mut environment);
     let mut code = Vec::new();
 
     loop {
-        if !handle_one_expr_wrap(&mut *repl, &mut arena, &mut environment, &mut code) {
+        if !handle_one_expr_wrap(&mut *repl, &mut arena, &environment, &mut code) {
             break;
         }
     }
@@ -76,7 +78,7 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
 fn handle_one_expr_wrap(
     repl: &mut Repl,
     arena: &mut Arena,
-    environment: &mut CombinedEnv,
+    environment: &CombinedEnv,
     code: &mut Vec<Instruction>,
 ) -> bool {
     handle_one_expr(repl, arena, environment, code)
@@ -87,7 +89,7 @@ fn handle_one_expr_wrap(
 fn handle_one_expr(
     repl: &mut Repl,
     arena: &mut Arena,
-    environment: &mut CombinedEnv,
+    environment: &CombinedEnv,
     code: &mut Vec<Instruction>,
 ) -> Result<bool, String> {
     let mut current_expr_string: Vec<String> = Vec::new();
@@ -140,7 +142,7 @@ fn handle_one_expr(
 fn rep(
     arena: &mut Arena,
     toks: Vec<Vec<Token>>,
-    environment: &mut CombinedEnv,
+    environment: &CombinedEnv,
     code: &mut Vec<Instruction>,
 ) -> Result<(), ()> {
     for token_vector in toks {

@@ -1,4 +1,4 @@
-//! Naming convention: replace `?` with `_p`, `!` with `_b`, `->` with `_to_`.
+//! Naming conventions in Rust: replace `?` with `_p`, `!` with `_b`, `->` with `_to_`.
 //!
 //! ### Needed
 //! OK~ eq? eqv?
@@ -56,10 +56,12 @@
 use std::fmt::{Debug, Error, Formatter};
 
 use arena::Arena;
-use environment::Environment;
+use environment::CombinedEnv;
 use primitives::numeric::*;
 use primitives::object::*;
 use primitives::pair::*;
+use std::cell::RefCell;
+use value::Value;
 
 mod numeric;
 mod object;
@@ -154,8 +156,22 @@ impl PartialEq for Primitive {
     }
 }
 
-pub fn register_primitives(e: &mut Environment) {
-    for p in PRIMITIVES.iter() {
-        e.define(p.name);
+pub fn register_primitives(arena: &mut Arena, e: &mut CombinedEnv) {
+    // Intern all the primitives before getting the frame to avoid a mut/non-mut alias to the
+    // arena.
+
+    let primitive_indices: Vec<_> = PRIMITIVES
+        .iter()
+        .map(|p| arena.intern(Value::Primitive(p)))
+        .collect();
+    let mut borrowed_env = RefCell::borrow_mut(&e.env);
+    let mut frame = if let Value::ActivationFrame(af) = arena.value_ref(e.frame) {
+        af.borrow_mut()
+    } else {
+        panic!("Frame is not actually an activation frame");
+    };
+    for (prim, interned) in PRIMITIVES.iter().zip(primitive_indices.into_iter()) {
+        borrowed_env.define(prim.name);
+        frame.values.push(interned);
     }
 }

@@ -23,7 +23,7 @@ pub enum Value {
         code: usize,
         environment: usize,
     },
-    Primitive(Primitive),
+    Primitive(&'static Primitive),
     ActivationFrame(RefCell<ActivationFrame>),
 }
 
