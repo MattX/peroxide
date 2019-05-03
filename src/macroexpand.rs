@@ -30,7 +30,7 @@ pub struct Pattern {
 
 pub fn parse_transformer_spec(arena: &mut Arena, rest: &[usize]) -> Result<SyntaxRules, String> {
     check_len(&rest, Some(2), None)?;
-    let syntax_rules_ok = match arena.value_ref(rest[0]) {
+    let syntax_rules_ok = match arena.get(rest[0]) {
         Value::Symbol(s) => s == "syntax-rules",
         _ => false,
     };
@@ -38,12 +38,12 @@ pub fn parse_transformer_spec(arena: &mut Arena, rest: &[usize]) -> Result<Synta
         return Err("Invalid transformer spec.".into());
     }
     let keywords: Result<Vec<_>, _> = arena
-        .value_ref(rest[1])
+        .get(rest[1])
         .pair_to_vec(arena)
         .map_err(|e| format!("Syntax error in transformer spec: {}", e))?
         .iter()
         .map(|s| {
-            let v = arena.value_ref(*s);
+            let v = arena.get(*s);
             match v {
                 Value::Symbol(s) => Ok(s.clone()),
                 _ => Err(format!(
@@ -61,7 +61,7 @@ pub fn parse_transformer_spec(arena: &mut Arena, rest: &[usize]) -> Result<Synta
 }
 
 pub fn parse_pattern(arena: &mut Arena, pattern: usize) -> Result<Pattern, String> {
-    let def = arena.value_ref(pattern).pair_to_vec(arena)?;
+    let def = arena.get(pattern).pair_to_vec(arena)?;
     check_len(&def, Some(2), Some(2))?;
     Err("".into())
 }

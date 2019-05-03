@@ -111,12 +111,12 @@ impl Value {
         fn _print_pair(arena: &Arena, p: &Value, s: &mut String) {
             match p {
                 Value::Pair(a, b) => {
-                    s.push_str(&arena.value_ref(*a.borrow()).pretty_print(arena)[..]);
-                    if let Value::EmptyList = arena.value_ref(*b.borrow().deref()) {
+                    s.push_str(&arena.get(*a.borrow()).pretty_print(arena)[..]);
+                    if let Value::EmptyList = arena.get(*b.borrow().deref()) {
                         s.push_str(")");
                     } else {
                         s.push_str(" ");
-                        _print_pair(arena, arena.value_ref(*b.borrow().deref()), s);
+                        _print_pair(arena, arena.get(*b.borrow().deref()), s);
                     }
                 }
                 Value::EmptyList => {
@@ -145,7 +145,7 @@ impl Value {
         if let Value::Vector(vals) = self {
             let contents = vals
                 .iter()
-                .map(|e| arena.value_ref(*e.borrow()).pretty_print(arena))
+                .map(|e| arena.get(*e.borrow()).pretty_print(arena))
                 .collect::<Vec<_>>()
                 .join(" ");
             format!("#({})", contents)
@@ -164,7 +164,7 @@ impl Value {
             match p {
                 Value::Pair(car_r, cdr_r) => {
                     result.push(*car_r.borrow());
-                    p = arena.value_ref(*cdr_r.borrow());
+                    p = arena.get(*cdr_r.borrow());
                 }
                 Value::EmptyList => break,
                 _ => {
@@ -199,7 +199,7 @@ impl Value {
             arena.empty_list
         } else {
             let rest = Value::list_from_vec(arena, &vals[1..]);
-            arena.intern(Value::Pair(RefCell::new(vals[0]), RefCell::new(rest)))
+            arena.insert(Value::Pair(RefCell::new(vals[0]), RefCell::new(rest)))
         }
     }
 }
@@ -218,7 +218,7 @@ impl Formals {
         let mut values = Vec::new();
         let mut formal = formals;
         loop {
-            match arena.value_ref(formal) {
+            match arena.get(formal) {
                 Value::Symbol(s) => {
                     return Ok(Formals {
                         values,
@@ -227,20 +227,20 @@ impl Formals {
                 }
                 Value::EmptyList => return Ok(Formals { values, rest: None }),
                 Value::Pair(car, cdr) => {
-                    if let Value::Symbol(s) = arena.value_ref(*car.borrow()) {
+                    if let Value::Symbol(s) = arena.get(*car.borrow()) {
                         values.push(s.clone());
                         formal = *cdr.borrow();
                     } else {
                         return Err(format!(
                             "Malformed formals: {}.",
-                            arena.value_ref(formals).pretty_print(arena)
+                            arena.get(formals).pretty_print(arena)
                         ));
                     }
                 }
                 _ => {
                     return Err(format!(
                         "Malformed formals: {}.",
-                        arena.value_ref(formals).pretty_print(arena)
+                        arena.get(formals).pretty_print(arena)
                     ));
                 }
             }

@@ -176,10 +176,10 @@ pub fn register_primitives(arena: &mut Arena, e: &mut CombinedEnv) {
 
     let primitive_indices: Vec<_> = PRIMITIVES
         .iter()
-        .map(|p| arena.intern(Value::Primitive(p)))
+        .map(|p| arena.insert(Value::Primitive(p)))
         .collect();
     let mut borrowed_env = RefCell::borrow_mut(&e.env);
-    let mut frame = if let Value::ActivationFrame(af) = arena.value_ref(e.frame) {
+    let mut frame = if let Value::ActivationFrame(af) = arena.get(e.frame) {
         af.borrow_mut()
     } else {
         panic!("Frame is not actually an activation frame");

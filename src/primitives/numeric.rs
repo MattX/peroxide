@@ -22,7 +22,7 @@ macro_rules! prim_fold_0 {
     ($name:ident, $folder:ident, $fold_initial:expr) => {
         pub fn $name(arena: &mut Arena, args: &[usize]) -> Result<usize, String> {
             let values = numeric_vec(arena, args)?;
-            Ok(arena.intern(values.iter().fold($fold_initial, |a, b| $folder(&a, &b))))
+            Ok(arena.insert(values.iter().fold($fold_initial, |a, b| $folder(&a, &b))))
         }
     };
 }
@@ -64,7 +64,7 @@ macro_rules! prim_fold_1 {
                 .first()
                 .expect("with_check_len is broken my bois")
                 .clone();
-            Ok(arena.intern(values[1..].iter().fold(first, |a, b| $folder(&a, &b))))
+            Ok(arena.insert(values[1..].iter().fold(first, |a, b| $folder(&a, &b))))
         }
     };
 }
@@ -108,7 +108,7 @@ macro_rules! prim_monotonic {
             check_len(&values, Some(2), None)
                 .map_err(|e| format!("{}: {}", stringify!($name), e))?;
             let ans = values.windows(2).all(|x| $pair(&x[0], &x[1]));
-            Ok(arena.intern(Value::Boolean(ans)))
+            Ok(arena.insert(Value::Boolean(ans)))
         }
     };
 }
@@ -178,7 +178,7 @@ fn greater_than_equal2(a: &Value, b: &Value) -> bool {
 /// an error.
 fn numeric_vec(arena: &mut Arena, args: &[usize]) -> Result<Vec<Value>, String> {
     args.iter()
-        .map(|v| verify_numeric(arena.value_ref(*v).clone()))
+        .map(|v| verify_numeric(arena.get(*v).clone()))
         .collect::<Result<Vec<_>, _>>()
 }
 

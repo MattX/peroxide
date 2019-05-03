@@ -72,7 +72,7 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
     let mut arena = Arena::default();
     let mut environment = CombinedEnv {
         env: Rc::new(RefCell::new(Environment::new(None))),
-        frame: arena.intern(Value::ActivationFrame(RefCell::new(ActivationFrame {
+        frame: arena.insert(Value::ActivationFrame(RefCell::new(ActivationFrame {
             parent: None,
             values: vec![],
         }))),
@@ -164,7 +164,7 @@ fn rep(
     for token_vector in toks {
         let parse_value =
             parse::parse(arena, &token_vector).map_err(|e| println!("Parsing error: {:?}", e))?;
-        let value_r = arena.intern(parse_value);
+        let value_r = arena.insert(parse_value);
         let syntax_tree =
             ast::to_syntax_element(arena, value_r).map_err(|e| println!("Syntax error: {}", e))?;
         println!(" => {:?}", syntax_tree);
@@ -174,7 +174,7 @@ fn rep(
         code.push(Instruction::Finish);
         println!(" => {:?}", &code[start_pc..code.len()]);
         match vm::run(arena, code, start_pc, environment.frame) {
-            Ok(v) => println!(" => {}", arena.value_ref(v).pretty_print(arena)),
+            Ok(v) => println!(" => {}", arena.get(v).pretty_print(arena)),
             Err(e) => println!("Runtime error: {:?}", e),
         }
     }

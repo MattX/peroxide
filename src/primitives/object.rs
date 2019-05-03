@@ -18,13 +18,13 @@ use value::Value;
 
 pub fn eq_p(arena: &mut Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(2), Some(2))?;
-    Ok(arena.intern(Value::Boolean(args[0] == args[1])))
+    Ok(arena.insert(Value::Boolean(args[0] == args[1])))
 }
 
 pub fn eqv_p(arena: &mut Arena, args: &[usize]) -> Result<usize, String> {
     #![allow(clippy::float_cmp)]
     check_len(args, Some(2), Some(2))?;
-    let ans = match (arena.value_ref(args[0]), arena.value_ref(args[1])) {
+    let ans = match (arena.get(args[0]), arena.get(args[1])) {
         // This comparison is in the same order as the R5RS one for ease of
         // verification.
         (Value::Boolean(a), Value::Boolean(b)) => a == b,
@@ -39,5 +39,5 @@ pub fn eqv_p(arena: &mut Arena, args: &[usize]) -> Result<usize, String> {
         (Value::Lambda { .. }, Value::Lambda { .. }) => args[0] == args[1],
         _ => false,
     };
-    Ok(arena.intern(Value::Boolean(ans)))
+    Ok(arena.insert(Value::Boolean(ans)))
 }

@@ -94,8 +94,8 @@ where
                 } else {
                     parse_list(arena, it)
                 }?;
-                let first_ptr = arena.intern(first);
-                let second_ptr = arena.intern(second);
+                let first_ptr = arena.insert(first);
+                let second_ptr = arena.insert(second);
                 Ok(Value::Pair(
                     RefCell::new(first_ptr),
                     RefCell::new(second_ptr),
@@ -129,7 +129,7 @@ where
             }
             _ => {
                 let elem = do_parse(arena, it)?;
-                let elem_ptr = arena.intern(elem);
+                let elem_ptr = arena.insert(elem);
                 result.push(RefCell::new(elem_ptr));
             }
         }
@@ -147,13 +147,13 @@ where
     I: Iterator<Item = &'b Token>,
 {
     let quoted = do_parse(arena, it)?;
-    let quoted_ptr = arena.intern(quoted);
-    let empty_list_ptr = arena.intern(Value::EmptyList);
-    let quoted_list_ptr = arena.intern(Value::Pair(
+    let quoted_ptr = arena.insert(quoted);
+    let empty_list_ptr = arena.insert(Value::EmptyList);
+    let quoted_list_ptr = arena.insert(Value::Pair(
         RefCell::new(quoted_ptr),
         RefCell::new(empty_list_ptr),
     ));
-    let quote_sym_ptr = arena.intern(Value::Symbol(prefix.to_string()));
+    let quote_sym_ptr = arena.insert(Value::Symbol(prefix.to_string()));
     Ok(Value::Pair(
         RefCell::new(quote_sym_ptr),
         RefCell::new(quoted_list_ptr),

@@ -70,13 +70,13 @@ pub fn run(
         match vm.code[vm.pc] {
             Instruction::Constant(v) => vm.value = v,
             Instruction::JumpFalse(offset) => {
-                if !arena.value_ref(vm.value).truthy() {
+                if !arena.get(vm.value).truthy() {
                     vm.pc += offset;
                 }
             }
             Instruction::Jump(offset) => vm.pc += offset,
             Instruction::DeepArgumentSet { depth, index } => {
-                if let Value::ActivationFrame(af) = arena.value_ref(vm.env) {
+                if let Value::ActivationFrame(af) = arena.get(vm.env) {
                     af.borrow_mut().set(arena, depth, index, vm.value);
                     vm.value = arena.unspecific;
                 } else {
@@ -84,14 +84,14 @@ pub fn run(
                 }
             }
             Instruction::DeepArgumentGet { depth, index } => {
-                if let Value::ActivationFrame(af) = arena.value_ref(vm.env) {
+                if let Value::ActivationFrame(af) = arena.get(vm.env) {
                     vm.value = af.borrow().get(arena, depth, index)
                 } else {
                     panic!("Environment is not an activation frame.");
                 }
             }
             Instruction::CheckArity { arity, .. } => {
-                if let Value::ActivationFrame(af) = arena.value_ref(vm.value) {
+                if let Value::ActivationFrame(af) = arena.get(vm.value) {
                     let actual = af.borrow().values.len();
                     if actual != arity + 1 {
                         return Err(format!("Expected {} arguments, got {}.", arity, actual));
@@ -101,7 +101,7 @@ pub fn run(
                 }
             }
             Instruction::ExtendEnv => {
-                if let Value::ActivationFrame(af) = arena.value_ref(vm.value) {
+                if let Value::ActivationFrame(af) = arena.get(vm.value) {
                     af.borrow_mut().parent = Some(vm.env);
                     vm.env = vm.value;
                 } else {
@@ -115,7 +115,7 @@ pub fn run(
                     .expect("Returning with no values on return stack.");
             }
             Instruction::CreateClosure(offset) => {
-                vm.value = arena.intern(Lambda {
+                vm.value = arena.insert(Lambda {
                     name: "".into(),
                     code: vm.pc + offset,
                     environment: vm.env,
@@ -129,7 +129,7 @@ pub fn run(
                     .stack
                     .pop()
                     .expect("Restoring env with no values on stack.");
-                if let Value::ActivationFrame(_) = arena.value_ref(env_r) {
+                if let Value::ActivationFrame(_) = arena.get(env_r) {
                     vm.env = env_r;
                 } else {
                     panic!("Restoring non-activation frame.");
@@ -143,14 +143,14 @@ pub fn run(
                     .stack
                     .pop()
                     .expect("Popping function with no values on stack.");
-                match arena.value_ref(fun_r) {
+                match arena.get(fun_r) {
                     Value::Lambda { .. } | Value::Primitive(_) => vm.fun = fun_r,
                     _ => panic!("Popping non-function."),
                 }
             }
             Instruction::FunctionInvoke => {
                 // TODO remove cloning :p
-                let fun = arena.value_ref(vm.fun).clone();
+                let fun = arena.get(vm.fun).clone();
                 match fun {
                     Value::Lambda {
                         code, environment, ..
@@ -160,7 +160,7 @@ pub fn run(
                         vm.pc = code;
                     }
                     Value::Primitive(p) => {
-                        if let Value::ActivationFrame(af) = arena.value_ref(vm.value).clone() {
+                        if let Value::ActivationFrame(af) = arena.get(vm.value).clone() {
                             let values = &af.borrow().values;
                             vm.value = (p.implementation)(arena, &values[0..values.len() - 1])?;
                         } else {
@@ -183,10 +183,10 @@ pub fn run(
                 for i in (0..size).rev() {
                     frame.values[i] = vm.stack.pop().expect("Too few values on stack.");
                 }
-                vm.value = arena.intern(Value::ActivationFrame(RefCell::new(frame)));
+                vm.value = arena.insert(Value::ActivationFrame(RefCell::new(frame)));
             }
             Instruction::ExtendFrame => {
-                if let Value::ActivationFrame(af) = arena.value_ref(vm.env) {
+                if let Value::ActivationFrame(af) = arena.get(vm.env) {
                     af.borrow_mut().values.push(vm.value);
                     vm.value = arena.unspecific;
                 } else {

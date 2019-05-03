@@ -29,7 +29,7 @@ pub struct Arena {
 
 impl Arena {
     /// Moves a value into the arena, and returns a pointer to its new position.
-    pub fn intern(&self, v: Value) -> usize {
+    pub fn insert(&self, v: Value) -> usize {
         match v {
             Value::Unspecific => self.unspecific,
             Value::EmptyList => self.empty_list,
@@ -41,28 +41,23 @@ impl Arena {
                     Some(u) => u,
                     None => {
                         let label = s.clone();
-                        let pos = self.do_intern(Value::Symbol(s));
+                        let pos = self.values.insert(Value::Symbol(s));
                         self.symbol_map.borrow_mut().insert(label, pos);
                         pos
                     }
                 }
             }
-            _ => self.do_intern(v),
+            _ => self.values.insert(v),
         }
     }
 
-    /// Actually does the thing described above
-    fn do_intern(&self, v: Value) -> usize {
-        self.values.insert(v)
-    }
-
     /// Given a position in the arena, returns a reference to the value at that location.
-    pub fn value_ref(&self, at: usize) -> &Value {
+    pub fn get(&self, at: usize) -> &Value {
         self.values.get(at)
     }
 
-    pub fn intern_pair(&mut self, car: usize, cdr: usize) -> usize {
-        self.intern(Value::Pair(RefCell::new(car), RefCell::new(cdr)))
+    pub fn insert_pair(&self, car: usize, cdr: usize) -> usize {
+        self.insert(Value::Pair(RefCell::new(car), RefCell::new(cdr)))
     }
 
     pub fn collect(&mut self, roots: &[usize]) {
@@ -98,14 +93,14 @@ mod tests {
 
     #[test]
     fn add_empty() {
-        let mut arena = Arena::default();
-        assert_eq!(BASE_ENTRY, arena.intern(Value::Symbol("abc".into())));
+        let arena = Arena::default();
+        assert_eq!(BASE_ENTRY, arena.insert(Value::Symbol("abc".into())));
     }
 
     #[test]
     fn get() {
-        let mut arena = Arena::default();
-        assert_eq!(BASE_ENTRY, arena.intern(Value::Real(0.1)));
-        assert_eq!(Value::Real(0.1), *arena.value_ref(BASE_ENTRY));
+        let arena = Arena::default();
+        assert_eq!(BASE_ENTRY, arena.insert(Value::Real(0.1)));
+        assert_eq!(Value::Real(0.1), *arena.get(BASE_ENTRY));
     }
 }

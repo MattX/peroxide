@@ -6,7 +6,7 @@ license = "Apache-2.0"
 publish = false
 
 [dependencies]
-rustyline = "3.0.0"
+rustyline = "4.0.0"
 
 [profile.release]
 debug = true

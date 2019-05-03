@@ -101,7 +101,7 @@ pub struct Formals {
 }
 
 pub fn to_syntax_element(arena: &Arena, value: usize) -> Result<SyntaxElement, String> {
-    match arena.value_ref(value) {
+    match arena.get(value) {
         Value::Symbol(s) => Ok(SyntaxElement::Reference(Box::new(Reference {
             variable: s.clone(),
         }))),
@@ -112,8 +112,8 @@ pub fn to_syntax_element(arena: &Arena, value: usize) -> Result<SyntaxElement, S
 }
 
 fn pair_to_syntax_element(arena: &Arena, car: usize, cdr: usize) -> Result<SyntaxElement, String> {
-    let rest = arena.value_ref(cdr).pair_to_vec(arena)?;
-    match arena.value_ref(car) {
+    let rest = arena.get(cdr).pair_to_vec(arena)?;
+    match arena.get(car) {
         Value::Symbol(s) => match s.as_ref() {
             "quote" => parse_quote(rest),
             "if" => parse_if(arena, rest),
@@ -170,7 +170,7 @@ fn parse_lambda(arena: &Arena, rest: Vec<usize>) -> Result<SyntaxElement, String
 
 fn parse_set(arena: &Arena, rest: Vec<usize>, define: bool) -> Result<SyntaxElement, String> {
     check_len(&rest, Some(2), Some(2))?;
-    if let Value::Symbol(s) = arena.value_ref(rest[0]) {
+    if let Value::Symbol(s) = arena.get(rest[0]) {
         let variable = s.clone();
         let value = to_syntax_element(arena, rest[1])?;
         Ok(if define {
@@ -181,7 +181,7 @@ fn parse_set(arena: &Arena, rest: Vec<usize>, define: bool) -> Result<SyntaxElem
     } else {
         Err(format!(
             "Expected symbol as target of define/set!, got {}",
-            arena.value_ref(rest[0]).pretty_print(arena)
+            arena.get(rest[0]).pretty_print(arena)
         ))
     }
 }
@@ -202,7 +202,7 @@ fn parse_formals(arena: &Arena, formals: usize) -> Result<Formals, String> {
     let mut values = Vec::new();
     let mut formal = formals;
     loop {
-        match arena.value_ref(formal) {
+        match arena.get(formal) {
             Value::Symbol(s) => {
                 return Ok(Formals {
                     values,
@@ -211,20 +211,20 @@ fn parse_formals(arena: &Arena, formals: usize) -> Result<Formals, String> {
             }
             Value::EmptyList => return Ok(Formals { values, rest: None }),
             Value::Pair(car, cdr) => {
-                if let Value::Symbol(s) = arena.value_ref(*car.borrow()) {
+                if let Value::Symbol(s) = arena.get(*car.borrow()) {
                     values.push(s.clone());
                     formal = *cdr.borrow();
                 } else {
                     return Err(format!(
                         "Malformed formals: {}.",
-                        arena.value_ref(formals).pretty_print(arena)
+                        arena.get(formals).pretty_print(arena)
                     ));
                 }
             }
             _ => {
                 return Err(format!(
                     "Malformed formals: {}.",
-                    arena.value_ref(formals).pretty_print(arena)
+                    arena.get(formals).pretty_print(arena)
                 ));
             }
         }
