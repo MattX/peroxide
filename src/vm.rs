@@ -160,7 +160,7 @@ pub fn run(
                         vm.pc = code;
                     }
                     Value::Primitive(p) => {
-                        if let Value::ActivationFrame(af) = arena.swap_out(vm.value) {
+                        if let Value::ActivationFrame(af) = arena.value_ref(vm.value).clone() {
                             let values = &af.borrow().values;
                             vm.value = (p.implementation)(arena, &values[0..values.len() - 1])?;
                         } else {

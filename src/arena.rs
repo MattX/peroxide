@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
+use gc::Gc;
 use value::Value;
 
 pub struct Arena {
-    values: Vec<Value>,
-    symbol_map: HashMap<String, usize>,
+    values: Gc<Value>,
+    symbol_map: RefCell<HashMap<String, usize>>,
     pub unspecific: usize,
     pub empty_list: usize,
     pub t: usize,
@@ -29,20 +29,20 @@ pub struct Arena {
 
 impl Arena {
     /// Moves a value into the arena, and returns a pointer to its new position.
-    pub fn intern(&mut self, v: Value) -> usize {
+    pub fn intern(&self, v: Value) -> usize {
         match v {
             Value::Unspecific => self.unspecific,
             Value::EmptyList => self.empty_list,
             Value::Boolean(true) => self.t,
             Value::Boolean(false) => self.f,
             Value::Symbol(s) => {
-                let res = self.symbol_map.get(&s).cloned();
+                let res = self.symbol_map.borrow().get(&s).cloned();
                 match res {
                     Some(u) => u,
                     None => {
                         let label = s.clone();
                         let pos = self.do_intern(Value::Symbol(s));
-                        self.symbol_map.insert(label, pos);
+                        self.symbol_map.borrow_mut().insert(label, pos);
                         pos
                     }
                 }
@@ -52,50 +52,38 @@ impl Arena {
     }
 
     /// Actually does the thing described above
-    fn do_intern(&mut self, v: Value) -> usize {
-        self.values.push(v);
-        self.values.len() - 1
+    fn do_intern(&self, v: Value) -> usize {
+        self.values.insert(v)
     }
 
     /// Given a position in the arena, returns a reference to the value at that location.
     pub fn value_ref(&self, at: usize) -> &Value {
-        match self.values.get(at) {
-            None => panic!("Tried to access invalid arena location {}", at),
-            Some(v) => v.borrow(),
-        }
-    }
-
-    pub fn swap_out(&mut self, at: usize) -> Value {
-        std::mem::replace(&mut self.values[at], Value::Unspecific)
-    }
-
-    pub fn swap_in(&mut self, at: usize, v: Value) {
-        if let Value::Unspecific = self.values[at] {
-            self.values[at] = v;
-        } else {
-            panic!("Swapping in non-unspecific value");
-        }
+        self.values.get(at)
     }
 
     pub fn intern_pair(&mut self, car: usize, cdr: usize) -> usize {
         self.intern(Value::Pair(RefCell::new(car), RefCell::new(cdr)))
     }
+
+    pub fn collect(&mut self, roots: &[usize]) {
+        self.values.collect(roots);
+    }
 }
 
 impl Default for Arena {
     fn default() -> Self {
+        let values = Gc::default();
+        let unspecific = values.insert(Value::Unspecific);
+        let empty_list = values.insert(Value::EmptyList);
+        let f = values.insert(Value::Boolean(false));
+        let t = values.insert(Value::Boolean(true));
         Arena {
-            values: vec![
-                Value::Unspecific,
-                Value::EmptyList,
-                Value::Boolean(false),
-                Value::Boolean(true),
-            ],
-            symbol_map: HashMap::new(),
-            unspecific: 0,
-            empty_list: 1,
-            f: 2,
-            t: 3,
+            values,
+            symbol_map: RefCell::new(HashMap::new()),
+            unspecific,
+            empty_list,
+            f,
+            t,
         }
     }
 }

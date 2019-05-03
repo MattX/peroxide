@@ -12,21 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use core::borrow::Borrow;
-/// Garbage collector.
-///
-/// Simple and slow. Values are put into a large vector. A list of free cells is maintained.
-///
-/// Values stored must implement the `Inventory` trait, which asks them to return a `Vec` of other
-/// values they hold pointers to. This is not great, because we end up creating tons of tiny
-/// vectors on the stack. Maybe it would be better to return a 5-tuple, as no values hold more than
-/// that.
-///
-/// The UnsafeCell business is used because we want to be able to add values to the GC while
-/// references are being held. (You can insert in a non-mutable GC). Collection cannot happen
-/// while values are being held, although really it shouldn't be a big issue either.
+//! Garbage collector.
+//!
+//! Simple and slow. Values are put into a large vector. A list of free cells is maintained.
+//!
+//! Values stored must implement the `Inventory` trait, which asks them to return a `Vec` of other
+//! values they hold pointers to. This is not great, because we end up creating tons of tiny
+//! vectors on the stack. Maybe it would be better to return a 5-tuple, as no values hold more than
+//! that.
+//!
+//! The UnsafeCell business is used because we want to be able to add values to the GC while
+//! references are being held. (You can insert in a non-mutable GC). Collection cannot happen
+//! while values are being held, although really it shouldn't be a big issue either.
+
 use std::cell::{RefCell, UnsafeCell};
-use std::fs::read;
 
 pub struct PushOnlyVec<T> {
     underlying: Vec<T>,

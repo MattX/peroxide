@@ -18,6 +18,7 @@ use std::ops::Deref;
 
 use arena::Arena;
 use environment::ActivationFrame;
+use gc;
 use primitives::Primitive;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -64,6 +65,35 @@ impl fmt::Display for Value {
                 write!(f, "#({})", contents)
             }
             e => write!(f, "{:?}", e),
+        }
+    }
+}
+
+impl gc::Inventory for Value {
+    fn inventory(&self, v: &mut gc::PushOnlyVec<usize>) {
+        match self {
+            Value::Pair(car, cdr) => {
+                v.push(*car.borrow());
+                v.push(*cdr.borrow());
+            }
+            Value::Vector(vals) => {
+                for val in vals.iter() {
+                    v.push(*val.borrow());
+                }
+            }
+            Value::Lambda { environment, .. } => {
+                v.push(*environment);
+            }
+            Value::ActivationFrame(af) => {
+                let f = af.borrow();
+                if let Some(p) = f.parent {
+                    v.push(p)
+                };
+                for val in f.values.iter() {
+                    v.push(*val)
+                }
+            }
+            _ => (),
         }
     }
 }
