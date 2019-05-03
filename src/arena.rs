@@ -15,6 +15,7 @@
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashMap;
+
 use value::Value;
 
 pub struct Arena {
@@ -76,8 +77,13 @@ impl Arena {
         }
     }
 
-    /// Instantiate a new arena
-    pub fn new() -> Self {
+    pub fn intern_pair(&mut self, car: usize, cdr: usize) -> usize {
+        self.intern(Value::Pair(RefCell::new(car), RefCell::new(cdr)))
+    }
+}
+
+impl Default for Arena {
+    fn default() -> Self {
         Arena {
             values: vec![
                 Value::Unspecific,
@@ -92,16 +98,6 @@ impl Arena {
             t: 3,
         }
     }
-
-    pub fn intern_pair(&mut self, car: usize, cdr: usize) -> usize {
-        self.intern(Value::Pair(RefCell::new(car), RefCell::new(cdr)))
-    }
-}
-
-impl Default for Arena {
-    fn default() -> Self {
-        Arena::new()
-    }
 }
 
 #[cfg(test)]
@@ -114,13 +110,13 @@ mod tests {
 
     #[test]
     fn add_empty() {
-        let mut arena = Arena::new();
-        assert_eq!(BASE_ENTRY, arena.intern(Value::EmptyList));
+        let mut arena = Arena::default();
+        assert_eq!(BASE_ENTRY, arena.intern(Value::Symbol("abc".into())));
     }
 
     #[test]
     fn get() {
-        let mut arena = Arena::new();
+        let mut arena = Arena::default();
         assert_eq!(BASE_ENTRY, arena.intern(Value::Real(0.1)));
         assert_eq!(Value::Real(0.1), *arena.value_ref(BASE_ENTRY));
     }

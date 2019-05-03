@@ -33,6 +33,7 @@ mod arena;
 mod ast;
 mod compile;
 mod environment;
+mod gc;
 mod lex;
 mod macroexpand;
 mod parse;
@@ -68,7 +69,7 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
         }
     };
 
-    let mut arena = Arena::new();
+    let mut arena = Arena::default();
     let mut environment = CombinedEnv {
         env: Rc::new(RefCell::new(Environment::new(None))),
         frame: arena.intern(Value::ActivationFrame(RefCell::new(ActivationFrame {
@@ -193,7 +194,7 @@ fn parse_args(args: &[&str]) -> Result<Options, String> {
 
     let enable_readline = !flags.iter().any(|&x| x == "--no-readline");
     let input_file = if positional.len() <= 1 {
-        positional.pop().map(|x| x.to_string())
+        positional.pop().map(std::string::ToString::to_string)
     } else {
         return Err("Too many positional arguments.".into());
     };

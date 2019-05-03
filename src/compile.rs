@@ -76,12 +76,12 @@ pub fn compile(
                 dotted: false,
             });
             to.push(Instruction::ExtendEnv);
-            let formal_name_refs = l
+            let formal_name_refs: Vec<_> = l
                 .formals
                 .values
                 .iter()
                 .map(std::ops::Deref::deref)
-                .collect::<Vec<_>>();
+                .collect();
             let lambda_env = Rc::new(RefCell::new(Environment::new_initial(
                 Some(env.clone()),
                 &formal_name_refs,

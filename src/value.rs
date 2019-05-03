@@ -59,7 +59,7 @@ impl fmt::Display for Value {
                 let contents = vals
                     .iter()
                     .map(|v| format!("=>{}", v.borrow()))
-                    .collect::<Vec<String>>()
+                    .collect::<Vec<_>>()
                     .join(" ");
                 write!(f, "#({})", contents)
             }
@@ -116,7 +116,7 @@ impl Value {
             let contents = vals
                 .iter()
                 .map(|e| arena.value_ref(*e.borrow()).pretty_print(arena))
-                .collect::<Vec<String>>()
+                .collect::<Vec<_>>()
                 .join(" ");
             format!("#({})", contents)
         } else {

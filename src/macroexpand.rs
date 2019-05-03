@@ -11,3 +11,57 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+//! Macro-related stuff. Named macroexpand because macro is a reserved word in Rust
+
+use arena::Arena;
+use util::check_len;
+use value::Value;
+
+pub struct SyntaxRules {
+    pub keywords: Vec<String>,
+    pub patterns: Vec<Pattern>,
+}
+
+pub struct Pattern {
+    pub reference: usize,
+    pub replacement: usize,
+}
+
+pub fn parse_transformer_spec(arena: &mut Arena, rest: &[usize]) -> Result<SyntaxRules, String> {
+    check_len(&rest, Some(2), None)?;
+    let syntax_rules_ok = match arena.value_ref(rest[0]) {
+        Value::Symbol(s) => s == "syntax-rules",
+        _ => false,
+    };
+    if !syntax_rules_ok {
+        return Err("Invalid transformer spec.".into());
+    }
+    let keywords: Result<Vec<_>, _> = arena
+        .value_ref(rest[1])
+        .pair_to_vec(arena)
+        .map_err(|e| format!("Syntax error in transformer spec: {}", e))?
+        .iter()
+        .map(|s| {
+            let v = arena.value_ref(*s);
+            match v {
+                Value::Symbol(s) => Ok(s.clone()),
+                _ => Err(format!(
+                    "Transformer spec: expected symbols, got {}.",
+                    v.pretty_print(arena)
+                )),
+            }
+        })
+        .collect();
+    let patterns: Result<Vec<_>, _> = rest[2..].iter().map(|p| parse_pattern(arena, *p)).collect();
+    Ok(SyntaxRules {
+        keywords: keywords?,
+        patterns: patterns?,
+    })
+}
+
+pub fn parse_pattern(arena: &mut Arena, pattern: usize) -> Result<Pattern, String> {
+    let def = arena.value_ref(pattern).pair_to_vec(arena)?;
+    check_len(&def, Some(2), Some(2))?;
+    Err("".into())
+}
