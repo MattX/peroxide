@@ -55,3 +55,6 @@ https://doc.rust-lang.org/cargo/reference/manifest.html#the-features-section).
 * _Lisp in Small Pieces_
 * https://github.com/withoutboats/shifgrethor
 * http://community.schemewiki.org/?scheme-faq-language
+* [Dybvig, R. Kent, Robert Hieb, and Carl Bruggeman. "Syntactic abstraction in Scheme."
+_Lisp and symbolic computation_ 5.4 (1993): 295-326.
+](https://www.cs.indiana.edu/~dyb/pubs/LaSC-5-4-pp295-326.pdf)

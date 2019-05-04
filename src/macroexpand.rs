@@ -13,8 +13,12 @@
 // limitations under the License.
 
 //! Macro-related stuff. Named macroexpand because macro is a reserved word in Rust
+//!
+//! TODO: doesn't handle ellipses at all, a few deviations from the standard
+//! TODO: not hygienic for now :(
 
 use arena::Arena;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use util::check_len;
 use value;
@@ -98,16 +102,12 @@ fn parse_syntax_rule(
         }
     };
 
-    // TODO: verify that no pattern variable appears more than one.
+    // TODO: verify that no pattern variable appears more than once.
 
     Ok(SyntaxRule {
         pattern: pattern_without_macro_name,
         template: def[1],
     })
-}
-
-struct MatchedPattern {
-    identifiers: HashMap<String, usize>,
 }
 
 fn is_literal_symbol(v: &Value, r: &str) -> bool {
@@ -117,14 +117,33 @@ fn is_literal_symbol(v: &Value, r: &str) -> bool {
     }
 }
 
-fn match_syntax_rule(arena: &Arena, syntax_rule: SyntaxRule, to: usize) -> Option<usize> {
-    unimplemented!()
+pub fn expand_macro(arena: &Arena, syntax_rules: SyntaxRules, to: usize) -> Result<usize, String> {
+    for syntax_rule in syntax_rules.syntax_rules.iter() {
+        if let Some(matched) = match_syntax_rule(arena, &syntax_rules.literals, syntax_rule, to)? {
+            return Ok(expand_template(arena, &matched, syntax_rule.template));
+        }
+    }
+    Err("No matching patterns.".into())
 }
 
-// TODO: this doesn't support ellipses
+fn match_syntax_rule(
+    arena: &Arena,
+    literals: &HashSet<String>,
+    syntax_rule: &SyntaxRule,
+    to: usize,
+) -> Result<Option<HashMap<String, usize>>, String> {
+    let mut matched = HashMap::new();
+
+    if do_match_syntax_rule(arena, &mut matched, literals, syntax_rule.pattern, to)? {
+        Ok(Some(matched))
+    } else {
+        Ok(None)
+    }
+}
+
 fn do_match_syntax_rule(
     arena: &Arena,
-    matched_pattern: &mut MatchedPattern,
+    matched_pattern: &mut HashMap<String, usize>,
     literals: &HashSet<String>,
     pattern: usize,
     to: usize,
@@ -135,7 +154,7 @@ fn do_match_syntax_rule(
                 Ok(true)
             } else if literals.contains(s) {
                 Ok(is_literal_symbol(target, s))
-            } else if matched_pattern.identifiers.insert(s.clone(), to).is_some() {
+            } else if matched_pattern.insert(s.clone(), to).is_some() {
                 Err(format!("Duplicate symbol in pattern template: `{}`.", s))
             } else {
                 Ok(true)
@@ -170,5 +189,73 @@ fn do_match_syntax_rule(
                 .all(|r| *r))
         }
         _ => Ok(value::equal(arena, pattern, to)),
+    }
+}
+
+fn expand_template(
+    arena: &Arena,
+    matched_pattern: &HashMap<String, usize>,
+    template: usize,
+) -> usize {
+    match arena.get(template) {
+        Value::Symbol(s) => {
+            if let Some(v) = matched_pattern.get(s) {
+                *v
+            } else {
+                template
+            }
+        }
+        Value::Pair(car, cdr) => arena.insert_pair(
+            expand_template(arena, matched_pattern, *car.borrow()),
+            expand_template(arena, matched_pattern, *cdr.borrow()),
+        ),
+        Value::Vector(lst) => arena.insert(Value::Vector(
+            lst.iter()
+                .map(|e| RefCell::new(expand_template(arena, matched_pattern, *e.borrow())))
+                .collect(),
+        )),
+        _ => template,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use parse;
+    use std::iter::FromIterator;
+
+    fn set_equal(s: &HashSet<String>, v: &[String]) -> bool {
+        s.symmetric_difference(&HashSet::from_iter(v.iter().cloned()))
+            .count()
+            == 0
+    }
+
+    #[test]
+    fn parse_simple() {
+        let arena = Arena::default();
+        let rules = parse::read(&arena, "(syntax-rules (abc jkl) ((mac def) (ghi jkl)))").unwrap();
+        let rules_vec = arena.get(rules).pair_to_vec(&arena).unwrap();
+        let parsed = parse_transformer_spec(&arena, &"mac", &rules_vec).unwrap();
+        assert!(set_equal(&parsed.literals, &["abc".into(), "jkl".into()]));
+        assert_eq!(parsed.syntax_rules.len(), 1);
+        assert!(value::equal(
+            &arena,
+            parsed.syntax_rules[0].pattern,
+            parse::read(&arena, "(def)").unwrap()
+        ));
+        assert!(value::equal(
+            &arena,
+            parsed.syntax_rules[0].template,
+            parse::read(&arena, "(ghi jkl)").unwrap()
+        ));
+    }
+
+    #[test]
+    fn parse_no_macro_name() {
+        let arena = Arena::default();
+        let rules = parse::read(&arena, "(syntax-rules () ((not-mac def) (ghi jkl)))").unwrap();
+        let rules_vec = arena.get(rules).pair_to_vec(&arena).unwrap();
+        let parsed = parse_transformer_spec(&arena, &"mac", &rules_vec);
+        assert!(parsed.is_err());
     }
 }

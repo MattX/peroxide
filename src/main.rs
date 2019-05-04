@@ -194,7 +194,7 @@ fn parse_args(args: &[&str]) -> Result<Options, String> {
 
     let enable_readline = !flags.iter().any(|&x| x == "--no-readline");
     let input_file = if positional.len() <= 1 {
-        positional.pop().map(std::string::ToString::to_string)
+        positional.pop().map(ToString::to_string)
     } else {
         return Err("Too many positional arguments.".into());
     };

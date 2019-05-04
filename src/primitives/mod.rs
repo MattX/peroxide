@@ -81,7 +81,7 @@ mod numeric;
 mod object;
 mod pair;
 
-static PRIMITIVES: [Primitive; 17] = [
+static PRIMITIVES: [Primitive; 18] = [
     Primitive {
         name: "eq?",
         implementation: eq_p,
@@ -149,6 +149,10 @@ static PRIMITIVES: [Primitive; 17] = [
     Primitive {
         name: "set-cdr!",
         implementation: set_cdr_b,
+    },
+    Primitive {
+        name: "display",
+        implementation: display,
     },
 ];
 

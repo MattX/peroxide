@@ -16,6 +16,7 @@ use std::cell::RefCell;
 use std::iter::Peekable;
 
 use arena::Arena;
+use lex;
 use lex::Token;
 use value::Value;
 
@@ -25,7 +26,7 @@ pub enum ParseResult {
     ParseError(String),
 }
 
-pub fn parse(arena: &mut Arena, tokens: &[Token]) -> Result<Value, ParseResult> {
+pub fn parse(arena: &Arena, tokens: &[Token]) -> Result<Value, ParseResult> {
     if tokens.is_empty() {
         return Err(ParseResult::Nothing);
     }
@@ -39,7 +40,13 @@ pub fn parse(arena: &mut Arena, tokens: &[Token]) -> Result<Value, ParseResult> 
     }
 }
 
-fn do_parse<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
+pub fn read(arena: &Arena, input: &str) -> Result<usize, String> {
+    let tokens = lex::lex(input)?;
+    let parsed = parse(arena, &tokens).map_err(|e| format!("{:?}", e))?;
+    Ok(arena.insert(parsed))
+}
+
+fn do_parse<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
 where
     I: Iterator<Item = &'b Token>,
 {
@@ -67,7 +74,7 @@ where
     }
 }
 
-fn parse_list<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
+fn parse_list<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
 where
     I: Iterator<Item = &'b Token>,
 {
@@ -109,7 +116,7 @@ where
     }
 }
 
-fn parse_vec<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
+fn parse_vec<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
 where
     I: Iterator<Item = &'b Token>,
 {
@@ -139,7 +146,7 @@ where
 }
 
 fn parse_quote<'a, 'b, I>(
-    arena: &mut Arena,
+    arena: &Arena,
     it: &'a mut Peekable<I>,
     prefix: &'static str,
 ) -> Result<Value, ParseResult>
