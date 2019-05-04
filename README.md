@@ -1,7 +1,7 @@
 # Peroxide
 
-A scheme interpreter in Rust. Aims for R5RS compliance; written in
-continuation-passing style.
+A scheme interpreter in Rust. Aims for R5RS compliance. Heavily based
+on the interpreter described in Chapter 7 of _Lisp in Small Pieces_.
 
 ## Ramblings
 
@@ -19,31 +19,28 @@ system. Oh well.
 
 ### Large
 
-* GC
+* `call/cc`
 * Be faster and less stupid
 
 ### Medium
 
-* `call/cc` (all necessary ingredients should be present)
 * Quasiquotation
 * Standard library
-* Better input handling, read from files, etc.
 * Maybe support exact and inexact numbers, and complexes and rationals
  * Catch overflows or support bigints
  * Idea: Make a `Value::Numeric` that would then contain the numeric
    subtypes. 
 * Macro support
+* Internal defines
+* Make errors not be strings :)
 
 ### Small
 
+* Support variable argument lists
 * Make `structs` for the more complex values in `Value`, so we can
 provide appropriate methods in a type-safe manner.
 * Make `define` support the function definition shorthand (could be done
 with a macro, maybe?)
-* We can store bodies, and probably argument lists as well, as vecs instead
-of Scheme lists, as they have well-defined shapes. This does pose a
-problem for continuations, because they want a reference inside the
-arena.
 * Allow fully disabling rustyline [using features](
 https://doc.rust-lang.org/cargo/reference/manifest.html#the-features-section).
 

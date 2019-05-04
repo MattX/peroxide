@@ -193,82 +193,47 @@ impl Value {
             panic!("Not a pair: {:?}.", self)
         }
     }
+}
 
-    pub fn list_from_vec(arena: &mut Arena, vals: &[usize]) -> usize {
-        if vals.is_empty() {
-            arena.empty_list
-        } else {
-            let rest = Value::list_from_vec(arena, &vals[1..]);
-            arena.insert(Value::Pair(RefCell::new(vals[0]), RefCell::new(rest)))
-        }
+pub fn list_from_vec(arena: &mut Arena, vals: &[usize]) -> usize {
+    if vals.is_empty() {
+        arena.empty_list
+    } else {
+        let rest = list_from_vec(arena, &vals[1..]);
+        arena.insert(Value::Pair(RefCell::new(vals[0]), RefCell::new(rest)))
     }
 }
 
-/// Structure that holds a function's formal argument list.
-/// `(x y z)` will be represented as `Formals { values: [x, y, z], rest: None }`
-/// `(x y . z)` will be represented as `Formals { values: [x, y], rest: Some(z) }`
-#[derive(Debug, PartialEq, Clone)]
-pub struct Formals {
-    pub values: Vec<String>,
-    pub rest: Option<String>,
+pub fn eqv(arena: &Arena, left: usize, right: usize) -> bool {
+    match (arena.get(left), arena.get(right)) {
+        // This comparison is in the same order as the R5RS one for ease of
+        // verification.
+        (Value::Boolean(a), Value::Boolean(b)) => a == b,
+        (Value::Symbol(a), Value::Symbol(b)) => a == b,
+        (Value::Integer(a), Value::Integer(b)) => a == b,
+        (Value::Real(a), Value::Real(b)) => (a - b).abs() < std::f64::EPSILON,
+        (Value::Character(a), Value::Character(b)) => a == b,
+        (Value::EmptyList, Value::EmptyList) => true,
+        (Value::Pair(_, _), Value::Pair(_, _)) => left == right,
+        (Value::Vector(_), Value::Vector(_)) => left == right,
+        (Value::String(_), Value::String(_)) => left == right,
+        (Value::Lambda { .. }, Value::Lambda { .. }) => left == right,
+        _ => false,
+    }
 }
 
-impl Formals {
-    pub fn new(arena: &mut Arena, formals: usize) -> Result<Formals, String> {
-        let mut values = Vec::new();
-        let mut formal = formals;
-        loop {
-            match arena.get(formal) {
-                Value::Symbol(s) => {
-                    return Ok(Formals {
-                        values,
-                        rest: Some(s.clone()),
-                    });
-                }
-                Value::EmptyList => return Ok(Formals { values, rest: None }),
-                Value::Pair(car, cdr) => {
-                    if let Value::Symbol(s) = arena.get(*car.borrow()) {
-                        values.push(s.clone());
-                        formal = *cdr.borrow();
-                    } else {
-                        return Err(format!(
-                            "Malformed formals: {}.",
-                            arena.get(formals).pretty_print(arena)
-                        ));
-                    }
-                }
-                _ => {
-                    return Err(format!(
-                        "Malformed formals: {}.",
-                        arena.get(formals).pretty_print(arena)
-                    ));
-                }
-            }
+pub fn equal(arena: &Arena, left: usize, right: usize) -> bool {
+    match (arena.get(left), arena.get(right)) {
+        (Value::Pair(left_car, left_cdr), Value::Pair(right_car, right_cdr)) => {
+            equal(arena, *left_car.borrow(), *right_car.borrow())
+                && equal(arena, *left_cdr.borrow(), *right_cdr.borrow())
         }
-    }
-
-    pub fn bind(&self, arena: &mut Arena, args: &[usize]) -> Result<Vec<(String, usize)>, String> {
-        if args.len() < self.values.len() {
-            return Err("Too few arguments for application.".to_string());
-        }
-        if args.len() > self.values.len() && self.rest.is_none() {
-            return Err("Too many arguments for application.".to_string());
-        }
-
-        let mut ans: Vec<_> = self
-            .values
-            .clone()
-            .into_iter()
-            .zip(args.to_vec().into_iter())
-            .collect();
-        if let Some(ref r) = self.rest {
-            let num_collected = ans.len();
-            ans.push((
-                r.clone(),
-                Value::list_from_vec(arena, &args[num_collected..]),
-            ))
-        }
-        Ok(ans)
+        (Value::Vector(left_vec), Value::Vector(right_vec)) => left_vec
+            .iter()
+            .zip(right_vec.iter())
+            .all(|(l, r)| equal(arena, *l.borrow(), *r.borrow())),
+        (Value::String(left_string), Value::String(right_string)) => left_string == right_string,
+        _ => eqv(arena, left, right),
     }
 }
 
