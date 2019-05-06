@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
 use gc::Gc;
@@ -21,6 +21,7 @@ use value::Value;
 pub struct Arena {
     values: Gc<Value>,
     symbol_map: RefCell<HashMap<String, usize>>,
+    gensym_counter: Cell<usize>,
     pub unspecific: usize,
     pub empty_list: usize,
     pub t: usize,
@@ -51,6 +52,18 @@ impl Arena {
         }
     }
 
+    /// Generates a new symbol that's unique unless the programmer decides to name their own
+    /// identifiers `__gensym_xyz` for some reason.
+    pub fn gensym(&self, name: Option<&str>) -> usize {
+        let underscore_name = name.map(|n| format!("_{}", n)).unwrap_or("".into());
+        self.gensym_counter.set(self.gensym_counter.get() + 1);
+        self.insert(Value::Symbol(format!(
+            "__gensym{}_{}",
+            underscore_name,
+            self.gensym_counter.get()
+        )))
+    }
+
     /// Given a position in the arena, returns a reference to the value at that location.
     pub fn get(&self, at: usize) -> &Value {
         self.values.get(at)
@@ -75,6 +88,7 @@ impl Default for Arena {
         Arena {
             values,
             symbol_map: RefCell::new(HashMap::new()),
+            gensym_counter: Cell::new(0),
             unspecific,
             empty_list,
             f,

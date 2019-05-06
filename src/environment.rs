@@ -18,22 +18,38 @@
 //!    in the Arena.
 
 use arena::Arena;
+use macroexpand::SyntaxRules;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::option::Option;
 use std::rc::Rc;
 use value::Value;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub struct Environment {
     parent: Option<Rc<RefCell<Environment>>>,
-    values: HashMap<String, usize>,
+    depth: usize,
+    variable_count: usize,
+    values: HashMap<String, EnvironmentValue>,
+}
+
+// The Rc<> in Macro is here to silence the borrow checker, which complains that although the
+// reference returned by get() will not outlive the current environment, there are no guarantees
+// that it will not outlive the parent environment. This is sort of true but should never happen.
+// Adding this Rc<> is cheap (and it's a compilation-phase thing), so here it is.
+#[derive(Debug, Clone)]
+pub enum EnvironmentValue {
+    Macro(Rc<SyntaxRules>),
+    Variable(usize),
 }
 
 impl Environment {
     pub fn new(parent: Option<Rc<RefCell<Environment>>>) -> Environment {
+        let depth = parent.as_ref().map(|p| p.borrow().depth + 1).unwrap_or(0);
         Environment {
             parent,
+            depth,
+            variable_count: 0,
             values: HashMap::new(),
         }
     }
@@ -47,19 +63,34 @@ impl Environment {
     }
 
     pub fn define(&mut self, name: &str) -> usize {
-        let value_index = self.values.len();
-        self.values.insert(name.to_string(), value_index);
-        self.values.len() - 1
+        let value_index = self.variable_count;
+        self.variable_count += 1;
+        self.values
+            .insert(name.to_string(), EnvironmentValue::Variable(value_index));
+        value_index
     }
 
-    pub fn get(&self, name: &str) -> Option<(usize, usize)> {
+    pub fn define_macro(&mut self, name: &str, value: SyntaxRules) {
+        self.values
+            .insert(name.to_string(), EnvironmentValue::Macro(Rc::new(value)));
+    }
+
+    pub fn get(&self, name: &str) -> Option<(usize, EnvironmentValue)> {
         if self.values.contains_key(name) {
-            self.values.get(name).map(|i| (0, *i))
+            self.values.get(name).map(|ev| (0, ev.clone()))
         } else if let Some(ref e) = self.parent {
-            e.borrow().get(name).map(|(d, i)| (d + 1, i))
+            e.borrow().get(name).map(|(d, ev)| (d + 1, ev))
         } else {
             None
         }
+    }
+
+    pub fn get_absolute(&self, name: &str) -> Option<(usize, EnvironmentValue)> {
+        self.get(name).map(|(d, ev)| (self.depth - d, ev))
+    }
+
+    pub fn absolute_to_relative(&self, absolute_depth: usize) -> usize {
+        self.depth - absolute_depth
     }
 }
 

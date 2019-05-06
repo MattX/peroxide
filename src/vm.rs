@@ -15,8 +15,8 @@
 use arena::Arena;
 use environment::ActivationFrame;
 use std::cell::RefCell;
-use value::Value;
 use value::Value::Lambda;
+use value::{list_from_vec, Value};
 
 #[derive(Debug)]
 pub enum Instruction {
@@ -29,6 +29,7 @@ pub enum Instruction {
     ExtendEnv,
     Return,
     CreateClosure(usize),
+    PackFrame(usize),
     PreserveEnv,
     RestoreEnv,
     PushValue,
@@ -90,10 +91,15 @@ pub fn run(
                     panic!("Environment is not an activation frame.");
                 }
             }
-            Instruction::CheckArity { arity, .. } => {
+            Instruction::CheckArity { arity, dotted } => {
                 if let Value::ActivationFrame(af) = arena.get(vm.value) {
                     let actual = af.borrow().values.len();
-                    if actual != arity + 1 {
+                    if dotted && actual < arity {
+                        return Err(format!(
+                            "Expected at least {} arguments, got {}.",
+                            arity, actual
+                        ));
+                    } else if !dotted && actual != arity {
                         return Err(format!("Expected {} arguments, got {}.", arity, actual));
                     }
                 } else {
@@ -120,6 +126,17 @@ pub fn run(
                     code: vm.pc + offset,
                     environment: vm.env,
                 })
+            }
+            Instruction::PackFrame(arity) => {
+                if let Value::ActivationFrame(af) = arena.get(vm.value) {
+                    let mut borrowed_frame = af.borrow_mut();
+                    let frame_len = std::cmp::max(arity, borrowed_frame.values.len());
+                    let listified = list_from_vec(arena, &borrowed_frame.values[arity..frame_len]);
+                    borrowed_frame.values.resize(arity + 1, 0);
+                    borrowed_frame.values[arity] = listified;
+                } else {
+                    panic!("Packing non-activation frame.");
+                }
             }
             Instruction::PreserveEnv => {
                 vm.stack.push(vm.env);
@@ -178,7 +195,7 @@ pub fn run(
             Instruction::CreateFrame(size) => {
                 let mut frame = ActivationFrame {
                     parent: None,
-                    values: vec![0; size + 1],
+                    values: vec![0; size],
                 };
                 for i in (0..size).rev() {
                     frame.values[i] = vm.stack.pop().expect("Too few values on stack.");

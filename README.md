@@ -58,3 +58,4 @@ https://doc.rust-lang.org/cargo/reference/manifest.html#the-features-section).
 * [Dybvig, R. Kent, Robert Hieb, and Carl Bruggeman. "Syntactic abstraction in Scheme."
 _Lisp and symbolic computation_ 5.4 (1993): 295-326.
 ](https://www.cs.indiana.edu/~dyb/pubs/LaSC-5-4-pp295-326.pdf)
+* https://www.gnu.org/software/mit-scheme/documentation/mit-scheme-ref/Syntactic-Closures.html#Syntactic-Closures

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use ast::SyntaxElement;
-use environment::{Environment, RcEnv};
+use environment::{Environment, EnvironmentValue, RcEnv};
 use std::cell::RefCell;
 use std::rc::Rc;
 use vm::Instruction;
@@ -50,7 +50,8 @@ pub fn compile(
             compile_sequence(&b.expressions, to, env.clone(), tail)?;
         }
         SyntaxElement::Set(s) => {
-            if let Some((depth, index)) = env.borrow().get(&s.variable) {
+            if let Some((depth, EnvironmentValue::Variable(index))) = env.borrow().get(&s.variable)
+            {
                 compile(&s.value, to, env.clone(), false, false)?;
                 to.push(Instruction::DeepArgumentSet { depth, index });
             } else {
@@ -58,34 +59,40 @@ pub fn compile(
             }
         }
         SyntaxElement::Reference(r) => {
-            if let Some((depth, index)) = env.borrow().get(&r.variable) {
+            if let Some((depth, EnvironmentValue::Variable(index))) = env.borrow().get(&r.variable)
+            {
                 to.push(Instruction::DeepArgumentGet { depth, index });
             } else {
                 return Err(format!("Undefined value {}.", &r.variable));
             }
         }
         SyntaxElement::Lambda(l) => {
-            if l.formals.rest.is_some() {
-                return Err("Only fixed functions can be compiled for now.".into());
-            }
+            let arity = l.formals.values.len();
+            let dotted = l.formals.rest.is_some();
+
             to.push(Instruction::CreateClosure(1));
             let skip_pos = to.len();
-            to.push(Instruction::NoOp); // Skip over function definition
-            to.push(Instruction::CheckArity {
-                arity: l.formals.values.len(),
-                dotted: false,
-            });
+            to.push(Instruction::NoOp); // Will be replaced with over function code
+            to.push(Instruction::CheckArity { arity, dotted });
+            if dotted {
+                to.push(Instruction::PackFrame(arity));
+            }
             to.push(Instruction::ExtendEnv);
-            let formal_name_refs: Vec<_> = l
+
+            let mut formal_name_refs: Vec<_> = l
                 .formals
                 .values
                 .iter()
                 .map(std::ops::Deref::deref)
                 .collect();
+            if let Some(ref rest) = l.formals.rest {
+                formal_name_refs.push(rest);
+            }
             let lambda_env = Rc::new(RefCell::new(Environment::new_initial(
                 Some(env.clone()),
                 &formal_name_refs,
             )));
+
             compile_sequence(&l.expressions, to, lambda_env.clone(), true)?;
             to.push(Instruction::Return);
             to[skip_pos] = Instruction::Jump(to.len() - skip_pos - 1);
@@ -98,9 +105,9 @@ pub fn compile(
                 // Some((usize, usize)) is a Copy type, so the borrow can be dropped.
 
                 let ptr = env.borrow().get(&d.variable);
-                if let Some((depth, index)) = ptr {
+                if let Some((depth, EnvironmentValue::Variable(index))) = ptr {
                     compile(&d.value, to, env.clone(), false, false)?;
-                    to.push(Instruction::DeepArgumentSet { depth, index });
+                    to.push(Instruction::DeepArgumentSet { depth, index: 0 });
                 } else {
                     env.borrow_mut().define(&d.variable);
                     compile(&d.value, to, env.clone(), false, false)?;

@@ -31,6 +31,6 @@ pub fn display(arena: &mut Arena, args: &[usize]) -> Result<usize, String> {
     for a in args.iter() {
         print!("{} ", arena.get(*a).pretty_print(arena));
     }
-    println!("");
+    println!();
     Ok(arena.unspecific)
 }

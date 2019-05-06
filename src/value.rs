@@ -195,7 +195,7 @@ impl Value {
     }
 }
 
-pub fn list_from_vec(arena: &mut Arena, vals: &[usize]) -> usize {
+pub fn list_from_vec(arena: &Arena, vals: &[usize]) -> usize {
     if vals.is_empty() {
         arena.empty_list
     } else {

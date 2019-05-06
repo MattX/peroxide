@@ -24,11 +24,13 @@ use util::check_len;
 use value;
 use value::Value;
 
+#[derive(Debug)]
 pub struct SyntaxRules {
     pub literals: HashSet<String>,
     pub syntax_rules: Vec<SyntaxRule>,
 }
 
+#[derive(Debug)]
 pub struct SyntaxRule {
     pub pattern: usize,
     pub template: usize,
