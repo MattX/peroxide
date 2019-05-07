@@ -17,17 +17,17 @@ use util::check_len;
 use value;
 use value::Value;
 
-pub fn eq_p(arena: &mut Arena, args: &[usize]) -> Result<usize, String> {
+pub fn eq_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(2), Some(2))?;
     Ok(arena.insert(Value::Boolean(args[0] == args[1])))
 }
 
-pub fn eqv_p(arena: &mut Arena, args: &[usize]) -> Result<usize, String> {
+pub fn eqv_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(2), Some(2))?;
     Ok(arena.insert(Value::Boolean(value::eqv(arena, args[0], args[1]))))
 }
 
-pub fn display(arena: &mut Arena, args: &[usize]) -> Result<usize, String> {
+pub fn display(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     for a in args.iter() {
         print!("{} ", arena.get(*a).pretty_print(arena));
     }

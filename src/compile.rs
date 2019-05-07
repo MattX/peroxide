@@ -27,6 +27,9 @@ pub fn compile(
     tail: bool,
     toplevel: bool,
 ) -> Result<usize, String> {
+    if tail && toplevel {
+        panic!("Toplevel expression is not in tail position")
+    }
     let initial_len = to.len();
     match tree {
         SyntaxElement::Quote(q) => {
@@ -107,7 +110,7 @@ pub fn compile(
                 let ptr = env.borrow().get(&d.variable);
                 if let Some((depth, EnvironmentValue::Variable(index))) = ptr {
                     compile(&d.value, to, env.clone(), false, false)?;
-                    to.push(Instruction::DeepArgumentSet { depth, index: 0 });
+                    to.push(Instruction::DeepArgumentSet { depth, index });
                 } else {
                     env.borrow_mut().define(&d.variable);
                     compile(&d.value, to, env.clone(), false, false)?;
@@ -126,9 +129,13 @@ pub fn compile(
             }
             to.push(Instruction::CreateFrame(a.args.len()));
             to.push(Instruction::PopFunction);
-            to.push(Instruction::PreserveEnv);
-            to.push(Instruction::FunctionInvoke);
-            to.push(Instruction::RestoreEnv);
+            if !tail {
+                to.push(Instruction::PreserveEnv);
+            }
+            to.push(Instruction::FunctionInvoke { tail });
+            if !tail {
+                to.push(Instruction::RestoreEnv);
+            }
         }
     }
     Ok(to.len() - initial_len)

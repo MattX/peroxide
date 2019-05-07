@@ -34,7 +34,7 @@ pub enum Instruction {
     RestoreEnv,
     PushValue,
     PopFunction,
-    FunctionInvoke,
+    FunctionInvoke { tail: bool },
     CreateFrame(usize),
     ExtendFrame,
     NoOp,
@@ -122,7 +122,6 @@ pub fn run(
             }
             Instruction::CreateClosure(offset) => {
                 vm.value = arena.insert(Lambda {
-                    name: "".into(),
                     code: vm.pc + offset,
                     environment: vm.env,
                 })
@@ -165,21 +164,22 @@ pub fn run(
                     _ => panic!("Popping non-function."),
                 }
             }
-            Instruction::FunctionInvoke => {
-                // TODO remove cloning :p
-                let fun = arena.get(vm.fun).clone();
+            Instruction::FunctionInvoke { tail } => {
+                let fun = arena.get(vm.fun);
                 match fun {
                     Value::Lambda {
                         code, environment, ..
                     } => {
-                        vm.return_stack.push(vm.pc);
-                        vm.env = environment;
-                        vm.pc = code;
+                        if !tail {
+                            vm.return_stack.push(vm.pc);
+                        }
+                        vm.env = *environment;
+                        vm.pc = *code;
                     }
                     Value::Primitive(p) => {
                         if let Value::ActivationFrame(af) = arena.get(vm.value).clone() {
                             let values = &af.borrow().values;
-                            vm.value = (p.implementation)(arena, &values[0..values.len() - 1])?;
+                            vm.value = (p.implementation)(arena, &values)?;
                         } else {
                             panic!("Primitive called on non-activation frame.");
                         }

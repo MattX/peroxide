@@ -159,7 +159,7 @@ static PRIMITIVES: [Primitive; 18] = [
 #[derive(Clone)]
 pub struct Primitive {
     pub name: &'static str,
-    pub implementation: fn(&mut Arena, &[usize]) -> Result<usize, String>,
+    pub implementation: fn(&Arena, &[usize]) -> Result<usize, String>,
 }
 
 impl Debug for Primitive {

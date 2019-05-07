@@ -33,11 +33,7 @@ pub enum Value {
     EmptyList,
     Pair(RefCell<usize>, RefCell<usize>),
     Vector(Vec<RefCell<usize>>),
-    Lambda {
-        name: String,
-        code: usize,
-        environment: usize,
-    },
+    Lambda { code: usize, environment: usize },
     Primitive(&'static Primitive),
     ActivationFrame(RefCell<ActivationFrame>),
 }

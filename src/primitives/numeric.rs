@@ -20,7 +20,7 @@ use value::Value;
 /// (&Value, &Value) -> Value
 macro_rules! prim_fold_0 {
     ($name:ident, $folder:ident, $fold_initial:expr) => {
-        pub fn $name(arena: &mut Arena, args: &[usize]) -> Result<usize, String> {
+        pub fn $name(arena: &Arena, args: &[usize]) -> Result<usize, String> {
             let values = numeric_vec(arena, args)?;
             Ok(arena.insert(values.iter().fold($fold_initial, |a, b| $folder(&a, &b))))
         }
@@ -55,7 +55,7 @@ fn mul2(a: &Value, b: &Value) -> Value {
 /// Like [prim_fold_0], but uses the first element of the list as the fold initializer
 macro_rules! prim_fold_1 {
     ($name:ident, $folder:ident) => {
-        pub fn $name(arena: &mut Arena, args: &[usize]) -> Result<usize, String> {
+        pub fn $name(arena: &Arena, args: &[usize]) -> Result<usize, String> {
             let values: Vec<Value> = numeric_vec(arena, args)?;
             check_len(&values, Some(1), None)
                 .map_err(|e| format!("{}: {}", stringify!($name), e))?;
@@ -103,7 +103,7 @@ fn div2(a: &Value, b: &Value) -> Value {
 /// function to wrap.
 macro_rules! prim_monotonic {
     ($name:ident, $pair:ident) => {
-        pub fn $name(arena: &mut Arena, args: &[usize]) -> Result<usize, String> {
+        pub fn $name(arena: &Arena, args: &[usize]) -> Result<usize, String> {
             let values: Vec<Value> = numeric_vec(arena, args)?;
             check_len(&values, Some(2), None)
                 .map_err(|e| format!("{}: {}", stringify!($name), e))?;
@@ -176,7 +176,7 @@ fn greater_than_equal2(a: &Value, b: &Value) -> bool {
 
 /// Takes an argument list (vector of arena pointers), returns a vector of numeric values or
 /// an error.
-fn numeric_vec(arena: &mut Arena, args: &[usize]) -> Result<Vec<Value>, String> {
+fn numeric_vec(arena: &Arena, args: &[usize]) -> Result<Vec<Value>, String> {
     args.iter()
         .map(|v| verify_numeric(arena.get(*v).clone()))
         .collect::<Result<Vec<_>, _>>()

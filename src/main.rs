@@ -169,7 +169,7 @@ fn rep(
             ast::to_syntax_element(arena, value_r).map_err(|e| println!("Syntax error: {}", e))?;
         println!(" => {:?}", syntax_tree);
         let start_pc = code.len();
-        compile::compile(&syntax_tree, code, environment.env.clone(), true, true)
+        compile::compile(&syntax_tree, code, environment.env.clone(), false, true)
             .map_err(|e| println!("Compilation error: {}", e))?;
         code.push(Instruction::Finish);
         println!(" => {:?}", &code[start_pc..code.len()]);
