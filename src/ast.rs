@@ -30,7 +30,7 @@
 //! Another small thing is dealing with recursive trees as allowed by R7RS.
 
 use arena::Arena;
-use util::{check_len, extract_single};
+use util::check_len;
 use value::Value;
 
 #[derive(Debug)]
@@ -166,7 +166,7 @@ fn parse_split_lambda(
     formals: usize,
     body: &[usize],
 ) -> Result<SyntaxElement, String> {
-    if body.len() == 0 {
+    if body.is_empty() {
         return Err("Lambda cannot have empty body.".into());
     }
     let formals = parse_formals(arena, formals)?;

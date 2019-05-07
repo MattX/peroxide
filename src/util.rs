@@ -26,12 +26,3 @@ pub fn check_len<T>(v: &[T], min: Option<usize>, max: Option<usize>) -> Result<(
     };
     Ok(())
 }
-
-/// Extracts a single element from a length 1 vector, or fails.
-pub fn extract_single<T>(mut v: Vec<T>) -> Result<T, String> {
-    if v.len() > 1 {
-        return Err(format!("Too many values, expecting 1 and got {}.", v.len()));
-    }
-    v.pop()
-        .ok_or_else(|| "Too few values, expecting one and got 0.".into())
-}

@@ -81,7 +81,7 @@ mod numeric;
 mod object;
 mod pair;
 
-static PRIMITIVES: [Primitive; 18] = [
+static PRIMITIVES: [Primitive; 19] = [
     Primitive {
         name: "eq?",
         implementation: eq_p,
@@ -89,6 +89,10 @@ static PRIMITIVES: [Primitive; 18] = [
     Primitive {
         name: "eqv?",
         implementation: eqv_p,
+    },
+    Primitive {
+        name: "equal?",
+        implementation: equal_p,
     },
     Primitive {
         name: "=",

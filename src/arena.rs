@@ -55,7 +55,7 @@ impl Arena {
     /// Generates a new symbol that's unique unless the programmer decides to name their own
     /// identifiers `__gensym_xyz` for some reason.
     pub fn gensym(&self, name: Option<&str>) -> usize {
-        let underscore_name = name.map(|n| format!("_{}", n)).unwrap_or("".into());
+        let underscore_name = name.map(|n| format!("_{}", n)).unwrap_or_else(|| "".into());
         self.gensym_counter.set(self.gensym_counter.get() + 1);
         self.insert(Value::Symbol(format!(
             "__gensym{}_{}",
