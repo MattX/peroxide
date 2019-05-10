@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// TODO in this file: stop calling the activation frame an environment.
+
 use arena::Arena;
 use environment::ActivationFrame;
 use std::cell::RefCell;
@@ -23,8 +25,12 @@ pub enum Instruction {
     Constant(usize),
     JumpFalse(usize),
     Jump(usize),
+    GlobalArgumentSet { index: usize },
+    GlobalArgumentGet { index: usize },
+    CheckedGlobalArgumentGet { index: usize },
     DeepArgumentSet { depth: usize, index: usize },
-    DeepArgumentGet { depth: usize, index: usize },
+    LocalArgumentGet { depth: usize, index: usize },
+    CheckedLocalArgumentGet { depth: usize, index: usize },
     CheckArity { arity: usize, dotted: bool },
     ExtendEnv,
     Return,
@@ -48,6 +54,7 @@ struct Vm<'a> {
     pc: usize,
     return_stack: Vec<usize>,
     stack: Vec<usize>,
+    global_env: usize,
     env: usize,
     fun: usize,
 }
@@ -64,6 +71,7 @@ pub fn run(
         pc,
         return_stack: Vec::new(),
         stack: Vec::new(),
+        global_env: env,
         env,
         fun: 0,
     };
@@ -76,43 +84,66 @@ pub fn run(
                 }
             }
             Instruction::Jump(offset) => vm.pc += offset,
-            Instruction::DeepArgumentSet { depth, index } => {
-                if let Value::ActivationFrame(af) = arena.get(vm.env) {
-                    af.borrow_mut().set(arena, depth, index, vm.value);
-                    vm.value = arena.unspecific;
-                } else {
-                    panic!("Environment is not an activation frame.");
+            Instruction::GlobalArgumentSet { index } => {
+                get_activation_frame(arena, vm.global_env)
+                    .borrow_mut()
+                    .set(arena, 0, index, vm.value);
+                vm.value = arena.unspecific;
+            }
+            Instruction::GlobalArgumentGet { index } => {
+                vm.value = get_activation_frame(arena, vm.global_env)
+                    .borrow()
+                    .get(arena, 0, index);
+            }
+            Instruction::CheckedGlobalArgumentGet { index } => {
+                vm.value = get_activation_frame(arena, vm.global_env)
+                    .borrow()
+                    .get(arena, 0, index);
+                if vm.value == arena.undefined {
+                    // TODO maintain a mapping and print variable name here.
+                    return Err(format!("Variable used before definition: global {}", index));
                 }
             }
-            Instruction::DeepArgumentGet { depth, index } => {
-                if let Value::ActivationFrame(af) = arena.get(vm.env) {
-                    vm.value = af.borrow().get(arena, depth, index)
-                } else {
-                    panic!("Environment is not an activation frame.");
+            Instruction::DeepArgumentSet { depth, index } => {
+                get_activation_frame(arena, vm.env)
+                    .borrow_mut()
+                    .set(arena, depth, index, vm.value);
+                vm.value = arena.unspecific;
+            }
+            Instruction::LocalArgumentGet { depth, index } => {
+                vm.value = get_activation_frame(arena, vm.env)
+                    .borrow()
+                    .get(arena, depth, index);
+            }
+            Instruction::CheckedLocalArgumentGet { depth, index } => {
+                vm.value = get_activation_frame(arena, vm.env)
+                    .borrow()
+                    .get(arena, depth, index);
+                if vm.value == arena.undefined {
+                    // TODO maintain a mapping and print variable name here.
+                    return Err(format!(
+                        "Variable used before definition: {}/{}",
+                        depth, index
+                    ));
                 }
             }
             Instruction::CheckArity { arity, dotted } => {
-                if let Value::ActivationFrame(af) = arena.get(vm.value) {
-                    let actual = af.borrow().values.len();
-                    if dotted && actual < arity {
-                        return Err(format!(
-                            "Expected at least {} arguments, got {}.",
-                            arity, actual
-                        ));
-                    } else if !dotted && actual != arity {
-                        return Err(format!("Expected {} arguments, got {}.", arity, actual));
-                    }
-                } else {
-                    panic!("Checking arity: value is not an activation frame.");
+                let actual_arity = get_activation_frame(arena, vm.value).borrow().values.len();
+                if dotted && actual_arity < arity {
+                    return Err(format!(
+                        "Expected at least {} arguments, got {}.",
+                        arity, actual_arity
+                    ));
+                } else if !dotted && actual_arity != arity {
+                    return Err(format!(
+                        "Expected {} arguments, got {}.",
+                        arity, actual_arity
+                    ));
                 }
             }
             Instruction::ExtendEnv => {
-                if let Value::ActivationFrame(af) = arena.get(vm.value) {
-                    af.borrow_mut().parent = Some(vm.env);
-                    vm.env = vm.value;
-                } else {
-                    panic!("Extending env: value is not an activation frame.");
-                }
+                get_activation_frame(arena, vm.value).borrow_mut().parent = Some(vm.env);
+                vm.env = vm.value;
             }
             Instruction::Return => {
                 vm.pc = vm
@@ -127,15 +158,11 @@ pub fn run(
                 })
             }
             Instruction::PackFrame(arity) => {
-                if let Value::ActivationFrame(af) = arena.get(vm.value) {
-                    let mut borrowed_frame = af.borrow_mut();
-                    let frame_len = std::cmp::max(arity, borrowed_frame.values.len());
-                    let listified = list_from_vec(arena, &borrowed_frame.values[arity..frame_len]);
-                    borrowed_frame.values.resize(arity + 1, 0);
-                    borrowed_frame.values[arity] = listified;
-                } else {
-                    panic!("Packing non-activation frame.");
-                }
+                let mut borrowed_frame = get_activation_frame(arena, vm.value).borrow_mut();
+                let frame_len = std::cmp::max(arity, borrowed_frame.values.len());
+                let listified = list_from_vec(arena, &borrowed_frame.values[arity..frame_len]);
+                borrowed_frame.values.resize(arity + 1, 0);
+                borrowed_frame.values[arity] = listified;
             }
             Instruction::PreserveEnv => {
                 vm.stack.push(vm.env);
@@ -203,12 +230,11 @@ pub fn run(
                 vm.value = arena.insert(Value::ActivationFrame(RefCell::new(frame)));
             }
             Instruction::ExtendFrame => {
-                if let Value::ActivationFrame(af) = arena.get(vm.env) {
-                    af.borrow_mut().values.push(vm.value);
-                    vm.value = arena.unspecific;
-                } else {
-                    panic!("Environment is not an activation frame.");
-                }
+                get_activation_frame(arena, vm.env)
+                    .borrow_mut()
+                    .values
+                    .push(vm.value);
+                vm.value = arena.unspecific;
             }
             Instruction::NoOp => return Err("NoOp encountered.".into()),
             Instruction::Finish => break,
@@ -216,4 +242,12 @@ pub fn run(
         vm.pc += 1;
     }
     Ok(vm.value)
+}
+
+fn get_activation_frame(arena: &Arena, env: usize) -> &RefCell<ActivationFrame> {
+    if let Value::ActivationFrame(ref af) = arena.get(env) {
+        af
+    } else {
+        panic!("Value is not an activation frame.");
+    }
 }

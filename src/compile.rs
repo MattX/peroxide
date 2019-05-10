@@ -53,24 +53,16 @@ pub fn compile(
             compile_sequence(&b.expressions, to, env.clone(), tail)?;
         }
         SyntaxElement::Set(s) => {
-            if let Some(EnvironmentValue::Variable(Variable {
-                altitude, index, ..
-            })) = env.borrow().get(&s.variable)
-            {
-                let depth = env.borrow().depth(altitude);
+            if let Some(EnvironmentValue::Variable(v)) = env.borrow().get(&s.variable) {
                 compile(&s.value, to, env.clone(), false, false)?;
-                to.push(Instruction::DeepArgumentSet { depth, index });
+                to.push(make_set_instruction(&env, &v));
             } else {
                 return Err(format!("Undefined value {}.", &s.variable));
             }
         }
         SyntaxElement::Reference(r) => {
-            if let Some(EnvironmentValue::Variable(Variable {
-                altitude, index, ..
-            })) = env.borrow().get(&r.variable)
-            {
-                let depth = env.borrow().depth(altitude);
-                to.push(Instruction::DeepArgumentGet { depth, index });
+            if let Some(EnvironmentValue::Variable(v)) = env.borrow().get(&r.variable) {
+                to.push(make_get_instruction(&env, &v));
             } else {
                 return Err(format!("Undefined value {}.", &r.variable));
             }
@@ -107,20 +99,18 @@ pub fn compile(
             to[skip_pos] = Instruction::Jump(to.len() - skip_pos - 1);
         }
         SyntaxElement::Define(d) => {
+            // TODO all top-level defines should actually cause a frame extension immediately,
+            //      not after the expression is evaluated. There is currently a bug where a failing
+            //      define will permanently make env and af out of sync.
             if toplevel {
                 // TODO refactor this to share code with set!
                 // The prt here doesn't sound super useful but it makes sure the borrow doesn't
                 // live into the `else` block, where it would conflict with the borrow_mut.
-                // Some((usize, usize)) is a Copy type, so the borrow can be dropped.
 
                 let ptr = env.borrow().get(&d.variable);
-                if let Some(EnvironmentValue::Variable(Variable {
-                    altitude, index, ..
-                })) = ptr
-                {
+                if let Some(EnvironmentValue::Variable(v)) = ptr {
                     compile(&d.value, to, env.clone(), false, false)?;
-                    let depth = env.borrow().depth(altitude);
-                    to.push(Instruction::DeepArgumentSet { depth, index });
+                    to.push(make_set_instruction(&env, &v));
                 } else {
                     env.borrow_mut().define(&d.variable, true);
                     compile(&d.value, to, env.clone(), false, false)?;
@@ -170,4 +160,24 @@ fn compile_sequence(
         false,
     )?;
     Ok(to.len() - initial_len)
+}
+
+fn make_get_instruction(env: &RcEnv, variable: &Variable) -> Instruction {
+    let depth = env.borrow().depth(variable.altitude);
+    let index = variable.index;
+    match (variable.altitude, variable.initialized) {
+        (0, true) => Instruction::GlobalArgumentGet { index },
+        (0, false) => Instruction::CheckedGlobalArgumentGet { index },
+        (_, true) => Instruction::LocalArgumentGet { depth, index },
+        (_, false) => Instruction::CheckedLocalArgumentGet { depth, index },
+    }
+}
+
+fn make_set_instruction(env: &RcEnv, variable: &Variable) -> Instruction {
+    let depth = env.borrow().depth(variable.altitude);
+    let index = variable.index;
+    match variable.altitude {
+        0 => Instruction::GlobalArgumentSet { index },
+        _ => Instruction::DeepArgumentSet { depth, index },
+    }
 }

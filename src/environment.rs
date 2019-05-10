@@ -85,11 +85,11 @@ impl Environment {
         index
     }
 
-    pub fn define_toplevel(&mut self, name: &str, initialized: bool) -> usize {
+    pub fn define_implicit(&mut self, name: &str) -> usize {
         if let Some(ref e) = self.parent {
-            e.borrow_mut().define_toplevel(name, initialized)
+            e.borrow_mut().define_implicit(name)
         } else {
-            self.define(name, initialized)
+            self.define(name, false)
         }
     }
 
@@ -116,17 +116,14 @@ impl Environment {
 
     pub fn mark_initialized(&mut self, name: &str) {
         match self.values.get_mut(name) {
-            Some(EnvironmentValue::Variable(v)) => {
-                if v.initialized {
-                    panic!("Tried to mark already-initialized value as initialized");
-                } else {
-                    v.initialized = false;
-                }
-            }
+            Some(EnvironmentValue::Variable(v)) => v.initialized = true,
             Some(_) => panic!("Tried to mark non-variable as initialized"),
             None => match self.parent {
                 Some(ref e) => e.borrow_mut().mark_initialized(name),
-                None => panic!("Tried to mark nonexistent variable {} as initialized", name),
+                None => panic!(
+                    "Tried to mark nonexistent variable `{}` as initialized",
+                    name
+                ),
             },
         }
     }
