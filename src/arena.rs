@@ -22,6 +22,7 @@ pub struct Arena {
     values: Gc<Value>,
     symbol_map: RefCell<HashMap<String, usize>>,
     gensym_counter: Cell<usize>,
+    pub undefined: usize,
     pub unspecific: usize,
     pub empty_list: usize,
     pub t: usize,
@@ -32,6 +33,7 @@ impl Arena {
     /// Moves a value into the arena, and returns a pointer to its new position.
     pub fn insert(&self, v: Value) -> usize {
         match v {
+            Value::Undefined => self.undefined,
             Value::Unspecific => self.unspecific,
             Value::EmptyList => self.empty_list,
             Value::Boolean(true) => self.t,
@@ -54,6 +56,7 @@ impl Arena {
 
     /// Generates a new symbol that's unique unless the programmer decides to name their own
     /// identifiers `__gensym_xyz` for some reason.
+    /// TODO either remove this or make it check if the symbol is actually unique
     pub fn gensym(&self, name: Option<&str>) -> usize {
         let underscore_name = name.map(|n| format!("_{}", n)).unwrap_or_else(|| "".into());
         self.gensym_counter.set(self.gensym_counter.get() + 1);
@@ -81,6 +84,7 @@ impl Arena {
 impl Default for Arena {
     fn default() -> Self {
         let values = Gc::default();
+        let undefined = values.insert(Value::Undefined);
         let unspecific = values.insert(Value::Unspecific);
         let empty_list = values.insert(Value::EmptyList);
         let f = values.insert(Value::Boolean(false));
@@ -89,6 +93,7 @@ impl Default for Arena {
             values,
             symbol_map: RefCell::new(HashMap::new()),
             gensym_counter: Cell::new(0),
+            undefined,
             unspecific,
             empty_list,
             f,
@@ -103,7 +108,7 @@ mod tests {
 
     use super::*;
 
-    const BASE_ENTRY: usize = 4;
+    const BASE_ENTRY: usize = 5;
 
     #[test]
     fn add_empty() {

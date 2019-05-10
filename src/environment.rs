@@ -16,9 +16,12 @@
 //!  * The `Environment` struct holds a mapping of names to (depth, index) coordinates
 //!  * The `ActivationFrame` struct holds a mapping of (depth, index) coordinates to locations
 //!    in the Arena.
+//!
+//! By convention, depth refers to the distance to the current environment (so 0 is the most
+//! local environment), and altitude refers to the distance to the global environment (so 0 is
+//! the global environment).
 
 use arena::Arena;
-use macroexpand::SyntaxRules;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::option::Option;
@@ -28,27 +31,33 @@ use value::Value;
 #[derive(Debug)]
 pub struct Environment {
     parent: Option<Rc<RefCell<Environment>>>,
-    depth: usize,
+    altitude: usize,
     variable_count: usize,
     values: HashMap<String, EnvironmentValue>,
 }
 
-// The Rc<> in Macro is here to silence the borrow checker, which complains that although the
-// reference returned by get() will not outlive the current environment, there are no guarantees
-// that it will not outlive the parent environment. This is sort of true but should never happen.
-// Adding this Rc<> is cheap (and it's a compilation-phase thing), so here it is.
 #[derive(Debug, Clone)]
 pub enum EnvironmentValue {
-    Macro(Rc<SyntaxRules>),
-    Variable(usize),
+    Macro(usize),
+    Variable(Variable),
+}
+
+#[derive(Debug, Clone)]
+pub struct Variable {
+    pub altitude: usize,
+    pub index: usize,
+    pub initialized: bool,
 }
 
 impl Environment {
     pub fn new(parent: Option<Rc<RefCell<Environment>>>) -> Environment {
-        let depth = parent.as_ref().map(|p| p.borrow().depth + 1).unwrap_or(0);
+        let altitude = parent
+            .as_ref()
+            .map(|p| p.borrow().altitude + 1)
+            .unwrap_or(0);
         Environment {
             parent,
-            depth,
+            altitude,
             variable_count: 0,
             values: HashMap::new(),
         }
@@ -57,40 +66,69 @@ impl Environment {
     pub fn new_initial(parent: Option<Rc<RefCell<Environment>>>, bindings: &[&str]) -> Environment {
         let mut env = Environment::new(parent);
         for identifier in bindings.iter() {
-            env.define(identifier);
+            env.define(identifier, true);
         }
         env
     }
 
-    pub fn define(&mut self, name: &str) -> usize {
-        let value_index = self.variable_count;
+    pub fn define(&mut self, name: &str, initialized: bool) -> usize {
+        let index = self.variable_count;
         self.variable_count += 1;
-        self.values
-            .insert(name.to_string(), EnvironmentValue::Variable(value_index));
-        value_index
+        self.values.insert(
+            name.to_string(),
+            EnvironmentValue::Variable(Variable {
+                altitude: self.altitude,
+                index,
+                initialized,
+            }),
+        );
+        index
     }
 
-    pub fn define_macro(&mut self, name: &str, value: SyntaxRules) {
-        self.values
-            .insert(name.to_string(), EnvironmentValue::Macro(Rc::new(value)));
+    pub fn define_toplevel(&mut self, name: &str, initialized: bool) -> usize {
+        if let Some(ref e) = self.parent {
+            e.borrow_mut().define_toplevel(name, initialized)
+        } else {
+            self.define(name, initialized)
+        }
     }
 
-    pub fn get(&self, name: &str) -> Option<(usize, EnvironmentValue)> {
+    pub fn define_macro(&mut self, name: &str, value: usize) {
+        self.values
+            .insert(name.to_string(), EnvironmentValue::Macro(value));
+    }
+
+    pub fn get(&self, name: &str) -> Option<EnvironmentValue> {
         if self.values.contains_key(name) {
-            self.values.get(name).map(|ev| (0, ev.clone()))
+            self.values.get(name).cloned()
         } else if let Some(ref e) = self.parent {
-            e.borrow().get(name).map(|(d, ev)| (d + 1, ev))
+            e.borrow().get(name)
         } else {
             None
         }
     }
 
-    pub fn get_absolute(&self, name: &str) -> Option<(usize, EnvironmentValue)> {
-        self.get(name).map(|(d, ev)| (self.depth - d, ev))
+    /// Returns the depth of a variable of the given altitude, assuming this environment is
+    /// current.
+    pub fn depth(&self, altitude: usize) -> usize {
+        self.altitude - altitude
     }
 
-    pub fn absolute_to_relative(&self, absolute_depth: usize) -> usize {
-        self.depth - absolute_depth
+    pub fn mark_initialized(&mut self, name: &str) {
+        match self.values.get_mut(name) {
+            Some(EnvironmentValue::Variable(v)) => {
+                if v.initialized {
+                    panic!("Tried to mark already-initialized value as initialized");
+                } else {
+                    v.initialized = false;
+                }
+            }
+            Some(_) => panic!("Tried to mark non-variable as initialized"),
+            None => match self.parent {
+                Some(ref e) => e.borrow_mut().mark_initialized(name),
+                None => panic!("Tried to mark nonexistent variable {} as initialized", name),
+            },
+        }
     }
 }
 

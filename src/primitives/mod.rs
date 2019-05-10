@@ -15,7 +15,7 @@
 //! Naming conventions in Rust: replace `?` with `_p`, `!` with `_b`, `->` with `_to_`.
 //!
 //! ### Needed
-//! OK~ eq? eqv?
+//! OK~ eq? eqv? equal?
 //!
 //! number? complex? real? rational? integer?
 //! exact? inexact?
@@ -193,7 +193,7 @@ pub fn register_primitives(arena: &mut Arena, e: &mut CombinedEnv) {
         panic!("Frame is not actually an activation frame");
     };
     for (prim, interned) in PRIMITIVES.iter().zip(primitive_indices.into_iter()) {
-        borrowed_env.define(prim.name);
+        borrowed_env.define(prim.name, true);
         frame.values.push(interned);
     }
 }

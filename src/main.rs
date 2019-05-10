@@ -35,7 +35,6 @@ mod compile;
 mod environment;
 mod gc;
 mod lex;
-mod macroexpand;
 mod parse;
 mod primitives;
 mod repl;

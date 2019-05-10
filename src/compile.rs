@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use ast::SyntaxElement;
-use environment::{Environment, EnvironmentValue, RcEnv};
+use environment::{Environment, EnvironmentValue, RcEnv, Variable};
 use std::cell::RefCell;
 use std::rc::Rc;
 use vm::Instruction;
@@ -53,8 +53,11 @@ pub fn compile(
             compile_sequence(&b.expressions, to, env.clone(), tail)?;
         }
         SyntaxElement::Set(s) => {
-            if let Some((depth, EnvironmentValue::Variable(index))) = env.borrow().get(&s.variable)
+            if let Some(EnvironmentValue::Variable(Variable {
+                altitude, index, ..
+            })) = env.borrow().get(&s.variable)
             {
+                let depth = env.borrow().depth(altitude);
                 compile(&s.value, to, env.clone(), false, false)?;
                 to.push(Instruction::DeepArgumentSet { depth, index });
             } else {
@@ -62,8 +65,11 @@ pub fn compile(
             }
         }
         SyntaxElement::Reference(r) => {
-            if let Some((depth, EnvironmentValue::Variable(index))) = env.borrow().get(&r.variable)
+            if let Some(EnvironmentValue::Variable(Variable {
+                altitude, index, ..
+            })) = env.borrow().get(&r.variable)
             {
+                let depth = env.borrow().depth(altitude);
                 to.push(Instruction::DeepArgumentGet { depth, index });
             } else {
                 return Err(format!("Undefined value {}.", &r.variable));
@@ -108,11 +114,15 @@ pub fn compile(
                 // Some((usize, usize)) is a Copy type, so the borrow can be dropped.
 
                 let ptr = env.borrow().get(&d.variable);
-                if let Some((depth, EnvironmentValue::Variable(index))) = ptr {
+                if let Some(EnvironmentValue::Variable(Variable {
+                    altitude, index, ..
+                })) = ptr
+                {
                     compile(&d.value, to, env.clone(), false, false)?;
+                    let depth = env.borrow().depth(altitude);
                     to.push(Instruction::DeepArgumentSet { depth, index });
                 } else {
-                    env.borrow_mut().define(&d.variable);
+                    env.borrow_mut().define(&d.variable, true);
                     compile(&d.value, to, env.clone(), false, false)?;
                     to.push(Instruction::ExtendFrame);
                 }

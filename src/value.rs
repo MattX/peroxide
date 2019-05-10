@@ -23,6 +23,7 @@ use primitives::Primitive;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {
+    Undefined,
     Unspecific,
     Real(f64),
     Integer(i64),
@@ -41,6 +42,7 @@ pub enum Value {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Value::Undefined => write!(f, "#undefined"),
             Value::Unspecific => write!(f, "#unspecific"),
             Value::Real(r) => write!(f, "{}", r),
             Value::Integer(i) => write!(f, "{}", i),
@@ -218,6 +220,7 @@ pub fn eqv(arena: &Arena, left: usize, right: usize) -> bool {
     }
 }
 
+//TODO should not loop on recursive data (R7RS)
 pub fn equal(arena: &Arena, left: usize, right: usize) -> bool {
     match (arena.get(left), arena.get(right)) {
         (Value::Pair(left_car, left_cdr), Value::Pair(right_car, right_cdr)) => {
