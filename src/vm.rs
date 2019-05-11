@@ -42,7 +42,7 @@ pub enum Instruction {
     PopFunction,
     FunctionInvoke { tail: bool },
     CreateFrame(usize),
-    ExtendFrame,
+    TopLevelDefine(usize),
     NoOp,
     Finish,
 }
@@ -229,13 +229,7 @@ pub fn run(
                 }
                 vm.value = arena.insert(Value::ActivationFrame(RefCell::new(frame)));
             }
-            Instruction::ExtendFrame => {
-                get_activation_frame(arena, vm.env)
-                    .borrow_mut()
-                    .values
-                    .push(vm.value);
-                vm.value = arena.unspecific;
-            }
+            Instruction::TopLevelDefine(index) => {}
             Instruction::NoOp => return Err("NoOp encountered.".into()),
             Instruction::Finish => break,
         }
@@ -244,10 +238,7 @@ pub fn run(
     Ok(vm.value)
 }
 
+// TODO remove this
 fn get_activation_frame(arena: &Arena, env: usize) -> &RefCell<ActivationFrame> {
-    if let Value::ActivationFrame(ref af) = arena.get(env) {
-        af
-    } else {
-        panic!("Value is not an activation frame.");
-    }
+    arena.get_activation_frame(env)
 }

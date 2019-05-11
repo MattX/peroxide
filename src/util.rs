@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::cmp::max;
+
 /// Checks that a vector has at least `min`, at most `max` entries.
 // TODO this is not really idiomatic and should probably be made to return a boolean
 pub fn check_len<T>(v: &[T], min: Option<usize>, max: Option<usize>) -> Result<(), String> {
@@ -26,4 +28,11 @@ pub fn check_len<T>(v: &[T], min: Option<usize>, max: Option<usize>) -> Result<(
         }
     };
     Ok(())
+}
+
+pub fn max_optional<T: Ord + Copy>(a: Option<T>, b: Option<T>) -> Option<T> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(max(a, b)),
+        _ => a.or(b),
+    }
 }

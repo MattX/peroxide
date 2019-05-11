@@ -21,6 +21,8 @@
 //!    I'm also not sure how to handle hygiene for macros.
 //!  * A similar but simpler concern is keeping track of any keywords that have been redefined.
 //!
+//! This step is also responsible for computing all references.
+//!
 //! Once the data has been read, we can drop all of the code we've read and keep only the quotes.
 //! I think the easiest way to do this would be to use two separate arenas for the pre-AST and
 //! post-AST values.
@@ -31,7 +33,7 @@ use arena::Arena;
 use environment::{Environment, EnvironmentValue, RcEnv};
 use std::cell::RefCell;
 use std::rc::Rc;
-use util::check_len;
+use util::{check_len, max_optional};
 use value::Value;
 
 #[derive(Debug)]
@@ -41,8 +43,8 @@ pub enum SyntaxElement {
     If(Box<If>),
     Begin(Box<Begin>),
     Lambda(Box<Lambda>),
-    Define(Box<Define>),
-    Set(Box<Set>),
+    TopLevelDefine(Box<SetOrDefine>),
+    Set(Box<SetOrDefine>),
     Application(Box<Application>),
 }
 
@@ -74,19 +76,14 @@ pub struct Begin {
 #[derive(Debug)]
 pub struct Lambda {
     pub env: RcEnv,
+    pub arity: usize,
+    pub dotted: bool,
     pub defines: Vec<SyntaxElement>,
     pub expressions: Vec<SyntaxElement>,
 }
 
 #[derive(Debug)]
-pub struct Define {
-    pub altitude: usize,
-    pub index: usize,
-    pub value: SyntaxElement,
-}
-
-#[derive(Debug)]
-pub struct Set {
+pub struct SetOrDefine {
     pub altitude: usize,
     pub index: usize,
     pub value: SyntaxElement,
@@ -201,6 +198,7 @@ fn parse_lambda(arena: &Arena, env: &RcEnv, rest: &[usize]) -> Result<SyntaxElem
     parse_split_lambda(arena, env, rest[0], &rest[1..rest.len()])
 }
 
+// TODO parse internal defines
 fn parse_split_lambda(
     arena: &Arena,
     env: &RcEnv,
@@ -222,6 +220,8 @@ fn parse_split_lambda(
         .collect::<Result<Vec<_>, _>>()?;
     Ok(SyntaxElement::Lambda(Box::new(Lambda {
         env,
+        arity: formals.values.len(),
+        dotted: formals.rest.is_some(),
         defines: vec![],
         expressions,
     })))
@@ -232,7 +232,7 @@ fn parse_set(arena: &Arena, env: &RcEnv, rest: &[usize]) -> Result<SyntaxElement
     if let Value::Symbol(name) = arena.get(rest[0]) {
         let value = to_syntax_element(arena, env, rest[1], false)?;
         match env.borrow().get(name) {
-            Some(EnvironmentValue::Variable(v)) => Ok(SyntaxElement::Set(Box::new(Set {
+            Some(EnvironmentValue::Variable(v)) => Ok(SyntaxElement::Set(Box::new(SetOrDefine {
                 altitude: v.altitude,
                 index: v.index,
                 value,
@@ -271,16 +271,21 @@ fn parse_define(
         }
         _ => parse_lambda_define(arena, env, rest)?,
     };
-    let index = env.borrow_mut().define_if_absent(&symbol, false);
+    let (exists, index) = env.borrow_mut().define_if_absent(&symbol, false);
     let value = match define_value {
         DefineValue::Value(v) => to_syntax_element(arena, env, v, false)?,
         DefineValue::Lambda { formals, body } => parse_split_lambda(arena, env, formals, &body)?,
     };
-    Ok(SyntaxElement::Define(Box::new(Define {
+    let sod = SetOrDefine {
         altitude: 0,
         index,
         value,
-    })))
+    };
+    if exists {
+        Ok(SyntaxElement::Set(Box::new(sod)))
+    } else {
+        Ok(SyntaxElement::TopLevelDefine(Box::new(sod)))
+    }
 }
 
 /// Helper method to parse direct lambda defines `(define (x y z) y z)`.
@@ -368,4 +373,50 @@ fn collect_defines(
     body: &[SyntaxElement],
 ) -> Result<(Vec<SyntaxElement>, &[SyntaxElement]), String> {
     unimplemented!()
+}
+
+/// Returns the largest toplevel reference encountered in the tree, if any.
+pub fn largest_toplevel_reference(se: &SyntaxElement) -> Option<usize> {
+    match se {
+        SyntaxElement::Reference(r) => match (r.altitude, r.index) {
+            (0, i) => Some(i),
+            _ => None,
+        },
+        SyntaxElement::Lambda(l) => {
+            let largest_in_defines = l
+                .defines
+                .iter()
+                .map(largest_toplevel_reference)
+                .fold(None, max_optional);
+            let largest_in_body = l
+                .expressions
+                .iter()
+                .map(largest_toplevel_reference)
+                .fold(None, max_optional);
+            max_optional(largest_in_defines, largest_in_body)
+        }
+        SyntaxElement::Begin(b) => b
+            .expressions
+            .iter()
+            .map(largest_toplevel_reference)
+            .fold(None, max_optional),
+        SyntaxElement::Set(s) => largest_toplevel_reference(&s.value),
+        SyntaxElement::TopLevelDefine(t) => largest_toplevel_reference(&t.value),
+        SyntaxElement::Quote(_) => None,
+        SyntaxElement::If(i) => max_optional(
+            largest_toplevel_reference(&i.cond),
+            max_optional(
+                largest_toplevel_reference(&i.t),
+                (&i.f).as_ref().and_then(largest_toplevel_reference),
+            ),
+        ),
+        SyntaxElement::Application(a) => {
+            let largest_in_args = a
+                .args
+                .iter()
+                .map(largest_toplevel_reference)
+                .fold(None, max_optional);
+            max_optional(largest_toplevel_reference(&a.function), largest_in_args)
+        }
+    }
 }

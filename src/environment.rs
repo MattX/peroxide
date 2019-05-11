@@ -72,7 +72,7 @@ impl Environment {
     ) -> Environment {
         let mut env = Environment::new(parent);
         for identifier in bindings.iter() {
-            env.define(identifier, true);
+            env.define(identifier.as_ref(), true);
         }
         env
     }
@@ -97,10 +97,12 @@ impl Environment {
     }
 
     /// Define a variable if it is not already present. Used for top-level defines.
-    pub fn define_if_absent(&mut self, name: &str, initialized: bool) -> usize {
+    ///
+    /// Returns a pair of (whether the value already existed, index)
+    pub fn define_if_absent(&mut self, name: &str, initialized: bool) -> (bool, usize) {
         match self.get(name) {
-            Some(EnvironmentValue::Variable(v)) => v.index,
-            _ => self.define(name, initialized),
+            Some(EnvironmentValue::Variable(v)) => (true, v.index),
+            _ => (false, self.define(name, initialized)),
         }
     }
 
@@ -152,6 +154,7 @@ impl Environment {
 
 pub type RcEnv = Rc<RefCell<Environment>>;
 
+// TODO make these fields private and have proper accessors
 #[derive(Debug, PartialEq, Clone)]
 pub struct ActivationFrame {
     pub parent: Option<usize>,
@@ -176,6 +179,19 @@ impl ActivationFrame {
             p.borrow().get(arena, depth - 1, index)
         } else {
             panic!("Accessing depth with no parent.")
+        }
+    }
+
+    /// Guarantees that subsequent gets to `index`, or any lower index, on the toplevel
+    /// environment, will be in bounds.
+    ///
+    /// Can only be called on the toplevel environment itself.
+    pub fn ensure_index(&mut self, arena: &Arena, index: usize) {
+        if self.parent.is_some() {
+            panic!("ActivationFrame::ensure_size() called on non-root activation frame.");
+        }
+        if index >= self.values.len() {
+            self.values.resize(index + 1, arena.undefined)
         }
     }
 

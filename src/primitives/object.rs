@@ -32,6 +32,7 @@ pub fn equal_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     Ok(arena.insert(Value::Boolean(value::equal(arena, args[0], args[1]))))
 }
 
+// TODO rename this to write and create an actual display method.
 pub fn display(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     for a in args.iter() {
         print!("{} ", arena.get(*a).pretty_print(arena));

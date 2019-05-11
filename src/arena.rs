@@ -15,6 +15,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
+use environment::ActivationFrame;
 use gc::Gc;
 use value::Value;
 
@@ -70,6 +71,14 @@ impl Arena {
     /// Given a position in the arena, returns a reference to the value at that location.
     pub fn get(&self, at: usize) -> &Value {
         self.values.get(at)
+    }
+
+    pub fn get_activation_frame(&self, at: usize) -> &RefCell<ActivationFrame> {
+        if let Value::ActivationFrame(ref af) = self.get(at) {
+            af
+        } else {
+            panic!("Value is not an activation frame.");
+        }
     }
 
     pub fn insert_pair(&self, car: usize, cdr: usize) -> usize {

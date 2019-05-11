@@ -18,6 +18,8 @@ extern crate rustyline;
 use std::env;
 
 use arena::Arena;
+use ast::largest_toplevel_reference;
+use core::borrow::BorrowMut;
 use environment::{ActivationFrame, CombinedEnv, Environment};
 use lex::SegmentationResult;
 use lex::Token;
@@ -164,11 +166,17 @@ fn rep(
         let parse_value =
             parse::parse(arena, &token_vector).map_err(|e| println!("Parsing error: {:?}", e))?;
         let value_r = arena.insert(parse_value);
-        let syntax_tree = ast::to_syntax_element(arena, &environment.env, value_r)
+        let syntax_tree = ast::to_syntax_element(arena, &environment.env, value_r, true)
             .map_err(|e| println!("Syntax error: {}", e))?;
         println!(" => {:?}", syntax_tree);
+        if let Some(n) = largest_toplevel_reference(&syntax_tree) {
+            arena
+                .get_activation_frame(environment.frame)
+                .borrow_mut()
+                .ensure_index(arena, n);
+        }
         let start_pc = code.len();
-        compile::compile(&syntax_tree, code, environment.env.clone(), false, true)
+        compile::compile(&syntax_tree, code, &environment.env, false, true)
             .map_err(|e| println!("Compilation error: {}", e))?;
         code.push(Instruction::Finish);
         println!(" => {:?}", &code[start_pc..code.len()]);

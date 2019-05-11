@@ -18,12 +18,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use vm::Instruction;
 
-// This needs an RcEnv, not an &mut Env, because the Environment's count can get increased
-// through creating children environments.
 pub fn compile(
     tree: &SyntaxElement,
     to: &mut Vec<Instruction>,
-    env: RcEnv,
+    env: &RcEnv,
     tail: bool,
     toplevel: bool,
 ) -> Result<usize, String> {
@@ -36,95 +34,58 @@ pub fn compile(
             to.push(Instruction::Constant(q.quoted));
         }
         SyntaxElement::If(i) => {
-            compile(&i.cond, to, env.clone(), false, false)?;
+            compile(&i.cond, to, env, false, false)?;
             let conditional_jump_idx = to.len();
             to.push(Instruction::NoOp); // Is rewritten as a conditional jump below
-            compile(&i.t, to, env.clone(), tail, false)?;
+            compile(&i.t, to, env, tail, false)?;
             let mut true_end = to.len();
             if let Some(ref f) = i.f {
                 to.push(Instruction::NoOp);
                 true_end += 1;
-                compile(f, to, env.clone(), tail, false)?;
+                compile(f, to, env, tail, false)?;
                 to[true_end - 1] = Instruction::Jump(to.len() - true_end);
             }
             to[conditional_jump_idx] = Instruction::JumpFalse(true_end - conditional_jump_idx - 1);
         }
         SyntaxElement::Begin(b) => {
-            compile_sequence(&b.expressions, to, env.clone(), tail)?;
+            compile_sequence(&b.expressions, to, env, tail)?;
         }
         SyntaxElement::Set(s) => {
-            if let Some(EnvironmentValue::Variable(v)) = env.borrow().get(&s.variable) {
-                compile(&s.value, to, env.clone(), false, false)?;
-                to.push(make_set_instruction(&env, &v));
-            } else {
-                return Err(format!("Undefined value {}.", &s.variable));
-            }
+            compile(&s.value, to, env, false, false)?;
+            to.push(make_set_instruction(env, s.altitude, s.index));
         }
         SyntaxElement::Reference(r) => {
-            if let Some(EnvironmentValue::Variable(v)) = env.borrow().get(&r.variable) {
-                to.push(make_get_instruction(&env, &v));
-            } else {
-                return Err(format!("Undefined value {}.", &r.variable));
-            }
+            to.push(make_get_instruction(env, r.altitude, r.index));
         }
         SyntaxElement::Lambda(l) => {
-            let arity = l.formals.values.len();
-            let dotted = l.formals.rest.is_some();
-
             to.push(Instruction::CreateClosure(1));
             let skip_pos = to.len();
             to.push(Instruction::NoOp); // Will be replaced with over function code
-            to.push(Instruction::CheckArity { arity, dotted });
-            if dotted {
-                to.push(Instruction::PackFrame(arity));
+            to.push(Instruction::CheckArity {
+                arity: l.arity,
+                dotted: l.dotted,
+            });
+            if l.dotted {
+                to.push(Instruction::PackFrame(l.arity));
             }
             to.push(Instruction::ExtendEnv);
 
-            let mut formal_name_refs: Vec<_> = l
-                .formals
-                .values
-                .iter()
-                .map(std::ops::Deref::deref)
-                .collect();
-            if let Some(ref rest) = l.formals.rest {
-                formal_name_refs.push(rest);
-            }
-            let lambda_env = Rc::new(RefCell::new(Environment::new_initial(
-                Some(env.clone()),
-                &formal_name_refs,
-            )));
+            // TODO compile internal defines. Also edit code above to extend environment
+            //      for internal defines.
 
-            compile_sequence(&l.expressions, to, lambda_env.clone(), true)?;
+            compile_sequence(&l.expressions, to, &l.env, true)?;
             to.push(Instruction::Return);
             to[skip_pos] = Instruction::Jump(to.len() - skip_pos - 1);
         }
-        SyntaxElement::Define(d) => {
-            // TODO all top-level defines should actually cause a frame extension immediately,
-            //      not after the expression is evaluated. There is currently a bug where a failing
-            //      define will permanently make env and af out of sync.
-            if toplevel {
-                // TODO refactor this to share code with set!
-                // The prt here doesn't sound super useful but it makes sure the borrow doesn't
-                // live into the `else` block, where it would conflict with the borrow_mut.
-
-                let ptr = env.borrow().get(&d.variable);
-                if let Some(EnvironmentValue::Variable(v)) = ptr {
-                    compile(&d.value, to, env.clone(), false, false)?;
-                    to.push(make_set_instruction(&env, &v));
-                } else {
-                    env.borrow_mut().define(&d.variable, true);
-                    compile(&d.value, to, env.clone(), false, false)?;
-                    to.push(Instruction::ExtendFrame);
-                }
-            } else {
-                return Err("Non-top-level defines not yet supported.".into());
-            }
+        SyntaxElement::TopLevelDefine(d) => {
+            compile(&d.value, to, env, false, false)?;
+            to.push(Instruction::TopLevelDefine(d.index));
         }
         SyntaxElement::Application(a) => {
-            compile(&a.function, to, env.clone(), false, false)?;
+            compile(&a.function, to, env, false, false)?;
             to.push(Instruction::PushValue);
             for instr in a.args.iter() {
-                compile(instr, to, env.clone(), false, false)?;
+                compile(instr, to, env, false, false)?;
                 to.push(Instruction::PushValue);
             }
             to.push(Instruction::CreateFrame(a.args.len()));
@@ -144,28 +105,27 @@ pub fn compile(
 fn compile_sequence(
     expressions: &[SyntaxElement],
     to: &mut Vec<Instruction>,
-    env: RcEnv,
+    env: &RcEnv,
     tail: bool,
 ) -> Result<usize, String> {
     let initial_len = to.len();
     for instr in expressions[..expressions.len() - 1].iter() {
-        compile(instr, to, env.clone(), false, false)?;
+        compile(instr, to, env, false, false)?;
     }
     compile(
         // This should have been caught at the syntax step.
         expressions.last().expect("Empty sequence."),
         to,
-        env.clone(),
+        env,
         tail,
         false,
     )?;
     Ok(to.len() - initial_len)
 }
 
-fn make_get_instruction(env: &RcEnv, variable: &Variable) -> Instruction {
-    let depth = env.borrow().depth(variable.altitude);
-    let index = variable.index;
-    match (variable.altitude, variable.initialized) {
+fn make_get_instruction(env: &RcEnv, altitude: usize, index: usize) -> Instruction {
+    let depth = env.borrow().depth(altitude);
+    match (altitude, false) {
         (0, true) => Instruction::GlobalArgumentGet { index },
         (0, false) => Instruction::CheckedGlobalArgumentGet { index },
         (_, true) => Instruction::LocalArgumentGet { depth, index },
@@ -173,10 +133,9 @@ fn make_get_instruction(env: &RcEnv, variable: &Variable) -> Instruction {
     }
 }
 
-fn make_set_instruction(env: &RcEnv, variable: &Variable) -> Instruction {
-    let depth = env.borrow().depth(variable.altitude);
-    let index = variable.index;
-    match variable.altitude {
+fn make_set_instruction(env: &RcEnv, altitude: usize, index: usize) -> Instruction {
+    let depth = env.borrow().depth(altitude);
+    match altitude {
         0 => Instruction::GlobalArgumentSet { index },
         _ => Instruction::DeepArgumentSet { depth, index },
     }
