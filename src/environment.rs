@@ -13,9 +13,10 @@
 // limitations under the License.
 
 //! Environments are split into two parts for performance reasons:
-//!  * The `Environment` struct holds a mapping of names to (depth, index) coordinates
+//!  * The `Environment` struct holds a mapping of names to (depth, index) coordinates. It's used
+//!    at compilation time.
 //!  * The `ActivationFrame` struct holds a mapping of (depth, index) coordinates to locations
-//!    in the Arena.
+//!    in the Arena. It's used at runtime.
 //!
 //! By convention, depth refers to the distance to the current environment (so 0 is the most
 //! local environment), and altitude refers to the distance to the global environment (so 0 is
@@ -32,8 +33,10 @@ use value::Value;
 pub struct Environment {
     parent: Option<Rc<RefCell<Environment>>>,
     altitude: usize,
-    variable_count: usize,
-    values: HashMap<String, EnvironmentValue>,
+
+    // The value can be a none to hide a value defined in a parent environment.
+    values: HashMap<String, Option<EnvironmentValue>>,
+    variable_names: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -58,12 +61,15 @@ impl Environment {
         Environment {
             parent,
             altitude,
-            variable_count: 0,
             values: HashMap::new(),
+            variable_names: Vec::new(),
         }
     }
 
-    pub fn new_initial(parent: Option<Rc<RefCell<Environment>>>, bindings: &[&str]) -> Environment {
+    pub fn new_initial<T: AsRef<str>>(
+        parent: Option<Rc<RefCell<Environment>>>,
+        bindings: &[T],
+    ) -> Environment {
         let mut env = Environment::new(parent);
         for identifier in bindings.iter() {
             env.define(identifier, true);
@@ -71,20 +77,34 @@ impl Environment {
         env
     }
 
+    /// Define a new variable. The variable will be added to the topmost environment frame, and
+    /// may shadow a variable from a lower frame.
+    ///
+    /// It is not an error to define a name that already exists in the topmost environment frame.
+    /// In this case, a new activation frame location will be allocated to the variable.
     pub fn define(&mut self, name: &str, initialized: bool) -> usize {
-        let index = self.variable_count;
-        self.variable_count += 1;
+        let index = self.variable_names.len();
+        self.variable_names.push(name.to_string());
         self.values.insert(
             name.to_string(),
-            EnvironmentValue::Variable(Variable {
+            Some(EnvironmentValue::Variable(Variable {
                 altitude: self.altitude,
                 index,
                 initialized,
-            }),
+            })),
         );
         index
     }
 
+    /// Define a variable if it is not already present. Used for top-level defines.
+    pub fn define_if_absent(&mut self, name: &str, initialized: bool) -> usize {
+        match self.get(name) {
+            Some(EnvironmentValue::Variable(v)) => v.index,
+            _ => self.define(name, initialized),
+        }
+    }
+
+    /// Define a value on the global environment (bottommost frame).
     pub fn define_implicit(&mut self, name: &str) -> usize {
         if let Some(ref e) = self.parent {
             e.borrow_mut().define_implicit(name)
@@ -93,14 +113,15 @@ impl Environment {
         }
     }
 
+    /// Define a macro in the current environment (topmost frame).
     pub fn define_macro(&mut self, name: &str, value: usize) {
         self.values
-            .insert(name.to_string(), EnvironmentValue::Macro(value));
+            .insert(name.to_string(), Some(EnvironmentValue::Macro(value)));
     }
 
     pub fn get(&self, name: &str) -> Option<EnvironmentValue> {
         if self.values.contains_key(name) {
-            self.values.get(name).cloned()
+            self.values.get(name).and_then(|e| e.clone())
         } else if let Some(ref e) = self.parent {
             e.borrow().get(name)
         } else {
@@ -116,7 +137,7 @@ impl Environment {
 
     pub fn mark_initialized(&mut self, name: &str) {
         match self.values.get_mut(name) {
-            Some(EnvironmentValue::Variable(v)) => v.initialized = true,
+            Some(Some(EnvironmentValue::Variable(v))) => v.initialized = true,
             Some(_) => panic!("Tried to mark non-variable as initialized"),
             None => match self.parent {
                 Some(ref e) => e.borrow_mut().mark_initialized(name),

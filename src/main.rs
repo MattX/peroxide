@@ -164,8 +164,8 @@ fn rep(
         let parse_value =
             parse::parse(arena, &token_vector).map_err(|e| println!("Parsing error: {:?}", e))?;
         let value_r = arena.insert(parse_value);
-        let syntax_tree =
-            ast::to_syntax_element(arena, value_r).map_err(|e| println!("Syntax error: {}", e))?;
+        let syntax_tree = ast::to_syntax_element(arena, &environment.env, value_r)
+            .map_err(|e| println!("Syntax error: {}", e))?;
         println!(" => {:?}", syntax_tree);
         let start_pc = code.len();
         compile::compile(&syntax_tree, code, environment.env.clone(), false, true)

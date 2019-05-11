@@ -13,6 +13,7 @@
 // limitations under the License.
 
 /// Checks that a vector has at least `min`, at most `max` entries.
+// TODO this is not really idiomatic and should probably be made to return a boolean
 pub fn check_len<T>(v: &[T], min: Option<usize>, max: Option<usize>) -> Result<(), String> {
     if let Some(m) = min {
         if v.len() < m {
