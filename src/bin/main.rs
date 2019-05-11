@@ -120,9 +120,8 @@ fn rep(vm_state: &mut VmState, toks: Vec<Vec<Token>>) -> Result<(), ()> {
     for token_vector in toks {
         let parse_value = peroxide::parse::parse(&vm_state.arena, &token_vector)
             .map_err(|e| println!("Parsing error: {:?}", e))?;
-        let value_r = vm_state.arena.insert(parse_value);
 
-        match peroxide::parse_compile_run(vm_state, value_r) {
+        match peroxide::parse_compile_run(vm_state, parse_value) {
             Ok(v) => println!(" => {}", peroxide::value::pretty_print(&vm_state.arena, v)),
             Err(e) => println!("{}", e),
         }

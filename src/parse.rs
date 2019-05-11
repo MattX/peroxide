@@ -26,24 +26,23 @@ pub enum ParseResult {
     ParseError(String),
 }
 
-pub fn parse(arena: &Arena, tokens: &[Token]) -> Result<Value, ParseResult> {
+pub fn parse(arena: &Arena, tokens: &[Token]) -> Result<usize, ParseResult> {
     if tokens.is_empty() {
         return Err(ParseResult::Nothing);
     }
 
     let mut it = tokens.iter().peekable();
-    let res = do_parse(arena, &mut it);
+    let res = do_parse(arena, &mut it)?;
     if let Some(s) = it.peek() {
         Err(ParseResult::ParseError(format!("Unexpected token {:?}", s)))
     } else {
-        res
+        Ok(arena.insert(res))
     }
 }
 
 pub fn read(arena: &Arena, input: &str) -> Result<usize, String> {
     let tokens = lex::lex(input)?;
-    let parsed = parse(arena, &tokens).map_err(|e| format!("{:?}", e))?;
-    Ok(arena.insert(parsed))
+    parse(arena, &tokens).map_err(|e| format!("{:?}", e))
 }
 
 fn do_parse<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>

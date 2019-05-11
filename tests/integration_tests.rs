@@ -14,10 +14,177 @@
 
 extern crate peroxide;
 
-use peroxide::parse::parse;
-use peroxide::parse_compile_run;
+use peroxide::arena::Arena;
+use peroxide::parse;
+use peroxide::value::Value;
+use peroxide::VmState;
+use peroxide::{lex, parse_compile_run};
+
+fn read_many(arena: &Arena, code: &str) -> Result<Vec<usize>, String> {
+    let tokens = lex::lex(code)?;
+    let segments = lex::segment(tokens)?;
+    if !segments.remainder.is_empty() {
+        return Err(format!(
+            "Unterminated expression: dangling tokens {:?}",
+            segments.remainder
+        ));
+    }
+    segments
+        .segments
+        .iter()
+        .map(|s| parse::parse(arena, s))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("{:?}", e))
+}
+
+fn execute(vm_state: &mut VmState, code: &str) -> Result<Value, String> {
+    let mut results: Vec<_> = read_many(&vm_state.arena, code)?
+        .iter()
+        .map(|read| parse_compile_run(vm_state, *read).map(|v| vm_state.arena.get(v).clone()))
+        .collect::<Result<Vec<_>, _>>()?;
+    results.pop().ok_or("No expressions".into())
+}
+
+fn execute_to_vec(vm_state: &mut VmState, code: &str) -> Result<Vec<Value>, String> {
+    let val = execute(vm_state, code)?;
+    let vec = val.pair_to_vec(&vm_state.arena)?;
+    Ok(vec
+        .iter()
+        .map(|iv| vm_state.arena.get(*iv).clone())
+        .collect())
+}
 
 #[test]
 fn it_adds_two() {
-    assert!(true);
+    let mut vm_state = VmState::default();
+    assert_eq!(
+        Value::Integer(4),
+        execute(&mut vm_state, "(+ 2 2)").unwrap()
+    );
+}
+
+#[test]
+fn nested_add() {
+    let mut vm_state = VmState::default();
+    assert_eq!(
+        Value::Integer(2),
+        execute(&mut vm_state, "(+ (+ 1 1 1) (- 1 2))").unwrap()
+    );
+}
+
+#[test]
+fn immediate_lambda_args() {
+    let mut vm_state = VmState::default();
+    assert_eq!(
+        Value::Integer(1),
+        execute(&mut vm_state, "((lambda (x) x) 1)").unwrap()
+    );
+}
+
+#[test]
+fn immediate_lambda_noargs() {
+    let mut vm_state = VmState::default();
+    assert_eq!(
+        Value::Integer(1),
+        execute(&mut vm_state, "((lambda () 1))").unwrap()
+    );
+}
+
+#[test]
+fn shadow() {
+    let mut vm_state = VmState::default();
+    assert_eq!(
+        Value::String("inner".into()),
+        execute(
+            &mut vm_state,
+            "\
+             ((lambda (x) ((lambda (x) x) \"inner\")) \"outer\")\
+             "
+        )
+        .unwrap()
+    );
+}
+
+#[test]
+fn several_args() {
+    let mut vm_state = VmState::default();
+    assert_eq!(
+        vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)],
+        execute_to_vec(
+            &mut vm_state,
+            "\
+            (define (list . vals) vals)
+            ((lambda (x y z) (list x y z)) 1 2 3)\
+        "
+        )
+        .unwrap()
+    );
+}
+
+#[test]
+fn dotted() {
+    let mut vm_state = VmState::default();
+    assert_eq!(
+        vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)],
+        execute_to_vec(
+            &mut vm_state,
+            "\
+            (define (list . vals) vals)
+            ((lambda (x y z) (list x y z)) 1 2 3)\
+        "
+        )
+        .unwrap()
+    );
+}
+
+#[test]
+fn global_reference() {
+    let mut vm_state = VmState::default();
+    assert_eq!(
+        Value::Boolean(true),
+        execute(&mut vm_state, "(define x #t) x").unwrap()
+    );
+}
+
+#[test]
+fn replace_global_reference() {
+    let mut vm_state = VmState::default();
+    assert_eq!(
+        Value::Boolean(false),
+        execute(&mut vm_state, "(define x #t) (define x #f) x").unwrap()
+    );
+}
+
+#[test]
+fn forward_global_reference() {
+    let mut vm_state = VmState::default();
+    assert_eq!(
+        Value::Integer(5),
+        execute(
+            &mut vm_state,
+            "\
+             (define (print-x) x)\
+             (define x 5)\
+             (print-x)\
+             "
+        )
+        .unwrap()
+    );
+}
+
+#[test]
+fn mut_rec() {
+    let mut vm_state = VmState::default();
+    assert_eq!(
+        Value::Boolean(true),
+        execute(
+            &mut vm_state,
+            "\
+             (define (odd? x) (if (= x 0) #f (even? (- x 1))))\
+             (define (even? x) (if (= x 0) #t (odd? (- x 1))))\
+             (odd? 10001)\
+             "
+        )
+        .unwrap()
+    );
 }
