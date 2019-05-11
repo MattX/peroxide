@@ -28,13 +28,13 @@
 //! Another small thing is dealing with recursive trees as allowed by R7RS.
 
 use arena::Arena;
-use environment::{Environment, EnvironmentValue, RcEnv};
+use compile_run;
+use environment::{Environment, EnvironmentValue, Macro, RcEnv};
 use std::cell::RefCell;
 use std::rc::Rc;
 use util::{check_len, max_optional};
 use value::{pretty_print, vec_from_list, Value};
-use vm::Instruction;
-use VmState;
+use {parse_compile_run, VmState};
 
 #[derive(Debug)]
 pub enum SyntaxElement {
@@ -161,8 +161,11 @@ fn parse_pair(
             Symbol::Lambda => parse_lambda(arena, vms, env, &rest),
             Symbol::Set => parse_set(arena, vms, env, &rest),
             Symbol::Define => parse_define(arena, vms, env, &rest, toplevel),
-            Symbol::DefineSyntax | Symbol::LetSyntax | Symbol::LetRecSyntax | Symbol::Macro(_) => {
-                Err(format!("Can't parse {} for now.", s))
+            Symbol::DefineSyntax => parse_define_syntax(arena, vms, env, &rest, toplevel),
+            Symbol::LetSyntax | Symbol::LetRecSyntax => Err(format!("Can't parse {} for now.", s)),
+            Symbol::Macro(m) => {
+                let expanded = expand_macro(arena, vms, env, m, cdr)?;
+                parse(arena, vms, env, expanded, toplevel)
             }
             _ => parse_application(arena, vms, env, car, &rest),
         },
@@ -393,6 +396,68 @@ fn parse_formals(arena: &Arena, formals: usize) -> Result<Formals, String> {
     }
 }
 
+fn parse_define_syntax(
+    arena: &Arena,
+    vms: &mut VmState,
+    env: &RcEnv,
+    rest: &[usize],
+    toplevel: bool,
+) -> Result<SyntaxElement, String> {
+    if !toplevel {
+        return Err("Illegally placed define-syntax.".into());
+    }
+    check_len(rest, Some(2), Some(2))?;
+    let symbol = match arena.get(rest[0]) {
+        Value::Symbol(s) => s,
+        _ => {
+            return Err(format!(
+                "Target of define-syntax must be symbol, not {}.",
+                arena.get(rest[0])
+            ))
+        }
+    };
+    let mac = parse_compile_run(arena, vms, rest[1])?;
+    match arena.get(mac) {
+        Value::Lambda { .. } => (), // TODO check the lambda takes 3 args
+        _ => {
+            return Err(format!(
+                "Macro must be a Lambda, is {}",
+                pretty_print(arena, mac)
+            ))
+        }
+    };
+    env.borrow_mut().define_macro(symbol, mac, env.clone());
+
+    // TODO remove this somehow
+    Ok(SyntaxElement::Quote(Box::new(Quote {
+        quoted: arena.unspecific,
+    })))
+}
+
+fn expand_macro(
+    arena: &Arena,
+    vms: &mut VmState,
+    env: &RcEnv,
+    mac: Macro,
+    expr: usize,
+) -> Result<usize, String> {
+    let definition_environment = Value::Environment(mac.definition_environment.clone());
+    let usage_environment = Value::Environment(env.clone());
+    let syntax_tree = SyntaxElement::Application(Box::new(Application {
+        function: SyntaxElement::Quote(Box::new(Quote { quoted: mac.lambda })),
+        args: vec![
+            SyntaxElement::Quote(Box::new(Quote { quoted: expr })),
+            SyntaxElement::Quote(Box::new(Quote {
+                quoted: arena.insert(usage_environment),
+            })),
+            SyntaxElement::Quote(Box::new(Quote {
+                quoted: arena.insert(definition_environment),
+            })),
+        ],
+    }));
+    compile_run(arena, vms, &syntax_tree)
+}
+
 enum Symbol {
     Quote,
     If,
@@ -403,7 +468,7 @@ enum Symbol {
     DefineSyntax,
     LetSyntax,
     LetRecSyntax,
-    Macro(usize),
+    Macro(Macro),
     Variable,
 }
 

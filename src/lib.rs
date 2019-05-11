@@ -19,7 +19,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use arena::Arena;
-use ast::largest_toplevel_reference;
+use ast::{largest_toplevel_reference, SyntaxElement};
 use environment::{ActivationFrame, Environment, RcEnv};
 use value::Value;
 use vm::Instruction;
@@ -67,6 +67,14 @@ pub fn parse_compile_run(arena: &Arena, state: &mut VmState, read: usize) -> Res
     let syntax_tree = ast::parse(arena, state, &cloned_env, read, true)
         .map_err(|e| format!("Syntax error: {}", e))?;
     println!(" => {:?}", syntax_tree);
+    compile_run(arena, state, &syntax_tree)
+}
+
+pub fn compile_run(
+    arena: &Arena,
+    state: &mut VmState,
+    syntax_tree: &SyntaxElement,
+) -> Result<usize, String> {
     if let Some(n) = largest_toplevel_reference(&syntax_tree) {
         arena
             .get_activation_frame(state.global_frame)

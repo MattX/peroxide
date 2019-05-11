@@ -18,7 +18,7 @@ use arena::Arena;
 use environment::ActivationFrame;
 use std::cell::RefCell;
 use value::Value::Lambda;
-use value::{list_from_vec, Value};
+use value::{list_from_vec, pretty_print, Value};
 
 #[derive(Debug)]
 pub enum Instruction {
@@ -182,7 +182,12 @@ pub fn run(arena: &Arena, code: &[Instruction], pc: usize, env: usize) -> Result
                     .expect("Popping function with no values on stack.");
                 match arena.get(fun_r) {
                     Value::Lambda { .. } | Value::Primitive(_) => vm.fun = fun_r,
-                    _ => panic!("Popping non-function."),
+                    _ => {
+                        return Err(format!(
+                            "Cannot apply non-function: {}",
+                            pretty_print(arena, fun_r)
+                        ))
+                    }
                 }
             }
             Instruction::FunctionInvoke { tail } => {

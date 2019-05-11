@@ -48,7 +48,7 @@ impl PartialEq for Environment {
 
 #[derive(Debug, Clone)]
 pub enum EnvironmentValue {
-    Macro(usize),
+    Macro(Macro),
     Variable(Variable),
 }
 
@@ -57,6 +57,12 @@ pub struct Variable {
     pub altitude: usize,
     pub index: usize,
     pub initialized: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct Macro {
+    pub lambda: usize,
+    pub definition_environment: RcEnv,
 }
 
 impl Environment {
@@ -121,9 +127,14 @@ impl Environment {
     }
 
     /// Define a macro in the current environment (topmost frame).
-    pub fn define_macro(&mut self, name: &str, value: usize) {
-        self.values
-            .insert(name.to_string(), Some(EnvironmentValue::Macro(value)));
+    pub fn define_macro(&mut self, name: &str, lambda: usize, definition_environment: RcEnv) {
+        self.values.insert(
+            name.to_string(),
+            Some(EnvironmentValue::Macro(Macro {
+                lambda,
+                definition_environment,
+            })),
+        );
     }
 
     pub fn get(&self, name: &str) -> Option<EnvironmentValue> {
