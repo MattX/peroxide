@@ -174,6 +174,22 @@ fn greater_than_equal2(a: &Value, b: &Value) -> bool {
     }
 }
 
+pub fn integer_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    Ok(match arena.get(args[0]) {
+        Value::Integer(_) => arena.t,
+        _ => arena.f,
+    })
+}
+
+pub fn real_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    Ok(match arena.get(args[0]) {
+        Value::Real(_) => arena.t,
+        _ => arena.f,
+    })
+}
+
 /// Takes an argument list (vector of arena pointers), returns a vector of numeric values or
 /// an error.
 fn numeric_vec(arena: &Arena, args: &[usize]) -> Result<Vec<Value>, String> {

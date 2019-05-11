@@ -36,9 +36,9 @@
 //! OK cons car cdr
 //! OK set-car! set-cdr!
 //!
-//! symbol?
-//! symbol->string
-//! string->symbol
+//! OK symbol?
+//! OK symbol->string
+//! OK string->symbol
 //!
 //! char?
 //! char=? char<? char<=? char>? char>=?
@@ -75,14 +75,20 @@ use primitives::extensions::*;
 use primitives::numeric::*;
 use primitives::object::*;
 use primitives::pair::*;
+use primitives::symbol::*;
 use value::Value;
 
 mod extensions;
 mod numeric;
 mod object;
 mod pair;
+mod symbol;
 
-static PRIMITIVES: [Primitive; 20] = [
+static PRIMITIVES: [Primitive; 25] = [
+    Primitive {
+        name: "make-syntactic-closure",
+        implementation: make_syntactic_closure,
+    },
     Primitive {
         name: "eq?",
         implementation: eq_p,
@@ -132,6 +138,14 @@ static PRIMITIVES: [Primitive; 20] = [
         implementation: div,
     },
     Primitive {
+        name: "integer?",
+        implementation: integer_p,
+    },
+    Primitive {
+        name: "real?",
+        implementation: real_p,
+    },
+    Primitive {
         name: "pair?",
         implementation: pair_p,
     },
@@ -160,8 +174,16 @@ static PRIMITIVES: [Primitive; 20] = [
         implementation: display,
     },
     Primitive {
-        name: "make-syntactic-closure",
-        implementation: make_syntactic_closure,
+        name: "symbol?",
+        implementation: symbol_p,
+    },
+    Primitive {
+        name: "symbol->string",
+        implementation: symbol_to_string,
+    },
+    Primitive {
+        name: "string->symbol",
+        implementation: string_to_symbol,
     },
 ];
 
