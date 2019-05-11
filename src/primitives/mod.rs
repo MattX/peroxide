@@ -178,7 +178,7 @@ impl PartialEq for Primitive {
     }
 }
 
-pub fn register_primitives(arena: &mut Arena, e: &mut CombinedEnv) {
+pub fn register_primitives(arena: &Arena, e: &mut CombinedEnv) {
     // Intern all the primitives before getting the frame to avoid a mut/non-mut alias to the
     // arena.
 

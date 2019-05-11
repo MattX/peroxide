@@ -13,36 +13,16 @@
 // limitations under the License.
 
 extern crate core;
+extern crate peroxide;
 extern crate rustyline;
 
 use std::env;
 
-use arena::Arena;
-use ast::largest_toplevel_reference;
-use core::borrow::BorrowMut;
-use environment::{ActivationFrame, CombinedEnv, Environment};
-use lex::SegmentationResult;
-use lex::Token;
-use primitives::register_primitives;
-use repl::GetLineError;
-use repl::{FileRepl, ReadlineRepl, Repl, StdIoRepl};
-use std::cell::RefCell;
-use std::rc::Rc;
-use value::Value;
-use vm::Instruction;
-
-mod arena;
-mod ast;
-mod compile;
-mod environment;
-mod gc;
-mod lex;
-mod parse;
-mod primitives;
-mod repl;
-mod util;
-mod value;
-mod vm;
+use peroxide::lex::SegmentationResult;
+use peroxide::lex::Token;
+use peroxide::repl::GetLineError;
+use peroxide::repl::{FileRepl, ReadlineRepl, Repl, StdIoRepl};
+use peroxide::VmState;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -70,19 +50,9 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
         }
     };
 
-    let mut arena = Arena::default();
-    let mut environment = CombinedEnv {
-        env: Rc::new(RefCell::new(Environment::new(None))),
-        frame: arena.insert(Value::ActivationFrame(RefCell::new(ActivationFrame {
-            parent: None,
-            values: vec![],
-        }))),
-    };
-    register_primitives(&mut arena, &mut environment);
-    let mut code = Vec::new();
-
+    let mut vm_state = VmState::default();
     loop {
-        if !handle_one_expr_wrap(&mut *repl, &mut arena, &environment, &mut code) {
+        if !handle_one_expr_wrap(&mut *repl, &mut vm_state) {
             break;
         }
     }
@@ -92,23 +62,13 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
 }
 
 // Returns true if the REPL loop should continue, false otherwise.
-fn handle_one_expr_wrap(
-    repl: &mut Repl,
-    arena: &mut Arena,
-    environment: &CombinedEnv,
-    code: &mut Vec<Instruction>,
-) -> bool {
-    handle_one_expr(repl, arena, environment, code)
+fn handle_one_expr_wrap(repl: &mut Repl, vm_state: &mut VmState) -> bool {
+    handle_one_expr(repl, vm_state)
         .map_err(|e| println!("Error: {}", e))
         .unwrap_or(true)
 }
 
-fn handle_one_expr(
-    repl: &mut Repl,
-    arena: &mut Arena,
-    environment: &CombinedEnv,
-    code: &mut Vec<Instruction>,
-) -> Result<bool, String> {
+fn handle_one_expr(repl: &mut Repl, vm_state: &mut VmState) -> Result<bool, String> {
     let mut current_expr_string: Vec<String> = Vec::new();
     let mut exprs: Vec<Vec<Token>> = Vec::new();
     let mut pending_expr: Vec<Token> = Vec::new();
@@ -132,7 +92,7 @@ fn handle_one_expr(
         };
 
         let line = line_opt.unwrap();
-        let mut tokenize_result = lex::lex(&line)?;
+        let mut tokenize_result = peroxide::lex::lex(&line)?;
         current_expr_string.push(line);
         pending_expr.append(&mut tokenize_result);
 
@@ -140,7 +100,7 @@ fn handle_one_expr(
             mut segments,
             remainder,
             depth: new_depth,
-        } = lex::segment(pending_expr)?;
+        } = peroxide::lex::segment(pending_expr)?;
         exprs.append(&mut segments);
 
         if remainder.is_empty() {
@@ -152,37 +112,19 @@ fn handle_one_expr(
     }
 
     repl.add_to_history(&current_expr_string.join("\n"));
-    let _ = rep(arena, exprs, environment, code);
+    let _ = rep(vm_state, exprs);
     Ok(true)
 }
 
-fn rep(
-    arena: &mut Arena,
-    toks: Vec<Vec<Token>>,
-    environment: &CombinedEnv,
-    code: &mut Vec<Instruction>,
-) -> Result<(), ()> {
+fn rep(vm_state: &mut VmState, toks: Vec<Vec<Token>>) -> Result<(), ()> {
     for token_vector in toks {
-        let parse_value =
-            parse::parse(arena, &token_vector).map_err(|e| println!("Parsing error: {:?}", e))?;
-        let value_r = arena.insert(parse_value);
-        let syntax_tree = ast::to_syntax_element(arena, &environment.env, value_r, true)
-            .map_err(|e| println!("Syntax error: {}", e))?;
-        println!(" => {:?}", syntax_tree);
-        if let Some(n) = largest_toplevel_reference(&syntax_tree) {
-            arena
-                .get_activation_frame(environment.frame)
-                .borrow_mut()
-                .ensure_index(arena, n);
-        }
-        let start_pc = code.len();
-        compile::compile(&syntax_tree, code, &environment.env, false, true)
-            .map_err(|e| println!("Compilation error: {}", e))?;
-        code.push(Instruction::Finish);
-        println!(" => {:?}", &code[start_pc..code.len()]);
-        match vm::run(arena, code, start_pc, environment.frame) {
-            Ok(v) => println!(" => {}", arena.get(v).pretty_print(arena)),
-            Err(e) => println!("Runtime error: {:?}", e),
+        let parse_value = peroxide::parse::parse(&vm_state.arena, &token_vector)
+            .map_err(|e| println!("Parsing error: {:?}", e))?;
+        let value_r = vm_state.arena.insert(parse_value);
+
+        match peroxide::parse_compile_run(vm_state, value_r) {
+            Ok(v) => println!(" => {}", peroxide::value::pretty_print(&vm_state.arena, v)),
+            Err(e) => println!("{}", e),
         }
     }
     Ok(())

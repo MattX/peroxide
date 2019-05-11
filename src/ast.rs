@@ -43,8 +43,7 @@ pub enum SyntaxElement {
     If(Box<If>),
     Begin(Box<Begin>),
     Lambda(Box<Lambda>),
-    TopLevelDefine(Box<SetOrDefine>),
-    Set(Box<SetOrDefine>),
+    Set(Box<Set>),
     Application(Box<Application>),
 }
 
@@ -83,7 +82,7 @@ pub struct Lambda {
 }
 
 #[derive(Debug)]
-pub struct SetOrDefine {
+pub struct Set {
     pub altitude: usize,
     pub index: usize,
     pub value: SyntaxElement,
@@ -232,7 +231,7 @@ fn parse_set(arena: &Arena, env: &RcEnv, rest: &[usize]) -> Result<SyntaxElement
     if let Value::Symbol(name) = arena.get(rest[0]) {
         let value = to_syntax_element(arena, env, rest[1], false)?;
         match env.borrow().get(name) {
-            Some(EnvironmentValue::Variable(v)) => Ok(SyntaxElement::Set(Box::new(SetOrDefine {
+            Some(EnvironmentValue::Variable(v)) => Ok(SyntaxElement::Set(Box::new(Set {
                 altitude: v.altitude,
                 index: v.index,
                 value,
@@ -269,31 +268,22 @@ fn parse_define(
             check_len(rest, Some(2), Some(2))?;
             (s.clone(), DefineValue::Value(rest[1]))
         }
-        _ => parse_lambda_define(arena, env, rest)?,
+        _ => parse_lambda_define(arena, rest)?,
     };
-    let (exists, index) = env.borrow_mut().define_if_absent(&symbol, false);
+    let index = env.borrow_mut().define_if_absent(&symbol, false);
     let value = match define_value {
         DefineValue::Value(v) => to_syntax_element(arena, env, v, false)?,
         DefineValue::Lambda { formals, body } => parse_split_lambda(arena, env, formals, &body)?,
     };
-    let sod = SetOrDefine {
+    Ok(SyntaxElement::Set(Box::new(Set {
         altitude: 0,
         index,
         value,
-    };
-    if exists {
-        Ok(SyntaxElement::Set(Box::new(sod)))
-    } else {
-        Ok(SyntaxElement::TopLevelDefine(Box::new(sod)))
-    }
+    })))
 }
 
 /// Helper method to parse direct lambda defines `(define (x y z) y z)`.
-fn parse_lambda_define(
-    arena: &Arena,
-    env: &RcEnv,
-    rest: &[usize],
-) -> Result<(String, DefineValue), String> {
+fn parse_lambda_define(arena: &Arena, rest: &[usize]) -> Result<(String, DefineValue), String> {
     check_len(rest, Some(2), None)?;
     if let Value::Pair(car, cdr) = arena.get(rest[0]) {
         if let Value::Symbol(s) = arena.get(*car.borrow()) {
@@ -400,8 +390,10 @@ pub fn largest_toplevel_reference(se: &SyntaxElement) -> Option<usize> {
             .iter()
             .map(largest_toplevel_reference)
             .fold(None, max_optional),
-        SyntaxElement::Set(s) => largest_toplevel_reference(&s.value),
-        SyntaxElement::TopLevelDefine(t) => largest_toplevel_reference(&t.value),
+        SyntaxElement::Set(s) => {
+            let r = if s.altitude == 0 { Some(s.index) } else { None };
+            max_optional(r, largest_toplevel_reference(&s.value))
+        }
         SyntaxElement::Quote(_) => None,
         SyntaxElement::If(i) => max_optional(
             largest_toplevel_reference(&i.cond),

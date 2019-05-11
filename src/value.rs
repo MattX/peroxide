@@ -202,6 +202,10 @@ pub fn list_from_vec(arena: &Arena, vals: &[usize]) -> usize {
     }
 }
 
+pub fn pretty_print(arena: &Arena, at: usize) -> String {
+    arena.get(at).pretty_print(arena)
+}
+
 pub fn eqv(arena: &Arena, left: usize, right: usize) -> bool {
     match (arena.get(left), arena.get(right)) {
         // This comparison is in the same order as the R5RS one for ease of

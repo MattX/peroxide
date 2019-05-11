@@ -97,12 +97,10 @@ impl Environment {
     }
 
     /// Define a variable if it is not already present. Used for top-level defines.
-    ///
-    /// Returns a pair of (whether the value already existed, index)
-    pub fn define_if_absent(&mut self, name: &str, initialized: bool) -> (bool, usize) {
+    pub fn define_if_absent(&mut self, name: &str, initialized: bool) -> usize {
         match self.get(name) {
-            Some(EnvironmentValue::Variable(v)) => (true, v.index),
-            _ => (false, self.define(name, initialized)),
+            Some(EnvironmentValue::Variable(v)) => v.index,
+            _ => self.define(name, initialized),
         }
     }
 
@@ -123,7 +121,7 @@ impl Environment {
 
     pub fn get(&self, name: &str) -> Option<EnvironmentValue> {
         if self.values.contains_key(name) {
-            self.values.get(name).and_then(|e| e.clone())
+            self.values.get(name).and_then(Clone::clone)
         } else if let Some(ref e) = self.parent {
             e.borrow().get(name)
         } else {

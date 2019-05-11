@@ -42,7 +42,6 @@ pub enum Instruction {
     PopFunction,
     FunctionInvoke { tail: bool },
     CreateFrame(usize),
-    TopLevelDefine(usize),
     NoOp,
     Finish,
 }
@@ -229,7 +228,6 @@ pub fn run(
                 }
                 vm.value = arena.insert(Value::ActivationFrame(RefCell::new(frame)));
             }
-            Instruction::TopLevelDefine(index) => {}
             Instruction::NoOp => return Err("NoOp encountered.".into()),
             Instruction::Finish => break,
         }

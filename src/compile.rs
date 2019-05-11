@@ -13,9 +13,7 @@
 // limitations under the License.
 
 use ast::SyntaxElement;
-use environment::{Environment, EnvironmentValue, RcEnv, Variable};
-use std::cell::RefCell;
-use std::rc::Rc;
+use environment::RcEnv;
 use vm::Instruction;
 
 pub fn compile(
@@ -76,10 +74,6 @@ pub fn compile(
             compile_sequence(&l.expressions, to, &l.env, true)?;
             to.push(Instruction::Return);
             to[skip_pos] = Instruction::Jump(to.len() - skip_pos - 1);
-        }
-        SyntaxElement::TopLevelDefine(d) => {
-            compile(&d.value, to, env, false, false)?;
-            to.push(Instruction::TopLevelDefine(d.index));
         }
         SyntaxElement::Application(a) => {
             compile(&a.function, to, env, false, false)?;
