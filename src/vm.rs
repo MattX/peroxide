@@ -58,12 +58,7 @@ struct Vm<'a> {
     fun: usize,
 }
 
-pub fn run(
-    arena: &mut Arena,
-    code: &[Instruction],
-    pc: usize,
-    env: usize,
-) -> Result<usize, String> {
+pub fn run(arena: &Arena, code: &[Instruction], pc: usize, env: usize) -> Result<usize, String> {
     let mut vm = Vm {
         value: arena.unspecific,
         code,
@@ -203,12 +198,9 @@ pub fn run(
                         vm.pc = *code;
                     }
                     Value::Primitive(p) => {
-                        if let Value::ActivationFrame(af) = arena.get(vm.value).clone() {
-                            let values = &af.borrow().values;
-                            vm.value = (p.implementation)(arena, &values)?;
-                        } else {
-                            panic!("Primitive called on non-activation frame.");
-                        }
+                        let af = arena.get_activation_frame(vm.value);
+                        let values = &af.borrow().values;
+                        vm.value = (p.implementation)(arena, &values)?;
                     }
                     _ => {
                         return Err(format!(

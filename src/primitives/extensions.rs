@@ -29,7 +29,7 @@ pub fn make_syntactic_closure(arena: &Arena, args: &[usize]) -> Result<usize, St
         })
         .collect::<Result<Vec<_>, _>>()?;
     let environment = match arena.get(args[0]) {
-        Value::Environment(e) => Ok(args[0]),
+        Value::Environment(_) => Ok(args[0]),
         _ => Err(format!(
             "make-syntactic-closure: not an environment: {}",
             pretty_print(arena, args[0])

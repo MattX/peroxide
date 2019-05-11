@@ -32,7 +32,9 @@ use environment::{Environment, EnvironmentValue, RcEnv};
 use std::cell::RefCell;
 use std::rc::Rc;
 use util::{check_len, max_optional};
-use value::Value;
+use value::{pretty_print, vec_from_list, Value};
+use vm::Instruction;
+use VmState;
 
 #[derive(Debug)]
 pub enum SyntaxElement {
@@ -101,8 +103,13 @@ pub struct Formals {
     pub rest: Option<String>,
 }
 
-pub fn to_syntax_element(
+/// Parses an expression into an AST (aka `SyntaxElement`)
+///
+/// Annoyingly enough, we need a full `VmState` passed everywhere here, because macros
+/// need to be executed and can add new code.
+pub fn parse(
     arena: &Arena,
+    vms: &mut VmState,
     env: &RcEnv,
     value: usize,
     toplevel: bool,
@@ -113,7 +120,7 @@ pub fn to_syntax_element(
         )?))),
         Value::EmptyList => Err("Cannot evaluate empty list".into()),
         Value::Pair(car, cdr) => {
-            pair_to_syntax_element(arena, env, *car.borrow(), *cdr.borrow(), toplevel)
+            parse_pair(arena, vms, env, *car.borrow(), *cdr.borrow(), toplevel)
         }
         _ => Ok(SyntaxElement::Quote(Box::new(Quote { quoted: value }))),
     }
@@ -137,28 +144,29 @@ fn construct_reference(env: &RcEnv, name: &str) -> Result<Reference, String> {
     }
 }
 
-fn pair_to_syntax_element(
+fn parse_pair(
     arena: &Arena,
+    vms: &mut VmState,
     env: &RcEnv,
     car: usize,
     cdr: usize,
     toplevel: bool,
 ) -> Result<SyntaxElement, String> {
-    let rest = arena.get(cdr).pair_to_vec(arena)?;
+    let rest = vec_from_list(arena, cdr)?;
     match arena.get(car) {
         Value::Symbol(s) => match match_symbol(env, s) {
             Symbol::Quote => parse_quote(&rest),
-            Symbol::If => parse_if(arena, env, &rest),
-            Symbol::Begin => parse_begin(arena, env, &rest),
-            Symbol::Lambda => parse_lambda(arena, env, &rest),
-            Symbol::Set => parse_set(arena, env, &rest),
-            Symbol::Define => parse_define(arena, env, &rest, toplevel),
+            Symbol::If => parse_if(arena, vms, env, &rest),
+            Symbol::Begin => parse_begin(arena, vms, env, &rest),
+            Symbol::Lambda => parse_lambda(arena, vms, env, &rest),
+            Symbol::Set => parse_set(arena, vms, env, &rest),
+            Symbol::Define => parse_define(arena, vms, env, &rest, toplevel),
             Symbol::DefineSyntax | Symbol::LetSyntax | Symbol::LetRecSyntax | Symbol::Macro(_) => {
                 Err(format!("Can't parse {} for now.", s))
             }
-            _ => parse_application(arena, env, car, &rest),
+            _ => parse_application(arena, vms, env, car, &rest),
         },
-        _ => parse_application(arena, env, car, &rest),
+        _ => parse_application(arena, vms, env, car, &rest),
     }
 }
 
@@ -170,13 +178,16 @@ fn parse_quote(rest: &[usize]) -> Result<SyntaxElement, String> {
     }
 }
 
-fn parse_if(arena: &Arena, env: &RcEnv, rest: &[usize]) -> Result<SyntaxElement, String> {
+fn parse_if(
+    arena: &Arena,
+    vms: &mut VmState,
+    env: &RcEnv,
+    rest: &[usize],
+) -> Result<SyntaxElement, String> {
     check_len(rest, Some(2), Some(3))?;
-    let cond = to_syntax_element(arena, env, rest[0], false)?;
-    let t = to_syntax_element(arena, env, rest[1], false)?;
-    let f_s: Option<Result<_, _>> = rest
-        .get(2)
-        .map(|e| to_syntax_element(arena, env, *e, false));
+    let cond = parse(arena, vms, env, rest[0], false)?;
+    let t = parse(arena, vms, env, rest[1], false)?;
+    let f_s: Option<Result<_, _>> = rest.get(2).map(|e| parse(arena, vms, env, *e, false));
 
     // This dark magic swaps the option and the result (then `?`s the result)
     // https://doc.rust-lang.org/rust-by-example/error/multiple_error_types/option_result.html
@@ -184,23 +195,34 @@ fn parse_if(arena: &Arena, env: &RcEnv, rest: &[usize]) -> Result<SyntaxElement,
     Ok(SyntaxElement::If(Box::new(If { cond, t, f })))
 }
 
-fn parse_begin(arena: &Arena, env: &RcEnv, rest: &[usize]) -> Result<SyntaxElement, String> {
+fn parse_begin(
+    arena: &Arena,
+    vms: &mut VmState,
+    env: &RcEnv,
+    rest: &[usize],
+) -> Result<SyntaxElement, String> {
     check_len(rest, Some(1), None)?;
     let expressions = rest
         .iter()
-        .map(|e| to_syntax_element(arena, env, *e, false))
+        .map(|e| parse(arena, vms, env, *e, false))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(SyntaxElement::Begin(Box::new(Begin { expressions })))
 }
 
-fn parse_lambda(arena: &Arena, env: &RcEnv, rest: &[usize]) -> Result<SyntaxElement, String> {
+fn parse_lambda(
+    arena: &Arena,
+    vms: &mut VmState,
+    env: &RcEnv,
+    rest: &[usize],
+) -> Result<SyntaxElement, String> {
     check_len(rest, Some(2), None)?;
-    parse_split_lambda(arena, env, rest[0], &rest[1..rest.len()])
+    parse_split_lambda(arena, vms, env, rest[0], &rest[1..rest.len()])
 }
 
 // TODO parse internal defines
 fn parse_split_lambda(
     arena: &Arena,
+    vms: &mut VmState,
     env: &RcEnv,
     formals: usize,
     body: &[usize],
@@ -216,7 +238,7 @@ fn parse_split_lambda(
     let env = Rc::new(RefCell::new(raw_env));
     let expressions = body
         .iter()
-        .map(|e| to_syntax_element(arena, &env, *e, false))
+        .map(|e| parse(arena, vms, &env, *e, false))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(SyntaxElement::Lambda(Box::new(Lambda {
         env,
@@ -227,10 +249,15 @@ fn parse_split_lambda(
     })))
 }
 
-fn parse_set(arena: &Arena, env: &RcEnv, rest: &[usize]) -> Result<SyntaxElement, String> {
+fn parse_set(
+    arena: &Arena,
+    vms: &mut VmState,
+    env: &RcEnv,
+    rest: &[usize],
+) -> Result<SyntaxElement, String> {
     check_len(rest, Some(2), Some(2))?;
     if let Value::Symbol(name) = arena.get(rest[0]) {
-        let value = to_syntax_element(arena, env, rest[1], false)?;
+        let value = parse(arena, vms, env, rest[1], false)?;
         match env.borrow().get(name) {
             Some(EnvironmentValue::Variable(v)) => Ok(SyntaxElement::Set(Box::new(Set {
                 altitude: v.altitude,
@@ -243,7 +270,7 @@ fn parse_set(arena: &Arena, env: &RcEnv, rest: &[usize]) -> Result<SyntaxElement
     } else {
         Err(format!(
             "Expected symbol as target of set!, got `{}`",
-            arena.get(rest[0]).pretty_print(arena)
+            pretty_print(arena, rest[0])
         ))
     }
 }
@@ -257,6 +284,7 @@ enum DefineValue {
 /// elsewhere.
 fn parse_define(
     arena: &Arena,
+    vms: &mut VmState,
     env: &RcEnv,
     rest: &[usize],
     toplevel: bool,
@@ -273,8 +301,10 @@ fn parse_define(
     };
     let index = env.borrow_mut().define_if_absent(&symbol, false);
     let value = match define_value {
-        DefineValue::Value(v) => to_syntax_element(arena, env, v, false)?,
-        DefineValue::Lambda { formals, body } => parse_split_lambda(arena, env, formals, &body)?,
+        DefineValue::Value(v) => parse(arena, vms, env, v, false)?,
+        DefineValue::Lambda { formals, body } => {
+            parse_split_lambda(arena, vms, env, formals, &body)?
+        }
     };
     Ok(SyntaxElement::Set(Box::new(Set {
         altitude: 0,
@@ -299,27 +329,28 @@ fn parse_lambda_define(arena: &Arena, rest: &[usize]) -> Result<(String, DefineV
         } else {
             Err(format!(
                 "Expected symbol for method name in define method, got `{}`.",
-                arena.get(*car.borrow()).pretty_print(arena)
+                pretty_print(arena, *car.borrow())
             ))
         }
     } else {
         Err(format!(
             "Expected symbol or formals as target of define, got `{}`.",
-            arena.get(rest[0]).pretty_print(arena)
+            pretty_print(arena, rest[0])
         ))
     }
 }
 
 fn parse_application(
     arena: &Arena,
+    vms: &mut VmState,
     env: &RcEnv,
     fun: usize,
     rest: &[usize],
 ) -> Result<SyntaxElement, String> {
-    let function = to_syntax_element(arena, env, fun, false)?;
+    let function = parse(arena, vms, env, fun, false)?;
     let args = rest
         .iter()
-        .map(|e| to_syntax_element(arena, env, *e, false))
+        .map(|e| parse(arena, vms, env, *e, false))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(SyntaxElement::Application(Box::new(Application {
         function,
@@ -327,7 +358,7 @@ fn parse_application(
     })))
 }
 
-fn parse_define_syntax(arena: &Arena, env: &RcEnv, rest: &[usize]) {}
+// fn parse_define_syntax(arena: &Arena, vms: &VmState, env: &RcEnv, rest: &[usize]) {}
 
 fn parse_formals(arena: &Arena, formals: usize) -> Result<Formals, String> {
     let mut values = Vec::new();

@@ -18,6 +18,7 @@ extern crate rustyline;
 
 use std::env;
 
+use peroxide::arena::Arena;
 use peroxide::lex::SegmentationResult;
 use peroxide::lex::Token;
 use peroxide::repl::GetLineError;
@@ -50,9 +51,10 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
         }
     };
 
-    let mut vm_state = VmState::default();
+    let arena = Arena::default();
+    let mut vm_state = VmState::new(&arena);
     loop {
-        if !handle_one_expr_wrap(&mut *repl, &mut vm_state) {
+        if !handle_one_expr_wrap(&mut *repl, &arena, &mut vm_state) {
             break;
         }
     }
@@ -62,13 +64,13 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
 }
 
 // Returns true if the REPL loop should continue, false otherwise.
-fn handle_one_expr_wrap(repl: &mut Repl, vm_state: &mut VmState) -> bool {
-    handle_one_expr(repl, vm_state)
+fn handle_one_expr_wrap(repl: &mut Repl, arena: &Arena, vm_state: &mut VmState) -> bool {
+    handle_one_expr(repl, arena, vm_state)
         .map_err(|e| println!("Error: {}", e))
         .unwrap_or(true)
 }
 
-fn handle_one_expr(repl: &mut Repl, vm_state: &mut VmState) -> Result<bool, String> {
+fn handle_one_expr(repl: &mut Repl, arena: &Arena, vm_state: &mut VmState) -> Result<bool, String> {
     let mut current_expr_string: Vec<String> = Vec::new();
     let mut exprs: Vec<Vec<Token>> = Vec::new();
     let mut pending_expr: Vec<Token> = Vec::new();
@@ -112,17 +114,17 @@ fn handle_one_expr(repl: &mut Repl, vm_state: &mut VmState) -> Result<bool, Stri
     }
 
     repl.add_to_history(&current_expr_string.join("\n"));
-    let _ = rep(vm_state, exprs);
+    let _ = rep(arena, vm_state, exprs);
     Ok(true)
 }
 
-fn rep(vm_state: &mut VmState, toks: Vec<Vec<Token>>) -> Result<(), ()> {
+fn rep(arena: &Arena, vm_state: &mut VmState, toks: Vec<Vec<Token>>) -> Result<(), ()> {
     for token_vector in toks {
-        let parse_value = peroxide::parse::parse(&vm_state.arena, &token_vector)
+        let parse_value = peroxide::read::read_tokens(arena, &token_vector)
             .map_err(|e| println!("Parsing error: {:?}", e))?;
 
-        match peroxide::parse_compile_run(vm_state, parse_value) {
-            Ok(v) => println!(" => {}", peroxide::value::pretty_print(&vm_state.arena, v)),
+        match peroxide::parse_compile_run(arena, vm_state, parse_value) {
+            Ok(v) => println!(" => {}", peroxide::value::pretty_print(arena, v)),
             Err(e) => println!("{}", e),
         }
     }

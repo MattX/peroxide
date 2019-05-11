@@ -70,12 +70,11 @@
 use std::fmt::{Debug, Error, Formatter};
 
 use arena::Arena;
-use environment::CombinedEnv;
+use environment::RcEnv;
 use primitives::extensions::*;
 use primitives::numeric::*;
 use primitives::object::*;
 use primitives::pair::*;
-use std::cell::RefCell;
 use value::Value;
 
 mod extensions;
@@ -184,7 +183,7 @@ impl PartialEq for Primitive {
     }
 }
 
-pub fn register_primitives(arena: &Arena, e: &mut CombinedEnv) {
+pub fn register_primitives(arena: &Arena, global_environment: &RcEnv, global_frame: usize) {
     // Intern all the primitives before getting the frame to avoid a mut/non-mut alias to the
     // arena.
 
@@ -192,12 +191,8 @@ pub fn register_primitives(arena: &Arena, e: &mut CombinedEnv) {
         .iter()
         .map(|p| arena.insert(Value::Primitive(p)))
         .collect();
-    let mut borrowed_env = RefCell::borrow_mut(&e.env);
-    let mut frame = if let Value::ActivationFrame(af) = arena.get(e.frame) {
-        af.borrow_mut()
-    } else {
-        panic!("Frame is not actually an activation frame");
-    };
+    let mut borrowed_env = global_environment.borrow_mut();
+    let mut frame = arena.get_activation_frame(global_frame).borrow_mut();
     for (prim, interned) in PRIMITIVES.iter().zip(primitive_indices.into_iter()) {
         borrowed_env.define(prim.name, true);
         frame.values.push(interned);

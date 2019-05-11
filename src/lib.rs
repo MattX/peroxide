@@ -15,11 +15,12 @@
 extern crate core;
 extern crate rustyline;
 
-use arena::Arena;
-use ast::largest_toplevel_reference;
-use environment::{ActivationFrame, CombinedEnv, Environment};
 use std::cell::RefCell;
 use std::rc::Rc;
+
+use arena::Arena;
+use ast::largest_toplevel_reference;
+use environment::{ActivationFrame, Environment, RcEnv};
 use value::Value;
 use vm::Instruction;
 
@@ -29,67 +30,60 @@ pub mod compile;
 pub mod environment;
 pub mod gc;
 pub mod lex;
-pub mod parse;
 pub mod primitives;
+pub mod read;
 pub mod repl;
 pub mod util;
 pub mod value;
 pub mod vm;
 
+/// Structure holding the global state of the interpreter.
 pub struct VmState {
-    pub arena: Arena,
-    pub environment: CombinedEnv,
+    pub global_environment: RcEnv,
+    pub global_frame: usize,
     pub code: Vec<Instruction>,
 }
 
-/// Holding struct for stuff the VM needs.
-impl Default for VmState {
-    fn default() -> Self {
-        let arena = Arena::default();
-        let mut environment = CombinedEnv {
-            env: Rc::new(RefCell::new(Environment::new(None))),
-            frame: arena.insert(Value::ActivationFrame(RefCell::new(ActivationFrame {
-                parent: None,
-                values: vec![],
-            }))),
-        };
-        primitives::register_primitives(&arena, &mut environment);
+impl VmState {
+    pub fn new(arena: &Arena) -> Self {
+        let mut global_environment = Rc::new(RefCell::new(Environment::new(None)));
+        let global_frame = arena.insert(Value::ActivationFrame(RefCell::new(ActivationFrame {
+            parent: None,
+            values: vec![],
+        })));
+        primitives::register_primitives(&arena, &mut global_environment, global_frame);
 
         VmState {
-            arena,
-            environment,
+            global_environment,
+            global_frame,
             code: vec![],
         }
     }
 }
 
-pub fn parse_compile_run(state: &mut VmState, read: usize) -> Result<usize, String> {
-    let syntax_tree = ast::to_syntax_element(&state.arena, &state.environment.env, read, true)
+/// High-level interface to parse, compile, and run a value that's been read.
+pub fn parse_compile_run(arena: &Arena, state: &mut VmState, read: usize) -> Result<usize, String> {
+    let cloned_env = state.global_environment.clone();
+    let syntax_tree = ast::parse(arena, state, &cloned_env, read, true)
         .map_err(|e| format!("Syntax error: {}", e))?;
     println!(" => {:?}", syntax_tree);
     if let Some(n) = largest_toplevel_reference(&syntax_tree) {
-        state
-            .arena
-            .get_activation_frame(state.environment.frame)
+        arena
+            .get_activation_frame(state.global_frame)
             .borrow_mut()
-            .ensure_index(&state.arena, n);
+            .ensure_index(arena, n);
     }
     let start_pc = state.code.len();
     compile::compile(
         &syntax_tree,
         &mut state.code,
-        &state.environment.env,
+        &state.global_environment,
         false,
         true,
     )
     .map_err(|e| format!("Compilation error: {}", e))?;
     state.code.push(Instruction::Finish);
     println!(" => {:?}", &state.code[start_pc..state.code.len()]);
-    vm::run(
-        &mut state.arena,
-        &state.code,
-        start_pc,
-        state.environment.frame,
-    )
-    .map_err(|e| format!("Runtime error: {}", e))
+    vm::run(arena, &state.code, start_pc, state.global_frame)
+        .map_err(|e| format!("Runtime error: {}", e))
 }

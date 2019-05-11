@@ -41,7 +41,7 @@ pub struct Environment {
 
 // Gruik
 impl PartialEq for Environment {
-    fn eq(&self, other: &Self) -> bool {
+    fn eq(&self, _other: &Self) -> bool {
         false
     }
 }
@@ -209,9 +209,4 @@ impl ActivationFrame {
             panic!("Accessing depth with no parent.");
         }
     }
-}
-
-pub struct CombinedEnv {
-    pub env: RcEnv,
-    pub frame: usize,
 }
