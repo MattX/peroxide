@@ -17,7 +17,7 @@ use std::fmt;
 use std::ops::Deref;
 
 use arena::Arena;
-use environment::ActivationFrame;
+use environment::{ActivationFrame, RcEnv};
 use gc;
 use primitives::Primitive;
 
@@ -34,9 +34,18 @@ pub enum Value {
     EmptyList,
     Pair(RefCell<usize>, RefCell<usize>),
     Vector(Vec<RefCell<usize>>),
-    Lambda { code: usize, environment: usize },
+    Lambda {
+        code: usize,
+        environment: usize,
+    },
     Primitive(&'static Primitive),
     ActivationFrame(RefCell<ActivationFrame>),
+    Environment(RcEnv),
+    SyntacticClosure {
+        environment: usize,
+        free_variables: Vec<String>,
+        expr: usize,
+    },
 }
 
 impl fmt::Display for Value {
@@ -183,14 +192,11 @@ impl Value {
             true
         }
     }
+}
 
-    pub fn cdr(&self) -> usize {
-        if let Value::Pair(_, cdr) = self {
-            *cdr.borrow()
-        } else {
-            panic!("Not a pair: {:?}.", self)
-        }
-    }
+// TODO phase out inline version
+pub fn vec_from_list(arena: &Arena, val: usize) -> Result<Vec<usize>, String> {
+    arena.get(val).pair_to_vec(arena)
 }
 
 pub fn list_from_vec(arena: &Arena, vals: &[usize]) -> usize {
@@ -202,6 +208,7 @@ pub fn list_from_vec(arena: &Arena, vals: &[usize]) -> usize {
     }
 }
 
+// TODO phase out inline version
 pub fn pretty_print(arena: &Arena, at: usize) -> String {
     arena.get(at).pretty_print(arena)
 }

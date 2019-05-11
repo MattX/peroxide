@@ -224,6 +224,8 @@ pub struct SegmentationResult {
     pub depth: u64,
 }
 
+/// Splits a vector of token into a vector of vector of tokens, each of which represents a single
+/// expression that can be read.
 pub fn segment(toks: Vec<Token>) -> Result<SegmentationResult, String> {
     let mut segments = Vec::new();
     let mut current_segment = Vec::new();

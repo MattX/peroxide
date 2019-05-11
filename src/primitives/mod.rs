@@ -71,17 +71,19 @@ use std::fmt::{Debug, Error, Formatter};
 
 use arena::Arena;
 use environment::CombinedEnv;
+use primitives::extensions::*;
 use primitives::numeric::*;
 use primitives::object::*;
 use primitives::pair::*;
 use std::cell::RefCell;
 use value::Value;
 
+mod extensions;
 mod numeric;
 mod object;
 mod pair;
 
-static PRIMITIVES: [Primitive; 19] = [
+static PRIMITIVES: [Primitive; 20] = [
     Primitive {
         name: "eq?",
         implementation: eq_p,
@@ -157,6 +159,10 @@ static PRIMITIVES: [Primitive; 19] = [
     Primitive {
         name: "display",
         implementation: display,
+    },
+    Primitive {
+        name: "make-syntactic-closure",
+        implementation: make_syntactic_closure,
     },
 ];
 

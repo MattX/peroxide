@@ -97,9 +97,7 @@ fn shadow() {
         Value::String("inner".into()),
         execute(
             &mut vm_state,
-            "\
-             ((lambda (x) ((lambda (x) x) \"inner\")) \"outer\")\
-             "
+            "((lambda (x) ((lambda (x) x) \"inner\")) \"outer\")"
         )
         .unwrap()
     );
@@ -112,10 +110,8 @@ fn several_args() {
         vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)],
         execute_to_vec(
             &mut vm_state,
-            "\
-            (define (list . vals) vals)
-            ((lambda (x y z) (list x y z)) 1 2 3)\
-        "
+            "(define (list . vals) vals)\
+             ((lambda (x y z) (list x y z)) 1 2 3)"
         )
         .unwrap()
     );
@@ -128,10 +124,8 @@ fn dotted() {
         vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)],
         execute_to_vec(
             &mut vm_state,
-            "\
-            (define (list . vals) vals)
-            ((lambda (x y z) (list x y z)) 1 2 3)\
-        "
+            "(define (list . vals) vals)\
+             ((lambda (x y z) (list x y z)) 1 2 3)"
         )
         .unwrap()
     );
@@ -156,17 +150,24 @@ fn replace_global_reference() {
 }
 
 #[test]
+fn set_global_reference() {
+    let mut vm_state = VmState::default();
+    assert_eq!(
+        Value::Boolean(false),
+        execute(&mut vm_state, "(define x #t) (set! x #f) x").unwrap()
+    );
+}
+
+#[test]
 fn forward_global_reference() {
     let mut vm_state = VmState::default();
     assert_eq!(
         Value::Integer(5),
         execute(
             &mut vm_state,
-            "\
-             (define (print-x) x)\
+            "(define (print-x) x)\
              (define x 5)\
-             (print-x)\
-             "
+             (print-x)"
         )
         .unwrap()
     );
@@ -179,12 +180,76 @@ fn mut_rec() {
         Value::Boolean(true),
         execute(
             &mut vm_state,
-            "\
-             (define (odd? x) (if (= x 0) #f (even? (- x 1))))\
+            "(define (odd? x) (if (= x 0) #f (even? (- x 1))))\
              (define (even? x) (if (= x 0) #t (odd? (- x 1))))\
-             (odd? 10001)\
-             "
+             (odd? 10001)"
         )
         .unwrap()
+    );
+}
+
+#[test]
+fn set_local() {
+    let mut vm_state = VmState::default();
+    assert_eq!(
+        Value::Integer(2),
+        execute(
+            &mut vm_state,
+            "(define x 2)\
+             ((lambda (x)\
+             (set! x 3)\
+             x) 1)\
+             x"
+        )
+        .unwrap()
+    );
+}
+
+#[test]
+fn set_local2() {
+    let mut vm_state = VmState::default();
+    assert_eq!(
+        Value::Integer(3),
+        execute(
+            &mut vm_state,
+            "(define x 2)\
+             ((lambda (x)\
+             (set! x 3)\
+             x) 1)"
+        )
+        .unwrap()
+    );
+}
+
+#[test]
+fn close_env() {
+    let mut vm_state = VmState::default();
+    assert_eq!(
+        vec![Value::Integer(26), Value::Integer(-5)],
+        execute_to_vec(
+            &mut vm_state,
+            "(define (list . args) args)\
+             (define (make-counter init-value)\
+               ((lambda (counter-value)\
+                  (lambda (increment)\
+                     (set! counter-value (+ counter-value increment))\
+                     counter-value))\
+                init-value))\
+             (define counter1 (make-counter 5))\
+             (define counter2 (make-counter -5))
+             (counter1 3)\
+             (counter1 18)\
+             (list (counter1 0) (counter2 0))"
+        )
+        .unwrap()
+    );
+}
+
+#[test]
+fn rename_keyword() {
+    let mut vm_state = VmState::default();
+    assert_eq!(
+        Value::Boolean(false),
+        execute(&mut vm_state, "(define (set!) #f) (set!)").unwrap()
     );
 }

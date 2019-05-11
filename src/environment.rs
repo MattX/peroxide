@@ -39,6 +39,13 @@ pub struct Environment {
     variable_names: Vec<String>,
 }
 
+// Gruik
+impl PartialEq for Environment {
+    fn eq(&self, other: &Self) -> bool {
+        false
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum EnvironmentValue {
     Macro(usize),

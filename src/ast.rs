@@ -14,14 +14,12 @@
 
 //! Turns a List representing a toplevel element in a Scheme program into an AST.
 //!
-//! Two things we don't support right now and will probably need to:
-//!  * Macro support. Besides the macroexpansion processor, we need to keep track of which macros
-//!    have been declared in the branch we are in as we construct the tree. This also means
-//!    two-way communication with the caller for toplevel macro defines.
-//!    I'm also not sure how to handle hygiene for macros.
-//!  * A similar but simpler concern is keeping track of any keywords that have been redefined.
+//! This step is also responsible for computing all references. This is not great for separation
+//! of concerns, but we need to keep track of the environment at the AST stage anyways to handle
+//! macros and redefined keywords. Computing references here simplifies the compiler while not
+//! making the AST parser much more complex.
 //!
-//! This step is also responsible for computing all references.
+//! ### Future work / notes:
 //!
 //! Once the data has been read, we can drop all of the code we've read and keep only the quotes.
 //! I think the easiest way to do this would be to use two separate arenas for the pre-AST and
@@ -148,13 +146,16 @@ fn pair_to_syntax_element(
 ) -> Result<SyntaxElement, String> {
     let rest = arena.get(cdr).pair_to_vec(arena)?;
     match arena.get(car) {
-        Value::Symbol(s) => match s.as_ref() {
-            "quote" => parse_quote(&rest),
-            "if" => parse_if(arena, env, &rest),
-            "begin" => parse_begin(arena, env, &rest),
-            "lambda" => parse_lambda(arena, env, &rest),
-            "set!" => parse_set(arena, env, &rest),
-            "define" => parse_define(arena, env, &rest, toplevel),
+        Value::Symbol(s) => match match_symbol(env, s) {
+            Symbol::Quote => parse_quote(&rest),
+            Symbol::If => parse_if(arena, env, &rest),
+            Symbol::Begin => parse_begin(arena, env, &rest),
+            Symbol::Lambda => parse_lambda(arena, env, &rest),
+            Symbol::Set => parse_set(arena, env, &rest),
+            Symbol::Define => parse_define(arena, env, &rest, toplevel),
+            Symbol::DefineSyntax | Symbol::LetSyntax | Symbol::LetRecSyntax | Symbol::Macro(_) => {
+                Err(format!("Can't parse {} for now.", s))
+            }
             _ => parse_application(arena, env, car, &rest),
         },
         _ => parse_application(arena, env, car, &rest),
@@ -326,6 +327,8 @@ fn parse_application(
     })))
 }
 
+fn parse_define_syntax(arena: &Arena, env: &RcEnv, rest: &[usize]) {}
+
 fn parse_formals(arena: &Arena, formals: usize) -> Result<Formals, String> {
     let mut values = Vec::new();
     let mut formal = formals;
@@ -359,10 +362,37 @@ fn parse_formals(arena: &Arena, formals: usize) -> Result<Formals, String> {
     }
 }
 
-fn collect_defines(
-    body: &[SyntaxElement],
-) -> Result<(Vec<SyntaxElement>, &[SyntaxElement]), String> {
-    unimplemented!()
+enum Symbol {
+    Quote,
+    If,
+    Begin,
+    Lambda,
+    Set,
+    Define,
+    DefineSyntax,
+    LetSyntax,
+    LetRecSyntax,
+    Macro(usize),
+    Variable,
+}
+
+fn match_symbol(env: &RcEnv, sym: &str) -> Symbol {
+    match env.borrow().get(sym) {
+        None => match sym {
+            "quote" => Symbol::Quote,
+            "if" => Symbol::If,
+            "begin" => Symbol::Begin,
+            "lambda" => Symbol::Lambda,
+            "set!" => Symbol::Set,
+            "define" => Symbol::Define,
+            "define-syntax" => Symbol::DefineSyntax,
+            "let-syntax" => Symbol::LetSyntax,
+            "letrec-syntax" => Symbol::LetRecSyntax,
+            _ => Symbol::Variable,
+        },
+        Some(EnvironmentValue::Macro(m)) => Symbol::Macro(m),
+        Some(EnvironmentValue::Variable(_)) => Symbol::Variable,
+    }
 }
 
 /// Returns the largest toplevel reference encountered in the tree, if any.

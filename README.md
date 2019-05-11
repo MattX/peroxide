@@ -33,6 +33,9 @@ system. Oh well.
 * Macro support
 * Internal defines
 * Make errors not be strings :)
+* Tie bytecode to AST and AST to input
+* Tie bytecode to environment (sort of done if I do the thing above)
+* Allow commands like `,exit` or `,decompile`
 
 ### Small
 
