@@ -14,7 +14,7 @@
 
 use arena::Arena;
 use util::check_len;
-use value::Value;
+use value::{pretty_print, Value};
 
 /// Generates a numeric primitive that runs a simple fold. The provided folder must be a function
 /// (&Value, &Value) -> Value
@@ -69,7 +69,7 @@ macro_rules! prim_fold_1 {
     };
 }
 
-prim_fold_1!(sub, sub2);
+prim_fold_1!(subn, sub2);
 fn sub2(a: &Value, b: &Value) -> Value {
     match cast_same(a, b) {
         (Value::Integer(ia), Value::Integer(ib)) => Value::Integer(ia - ib),
@@ -81,7 +81,25 @@ fn sub2(a: &Value, b: &Value) -> Value {
     }
 }
 
-prim_fold_1!(div, div2);
+pub fn sub(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    if args.len() == 1 {
+        let result = match arena.get(args[0]) {
+            Value::Integer(i) => Value::Integer(-i),
+            Value::Real(f) => Value::Real(-f),
+            _ => {
+                return Err(format!(
+                    "(-): non-numeric argument: {}",
+                    pretty_print(arena, args[0])
+                ))
+            }
+        };
+        Ok(arena.insert(result))
+    } else {
+        subn(arena, args)
+    }
+}
+
+prim_fold_1!(divn, div2);
 fn div2(a: &Value, b: &Value) -> Value {
     match cast_same(a, b) {
         (Value::Integer(ia), Value::Integer(ib)) => {
@@ -96,6 +114,24 @@ fn div2(a: &Value, b: &Value) -> Value {
             "cast_same did not return equal numeric types: ({}, {})",
             a, b
         ),
+    }
+}
+
+pub fn div(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    if args.len() == 1 {
+        let result = match arena.get(args[0]) {
+            Value::Integer(i) => Value::Real(1.0 / (*i) as f64),
+            Value::Real(f) => Value::Real(1.0 / (*f)),
+            _ => {
+                return Err(format!(
+                    "(/): non-numeric argument: {}",
+                    pretty_print(arena, args[0])
+                ))
+            }
+        };
+        Ok(arena.insert(result))
+    } else {
+        divn(arena, args)
     }
 }
 
@@ -115,10 +151,9 @@ macro_rules! prim_monotonic {
 
 prim_monotonic!(equal, equal2);
 fn equal2(a: &Value, b: &Value) -> bool {
-    #![allow(clippy::float_cmp)]
     match cast_same(a, b) {
         (Value::Integer(ia), Value::Integer(ib)) => ia == ib,
-        (Value::Real(fa), Value::Real(fb)) => fa == fb,
+        (Value::Real(fa), Value::Real(fb)) => (fa - fb).abs() < std::f64::EPSILON,
         _ => panic!(
             "cast_same did not return equal numeric types: ({}, {})",
             a, b
@@ -192,6 +227,8 @@ pub fn real_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
 
 /// Takes an argument list (vector of arena pointers), returns a vector of numeric values or
 /// an error.
+///
+/// TODO: we probably shouldn't collect into a vector because it makes basic math slow af.
 fn numeric_vec(arena: &Arena, args: &[usize]) -> Result<Vec<Value>, String> {
     args.iter()
         .map(|v| verify_numeric(arena.get(*v).clone()))

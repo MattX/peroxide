@@ -562,6 +562,7 @@ fn match_symbol(env: &RcEnv, sym: &str) -> Symbol {
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn collect_internal_defines(
     arena: &Arena,
     vms: &mut VmState,

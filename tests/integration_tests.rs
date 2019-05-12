@@ -291,3 +291,13 @@ fn internal_define() {
         .unwrap()
     );
 }
+
+#[test]
+fn apply() {
+    let arena = Arena::default();
+    let mut vm_state = VmState::new(&arena);
+    assert_eq!(
+        Value::Integer(5),
+        execute(&arena, &mut vm_state, "(apply + (apply - 2 3) 6)").unwrap()
+    );
+}

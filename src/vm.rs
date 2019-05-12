@@ -16,6 +16,7 @@
 
 use arena::Arena;
 use environment::ActivationFrame;
+use primitives::PrimitiveImplementation;
 use std::cell::RefCell;
 use value::Value::Lambda;
 use value::{list_from_vec, pretty_print, Value};
@@ -197,29 +198,7 @@ pub fn run(arena: &Arena, code: &[Instruction], pc: usize, env: usize) -> Result
                 }
             }
             Instruction::FunctionInvoke { tail } => {
-                let fun = arena.get(vm.fun);
-                match fun {
-                    Value::Lambda {
-                        code, environment, ..
-                    } => {
-                        if !tail {
-                            vm.return_stack.push(vm.pc);
-                        }
-                        vm.env = *environment;
-                        vm.pc = *code;
-                    }
-                    Value::Primitive(p) => {
-                        let af = arena.get_activation_frame(vm.value);
-                        let values = &af.borrow().values;
-                        vm.value = (p.implementation)(arena, &values)?;
-                    }
-                    _ => {
-                        return Err(format!(
-                            "Cannot invoke non-function: {}",
-                            fun.pretty_print(arena)
-                        ));
-                    }
-                }
+                invoke(arena, &mut vm, tail)?;
             }
             Instruction::CreateFrame(size) => {
                 let mut frame = ActivationFrame {
@@ -242,4 +221,49 @@ pub fn run(arena: &Arena, code: &[Instruction], pc: usize, env: usize) -> Result
 // TODO remove this
 fn get_activation_frame(arena: &Arena, env: usize) -> &RefCell<ActivationFrame> {
     arena.get_activation_frame(env)
+}
+
+fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), String> {
+    let fun = arena.get(vm.fun);
+    match fun {
+        Value::Lambda {
+            code, environment, ..
+        } => {
+            if !tail {
+                vm.return_stack.push(vm.pc);
+            }
+            vm.env = *environment;
+            vm.pc = *code;
+        }
+        Value::Primitive(p) => match p.implementation {
+            PrimitiveImplementation::Simple(i) => {
+                let af = arena.get_activation_frame(vm.value);
+                let values = &af.borrow().values;
+                vm.value = i(arena, &values)?;
+            }
+            PrimitiveImplementation::Apply => apply(arena, vm, tail)?,
+            _ => return Err(format!("Unimplemented: {}", p.name)),
+        },
+        _ => {
+            return Err(format!(
+                "Cannot invoke non-function: {}",
+                fun.pretty_print(arena)
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn apply(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), String> {
+    let af = arena.get_activation_frame(vm.value).borrow();
+    if af.values.is_empty() {
+        return Err("apply: no arguments.".into());
+    }
+    let new_af = ActivationFrame {
+        parent: Some(vm.value),
+        values: af.values[1..].to_vec(),
+    };
+    vm.value = arena.insert(Value::ActivationFrame(RefCell::new(new_af)));
+    vm.fun = af.values[0];
+    invoke(arena, vm, tail)
 }

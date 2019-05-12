@@ -36,3 +36,43 @@ pub fn max_optional<T: Ord + Copy>(a: Option<T>, b: Option<T>) -> Option<T> {
         _ => a.or(b),
     }
 }
+
+pub fn parse_num(s: &str, base: u32) -> Result<i64, String> {
+    if base > 36 {
+        panic!("Invalid base {}.", base);
+    }
+
+    let mut r = 0 as i64;
+    let mut it = s.chars().peekable();
+    let reverse = it.peek() == Some(&'-');
+    if reverse {
+        it.next();
+    }
+
+    for d in it {
+        let n = d.to_digit(base);
+        if let Some(n) = n {
+            r = r * i64::from(base) + i64::from(n);
+        } else {
+            return Err(format!("Invalid digit for base {}: {}", base, d));
+        }
+    }
+
+    if reverse {
+        r = -r;
+    }
+    Ok(r)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_num() {
+        assert_eq!(42, parse_num("101010", 2).unwrap());
+        assert_eq!(42, parse_num("2a", 16).unwrap());
+        assert_eq!(42, parse_num("42", 10).unwrap());
+        assert_eq!(-15, parse_num("-F", 16).unwrap());
+    }
+}

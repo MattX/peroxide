@@ -40,9 +40,9 @@
 //! OK symbol->string
 //! OK string->symbol
 //!
-//! char?
+//! OK char?
 //! char=? char<? char<=? char>? char>=?
-//! char->integer integer->char
+//! OK char->integer integer->char
 //!
 //! string?
 //! make-string string-length string-ref string-set!
@@ -71,6 +71,7 @@ use std::fmt::{Debug, Error, Formatter};
 
 use arena::Arena;
 use environment::RcEnv;
+use primitives::char::*;
 use primitives::extensions::*;
 use primitives::numeric::*;
 use primitives::object::*;
@@ -78,119 +79,67 @@ use primitives::pair::*;
 use primitives::symbol::*;
 use value::Value;
 
+mod char;
 mod extensions;
 mod numeric;
 mod object;
 mod pair;
 mod symbol;
 
-static PRIMITIVES: [Primitive; 25] = [
+macro_rules! simple_primitive {
+    ($name:expr, $implementation:ident) => {
+        Primitive {
+            name: $name,
+            implementation: PrimitiveImplementation::Simple($implementation),
+        }
+    };
+}
+
+static PRIMITIVES: [Primitive; 29] = [
+    simple_primitive!("make-syntactic-closure", make_syntactic_closure),
+    simple_primitive!("eq?", eq_p),
+    simple_primitive!("eqv?", eqv_p),
+    simple_primitive!("equal?", equal_p),
+    simple_primitive!("=", equal),
+    simple_primitive!("<", less_than),
+    simple_primitive!(">", greater_than),
+    simple_primitive!("<=", less_than_equal),
+    simple_primitive!(">=", greater_than_equal),
+    simple_primitive!("+", add),
+    simple_primitive!("*", mul),
+    simple_primitive!("-", sub),
+    simple_primitive!("/", div),
+    simple_primitive!("integer?", integer_p),
+    simple_primitive!("real?", real_p),
+    simple_primitive!("pair?", pair_p),
+    simple_primitive!("cons", cons),
+    simple_primitive!("car", car),
+    simple_primitive!("cdr", cdr),
+    simple_primitive!("set-car!", set_car_b),
+    simple_primitive!("set-cdr!", set_cdr_b),
+    simple_primitive!("display", display),
+    simple_primitive!("symbol?", symbol_p),
+    simple_primitive!("symbol->string", symbol_to_string),
+    simple_primitive!("string->symbol", string_to_symbol),
+    simple_primitive!("char?", char_p),
+    simple_primitive!("char->integer", char_to_integer),
+    simple_primitive!("integer->char", integer_to_char),
     Primitive {
-        name: "make-syntactic-closure",
-        implementation: make_syntactic_closure,
-    },
-    Primitive {
-        name: "eq?",
-        implementation: eq_p,
-    },
-    Primitive {
-        name: "eqv?",
-        implementation: eqv_p,
-    },
-    Primitive {
-        name: "equal?",
-        implementation: equal_p,
-    },
-    Primitive {
-        name: "=",
-        implementation: equal,
-    },
-    Primitive {
-        name: "<",
-        implementation: less_than,
-    },
-    Primitive {
-        name: ">",
-        implementation: greater_than,
-    },
-    Primitive {
-        name: "<=",
-        implementation: less_than_equal,
-    },
-    Primitive {
-        name: ">=",
-        implementation: greater_than_equal,
-    },
-    Primitive {
-        name: "+",
-        implementation: add,
-    },
-    Primitive {
-        name: "*",
-        implementation: mul,
-    },
-    Primitive {
-        name: "-",
-        implementation: sub,
-    },
-    Primitive {
-        name: "/",
-        implementation: div,
-    },
-    Primitive {
-        name: "integer?",
-        implementation: integer_p,
-    },
-    Primitive {
-        name: "real?",
-        implementation: real_p,
-    },
-    Primitive {
-        name: "pair?",
-        implementation: pair_p,
-    },
-    Primitive {
-        name: "cons",
-        implementation: cons,
-    },
-    Primitive {
-        name: "car",
-        implementation: car,
-    },
-    Primitive {
-        name: "cdr",
-        implementation: cdr,
-    },
-    Primitive {
-        name: "set-car!",
-        implementation: set_car_b,
-    },
-    Primitive {
-        name: "set-cdr!",
-        implementation: set_cdr_b,
-    },
-    Primitive {
-        name: "display",
-        implementation: display,
-    },
-    Primitive {
-        name: "symbol?",
-        implementation: symbol_p,
-    },
-    Primitive {
-        name: "symbol->string",
-        implementation: symbol_to_string,
-    },
-    Primitive {
-        name: "string->symbol",
-        implementation: string_to_symbol,
+        name: "apply",
+        implementation: PrimitiveImplementation::Apply,
     },
 ];
 
-#[derive(Clone)]
 pub struct Primitive {
     pub name: &'static str,
-    pub implementation: fn(&Arena, &[usize]) -> Result<usize, String>,
+    pub implementation: PrimitiveImplementation,
+}
+
+pub enum PrimitiveImplementation {
+    Simple(fn(&Arena, &[usize]) -> Result<usize, String>),
+    Eval,
+    Apply,
+    CallCC,
 }
 
 impl Debug for Primitive {
@@ -206,17 +155,10 @@ impl PartialEq for Primitive {
 }
 
 pub fn register_primitives(arena: &Arena, global_environment: &RcEnv, global_frame: usize) {
-    // Intern all the primitives before getting the frame to avoid a mut/non-mut alias to the
-    // arena.
-
-    let primitive_indices: Vec<_> = PRIMITIVES
-        .iter()
-        .map(|p| arena.insert(Value::Primitive(p)))
-        .collect();
     let mut borrowed_env = global_environment.borrow_mut();
     let mut frame = arena.get_activation_frame(global_frame).borrow_mut();
-    for (prim, interned) in PRIMITIVES.iter().zip(primitive_indices.into_iter()) {
+    for prim in PRIMITIVES.iter() {
         borrowed_env.define(prim.name, true);
-        frame.values.push(interned);
+        frame.values.push(arena.insert(Value::Primitive(prim)));
     }
 }

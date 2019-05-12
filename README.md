@@ -1,34 +1,27 @@
 # Peroxide
 
 A scheme interpreter in Rust. Aims for R5RS compliance. Heavily based
-on the interpreter described in Chapter 7 of _Lisp in Small Pieces_.
+on the interpreter described in _Lisp in Small Pieces_.
 
-## Ramblings
 
-After starting this project, I realized that Rust made it super
-cumbersome to represent complex (especially loopy) data structures. Of
-course, an interpreter has to handle complex data structures, because
-the user could do arbitrary complicated things with their code. 
-
-The solution I ended up with is to represent everything as `usizes`
-pointing inside a large array holding all values (such an array is
-sort of necessary for GC anyway). This defeats a good part of the type
-system. Oh well.
 
 ## Todo
 
 ### Concrete
 
-* Support internal defines
+* ~~Support internal defines~~
 * Support let-syntax and letrec-syntax
 * Support syntactic closures
+* Add apply and eval
 * Fix the checked vs unchecked references
 * Implement the rest of the stdlib
+* Add `call/cc` (oh no)
+* Turn the GC on (oh noooo)
 * Allow fully disabling rustyline [using features](
 https://doc.rust-lang.org/cargo/reference/manifest.html#the-features-section).
 
 
-#### R7RS stretch goal
+#### R7RS stretch goals
 
 ### Vague
 
