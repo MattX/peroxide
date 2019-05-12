@@ -36,6 +36,7 @@ pub enum Instruction {
     Return,
     CreateClosure(usize),
     PackFrame(usize),
+    ExtendFrame(usize),
     PreserveEnv,
     RestoreEnv,
     PushValue,
@@ -155,8 +156,13 @@ pub fn run(arena: &Arena, code: &[Instruction], pc: usize, env: usize) -> Result
                 let mut borrowed_frame = get_activation_frame(arena, vm.value).borrow_mut();
                 let frame_len = std::cmp::max(arity, borrowed_frame.values.len());
                 let listified = list_from_vec(arena, &borrowed_frame.values[arity..frame_len]);
-                borrowed_frame.values.resize(arity + 1, 0);
+                borrowed_frame.values.resize(arity + 1, arena.undefined);
                 borrowed_frame.values[arity] = listified;
+            }
+            Instruction::ExtendFrame(by) => {
+                let mut frame = arena.get_activation_frame(vm.value).borrow_mut();
+                let len = frame.values.len();
+                frame.values.resize(len + by, arena.undefined);
             }
             Instruction::PreserveEnv => {
                 vm.stack.push(vm.env);

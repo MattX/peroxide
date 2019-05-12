@@ -17,12 +17,27 @@ system. Oh well.
 
 ## Todo
 
-### Large
+### Concrete
+
+* Support internal defines
+* Support let-syntax and letrec-syntax
+* Support syntactic closures
+* Fix the checked vs unchecked references
+* Implement the rest of the stdlib
+* Allow fully disabling rustyline [using features](
+https://doc.rust-lang.org/cargo/reference/manifest.html#the-features-section).
+
+
+#### R7RS stretch goal
+
+### Vague
+
+#### Large
 
 * `call/cc`
 * Be faster and less stupid
 
-### Medium
+#### Medium
 
 * Quasiquotation
 * Standard library
@@ -30,22 +45,11 @@ system. Oh well.
  * Catch overflows or support bigints
  * Idea: Make a `Value::Numeric` that would then contain the numeric
    subtypes. 
-* Macro support
 * Internal defines
 * Make errors not be strings :)
 * Tie bytecode to AST and AST to input
 * Tie bytecode to environment (sort of done if I do the thing above)
 * Allow commands like `,exit` or `,decompile`
-
-### Small
-
-* Support variable argument lists
-* Make `structs` for the more complex values in `Value`, so we can
-provide appropriate methods in a type-safe manner.
-* Make `define` support the function definition shorthand (could be done
-with a macro, maybe?)
-* Allow fully disabling rustyline [using features](
-https://doc.rust-lang.org/cargo/reference/manifest.html#the-features-section).
 
 
 ## Useful documentation

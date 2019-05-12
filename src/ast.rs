@@ -31,6 +31,7 @@ use arena::Arena;
 use compile_run;
 use environment::{Environment, EnvironmentValue, Macro, RcEnv};
 use std::cell::RefCell;
+use std::fmt;
 use std::rc::Rc;
 use util::{check_len, max_optional};
 use value::{pretty_print, vec_from_list, Value};
@@ -72,13 +73,22 @@ pub struct Begin {
 
 // The activation frame in a lambda has the formals, then all inner defines. In other words there
 // are (num formals) + (num defines) variables in the topmost frame.
-#[derive(Debug)]
 pub struct Lambda {
     pub env: RcEnv,
     pub arity: usize,
     pub dotted: bool,
     pub defines: Vec<SyntaxElement>,
     pub expressions: Vec<SyntaxElement>,
+}
+
+impl fmt::Debug for Lambda {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "Lambda {{ arity = {}, dotted = {}, defines = {:?}, expressions = {:?} }}",
+            self.arity, self.dotted, self.defines, self.expressions
+        )
+    }
 }
 
 #[derive(Debug)]
@@ -157,14 +167,14 @@ fn parse_pair(
         Value::Symbol(s) => match match_symbol(env, s) {
             Symbol::Quote => parse_quote(&rest),
             Symbol::If => parse_if(arena, vms, env, &rest),
-            Symbol::Begin => parse_begin(arena, vms, env, &rest),
+            Symbol::Begin => parse_begin(arena, vms, env, &rest, toplevel),
             Symbol::Lambda => parse_lambda(arena, vms, env, &rest),
             Symbol::Set => parse_set(arena, vms, env, &rest),
             Symbol::Define => parse_define(arena, vms, env, &rest, toplevel),
             Symbol::DefineSyntax => parse_define_syntax(arena, vms, env, &rest, toplevel),
             Symbol::LetSyntax | Symbol::LetRecSyntax => Err(format!("Can't parse {} for now.", s)),
             Symbol::Macro(m) => {
-                let expanded = expand_macro(arena, vms, env, m, cdr)?;
+                let expanded = expand_macro_full(arena, vms, env, m, cdr)?;
                 parse(arena, vms, env, expanded, toplevel)
             }
             _ => parse_application(arena, vms, env, car, &rest),
@@ -203,11 +213,12 @@ fn parse_begin(
     vms: &mut VmState,
     env: &RcEnv,
     rest: &[usize],
+    toplevel: bool,
 ) -> Result<SyntaxElement, String> {
     check_len(rest, Some(1), None)?;
     let expressions = rest
         .iter()
-        .map(|e| parse(arena, vms, env, *e, false))
+        .map(|e| parse(arena, vms, env, *e, toplevel))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(SyntaxElement::Begin(Box::new(Begin { expressions })))
 }
@@ -238,8 +249,27 @@ fn parse_split_lambda(
     if let Some(s) = &formals.rest {
         raw_env.define(s, true);
     }
+    let (unparsed_defines, rest) = collect_internal_defines(arena, vms, env, body)?;
+    for (target, _expression) in unparsed_defines.iter() {
+        raw_env.define(target, false);
+    }
     let env = Rc::new(RefCell::new(raw_env));
-    let expressions = body
+    let defines = unparsed_defines
+        .iter()
+        .map(|(target, expression)| {
+            let value = expression.parse(arena, vms, &env)?;
+            if let Some(EnvironmentValue::Variable(v)) = env.borrow().get(target) {
+                Ok(SyntaxElement::Set(Box::new(Set {
+                    altitude: v.altitude,
+                    index: v.index,
+                    value,
+                })))
+            } else {
+                panic!("wat");
+            }
+        })
+        .collect::<Result<Vec<SyntaxElement>, String>>()?;
+    let expressions = rest
         .iter()
         .map(|e| parse(arena, vms, &env, *e, false))
         .collect::<Result<Vec<_>, _>>()?;
@@ -247,7 +277,7 @@ fn parse_split_lambda(
         env,
         arity: formals.values.len(),
         dotted: formals.rest.is_some(),
-        defines: vec![],
+        defines,
         expressions,
     })))
 }
@@ -278,13 +308,8 @@ fn parse_set(
     }
 }
 
-enum DefineValue {
-    Value(usize),
-    Lambda { formals: usize, body: Vec<usize> },
-}
-
-/// Parses toplevel defines. Inner defines have different semantics and will need to be parsed
-/// elsewhere.
+/// Parses toplevel defines. Inner defines have different semantics and are parsed differently
+/// (see [collect_internal_defines]).
 fn parse_define(
     arena: &Arena,
     vms: &mut VmState,
@@ -295,20 +320,9 @@ fn parse_define(
     if !toplevel {
         return Err("Define in illegal position.".into());
     }
-    let (symbol, define_value) = match arena.get(rest[0]) {
-        Value::Symbol(s) => {
-            check_len(rest, Some(2), Some(2))?;
-            (s.clone(), DefineValue::Value(rest[1]))
-        }
-        _ => parse_lambda_define(arena, rest)?,
-    };
+    let (symbol, define_value) = get_define_value(arena, rest)?;
     let index = env.borrow_mut().define_if_absent(&symbol, false);
-    let value = match define_value {
-        DefineValue::Value(v) => parse(arena, vms, env, v, false)?,
-        DefineValue::Lambda { formals, body } => {
-            parse_split_lambda(arena, vms, env, formals, &body)?
-        }
-    };
+    let value = define_value.parse(arena, vms, env)?;
     Ok(SyntaxElement::Set(Box::new(Set {
         altitude: 0,
         index,
@@ -316,8 +330,40 @@ fn parse_define(
     })))
 }
 
+enum DefineValue {
+    Value(usize),
+    Lambda { formals: usize, body: Vec<usize> },
+}
+
+impl DefineValue {
+    pub fn parse(
+        &self,
+        arena: &Arena,
+        vms: &mut VmState,
+        env: &RcEnv,
+    ) -> Result<SyntaxElement, String> {
+        match self {
+            DefineValue::Value(v) => parse(arena, vms, env, *v, false),
+            DefineValue::Lambda { formals, body } => {
+                parse_split_lambda(arena, vms, env, *formals, &body)
+            }
+        }
+    }
+}
+
+fn get_define_value(arena: &Arena, rest: &[usize]) -> Result<(String, DefineValue), String> {
+    let res = match arena.get(rest[0]) {
+        Value::Symbol(s) => {
+            check_len(rest, Some(2), Some(2))?;
+            (s.clone(), DefineValue::Value(rest[1]))
+        }
+        _ => get_lambda_define_value(arena, rest)?,
+    };
+    Ok(res)
+}
+
 /// Helper method to parse direct lambda defines `(define (x y z) y z)`.
-fn parse_lambda_define(arena: &Arena, rest: &[usize]) -> Result<(String, DefineValue), String> {
+fn get_lambda_define_value(arena: &Arena, rest: &[usize]) -> Result<(String, DefineValue), String> {
     check_len(rest, Some(2), None)?;
     if let Value::Pair(car, cdr) = arena.get(rest[0]) {
         if let Value::Symbol(s) = arena.get(*car.borrow()) {
@@ -360,8 +406,6 @@ fn parse_application(
         args,
     })))
 }
-
-// fn parse_define_syntax(arena: &Arena, vms: &VmState, env: &RcEnv, rest: &[usize]) {}
 
 fn parse_formals(arena: &Arena, formals: usize) -> Result<Formals, String> {
     let mut values = Vec::new();
@@ -434,6 +478,20 @@ fn parse_define_syntax(
     })))
 }
 
+fn expand_macro_full(
+    arena: &Arena,
+    vms: &mut VmState,
+    env: &RcEnv,
+    mac: Macro,
+    expr: usize,
+) -> Result<usize, String> {
+    let mut expanded = expand_macro(arena, vms, env, mac, expr)?;
+    while let Some(m) = get_macro(arena, env, expanded) {
+        expanded = expand_macro(arena, vms, env, m, expanded)?;
+    }
+    Ok(expanded)
+}
+
 fn expand_macro(
     arena: &Arena,
     vms: &mut VmState,
@@ -456,6 +514,19 @@ fn expand_macro(
         ],
     }));
     compile_run(arena, vms, &syntax_tree)
+}
+
+fn get_macro(arena: &Arena, env: &RcEnv, expr: usize) -> Option<Macro> {
+    match arena.get(expr) {
+        Value::Pair(car, _cdr) => match arena.get(*car.borrow()) {
+            Value::Symbol(s) => match match_symbol(env, &s) {
+                Symbol::Macro(m) => Some(m),
+                _ => None,
+            },
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 enum Symbol {
@@ -489,6 +560,59 @@ fn match_symbol(env: &RcEnv, sym: &str) -> Symbol {
         Some(EnvironmentValue::Macro(m)) => Symbol::Macro(m),
         Some(EnvironmentValue::Variable(_)) => Symbol::Variable,
     }
+}
+
+fn collect_internal_defines(
+    arena: &Arena,
+    vms: &mut VmState,
+    env: &RcEnv,
+    body: &[usize],
+) -> Result<(Vec<(String, DefineValue)>, Vec<usize>), String> {
+    // TODO figure out a nice way to push macro expanded, non-define values. Right know
+    //      we'll perform macro expansion both here and at the actual parse site.
+
+    let mut defines = Vec::new();
+    let mut rest = Vec::new();
+    let mut i = 0 as usize;
+
+    for statement in body.iter() {
+        let expanded_statement = if let Some(m) = get_macro(arena, env, *statement) {
+            expand_macro_full(arena, vms, env, m, *statement)?
+        } else {
+            *statement
+        };
+        match arena.get(expanded_statement) {
+            Value::Pair(car, cdr) => match arena.get(*car.borrow()) {
+                Value::Symbol(s) => match match_symbol(env, s) {
+                    Symbol::Define => {
+                        let rest = vec_from_list(arena, *cdr.borrow())?;
+                        let dv = get_define_value(arena, &rest)?;
+                        defines.push(dv);
+                    }
+                    Symbol::Begin => {
+                        let expressions = vec_from_list(arena, *cdr.borrow())?;
+                        let (d, rest) = collect_internal_defines(arena, vms, env, &expressions)?;
+                        if !rest.is_empty() {
+                            return Err(
+                                "Inner begin in define section may only contain definitions."
+                                    .into(),
+                            );
+                        }
+                        defines.extend(d.into_iter());
+                    }
+                    Symbol::Macro(_) => panic!("Macro in fully expanded statement."),
+                    _ => break,
+                },
+                _ => break,
+            },
+            _ => break,
+        }
+        i += 1;
+    }
+
+    rest.extend(&body[i..]);
+    assert_eq!(body.len(), defines.len() + rest.len());
+    Ok((defines, rest))
 }
 
 /// Returns the largest toplevel reference encountered in the tree, if any.

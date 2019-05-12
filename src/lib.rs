@@ -46,12 +46,12 @@ pub struct VmState {
 
 impl VmState {
     pub fn new(arena: &Arena) -> Self {
-        let mut global_environment = Rc::new(RefCell::new(Environment::new(None)));
+        let global_environment = Rc::new(RefCell::new(Environment::new(None)));
         let global_frame = arena.insert(Value::ActivationFrame(RefCell::new(ActivationFrame {
             parent: None,
             values: vec![],
         })));
-        primitives::register_primitives(&arena, &mut global_environment, global_frame);
+        primitives::register_primitives(&arena, &global_environment, global_frame);
 
         VmState {
             global_environment,

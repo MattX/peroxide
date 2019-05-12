@@ -66,11 +66,12 @@ pub fn compile(
             if l.dotted {
                 to.push(Instruction::PackFrame(l.arity));
             }
+            to.push(Instruction::ExtendFrame(l.defines.len()));
             to.push(Instruction::ExtendEnv);
 
-            // TODO compile internal defines. Also edit code above to extend environment
-            //      for internal defines.
-
+            if !l.defines.is_empty() {
+                compile_sequence(&l.defines, to, &l.env, false)?;
+            }
             compile_sequence(&l.expressions, to, &l.env, true)?;
             to.push(Instruction::Return);
             to[skip_pos] = Instruction::Jump(to.len() - skip_pos - 1);

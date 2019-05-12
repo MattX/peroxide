@@ -153,6 +153,10 @@ impl Environment {
         self.altitude - altitude
     }
 
+    pub fn altitude(&self) -> usize {
+        self.altitude
+    }
+
     pub fn mark_initialized(&mut self, name: &str) {
         match self.values.get_mut(name) {
             Some(Some(EnvironmentValue::Variable(v))) => v.initialized = true,

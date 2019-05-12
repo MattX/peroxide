@@ -274,3 +274,20 @@ fn rename_keyword() {
         execute(&arena, &mut vm_state, "(define (set!) #f) (set!)").unwrap()
     );
 }
+
+#[test]
+fn internal_define() {
+    let arena = Arena::default();
+    let mut vm_state = VmState::new(&arena);
+    assert_eq!(
+        Value::Integer(5),
+        execute(
+            &arena,
+            &mut vm_state,
+            "((lambda ()\
+             (define x 5)\
+             x))"
+        )
+        .unwrap()
+    );
+}
