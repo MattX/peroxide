@@ -81,8 +81,25 @@ impl Arena {
         }
     }
 
-    pub fn insert_pair(&self, car: usize, cdr: usize) -> usize {
-        self.insert(Value::Pair(RefCell::new(car), RefCell::new(cdr)))
+    pub fn try_get_integer(&self, at: usize) -> Option<i64> {
+        match self.get(at) {
+            Value::Integer(i) => Some(*i),
+            _ => None,
+        }
+    }
+
+    pub fn try_get_character(&self, at: usize) -> Option<char> {
+        match self.get(at) {
+            Value::Character(c) => Some(*c),
+            _ => None,
+        }
+    }
+
+    pub fn try_get_string(&self, at: usize) -> Option<&RefCell<Vec<char>>> {
+        match self.get(at) {
+            Value::String(s) => Some(s),
+            _ => None,
+        }
     }
 
     pub fn collect(&mut self, roots: &[usize]) {

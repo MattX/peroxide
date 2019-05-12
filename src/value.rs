@@ -20,6 +20,7 @@ use arena::Arena;
 use environment::{ActivationFrame, RcEnv};
 use gc;
 use primitives::Primitive;
+use util::char_vec_to_str;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {
@@ -30,10 +31,10 @@ pub enum Value {
     Boolean(bool),
     Character(char),
     Symbol(String),
-    String(String),
+    String(RefCell<Vec<char>>),
     EmptyList,
     Pair(RefCell<usize>, RefCell<usize>),
-    Vector(Vec<RefCell<usize>>),
+    Vector(RefCell<Vec<usize>>),
     Lambda {
         code: usize,
         environment: usize,
@@ -60,13 +61,16 @@ impl fmt::Display for Value {
             Value::Character('\n') => write!(f, "#\\newline"),
             Value::Character(c) => write!(f, "#\\{}", c),
             Value::Symbol(s) => write!(f, "{}", s),
-            Value::String(s) => write!(f, "\"{}\"", s), // TODO escape string
+            Value::String(s) => {
+                write!(f, "\"{}\"", char_vec_to_str(&s.borrow())) // TODO escape string
+            }
             Value::EmptyList => write!(f, "()"),
             Value::Pair(a, b) => write!(f, "(=>{} . =>{})", a.borrow(), b.borrow()),
             Value::Vector(vals) => {
                 let contents = vals
+                    .borrow()
                     .iter()
-                    .map(|v| format!("=>{}", v.borrow()))
+                    .map(|v| format!("=>{}", v))
                     .collect::<Vec<_>>()
                     .join(" ");
                 write!(f, "#({})", contents)
@@ -84,8 +88,8 @@ impl gc::Inventory for Value {
                 v.push(*cdr.borrow());
             }
             Value::Vector(vals) => {
-                for val in vals.iter() {
-                    v.push(*val.borrow());
+                for val in vals.borrow().iter() {
+                    v.push(*val);
                 }
             }
             Value::Lambda { environment, .. } => {
@@ -151,8 +155,9 @@ impl Value {
     fn print_vector(&self, arena: &Arena) -> String {
         if let Value::Vector(vals) = self {
             let contents = vals
+                .borrow()
                 .iter()
-                .map(|e| arena.get(*e.borrow()).pretty_print(arena))
+                .map(|e| arena.get(*e).pretty_print(arena))
                 .collect::<Vec<_>>()
                 .join(" ");
             format!("#({})", contents)
@@ -239,9 +244,10 @@ pub fn equal(arena: &Arena, left: usize, right: usize) -> bool {
                 && equal(arena, *left_cdr.borrow(), *right_cdr.borrow())
         }
         (Value::Vector(left_vec), Value::Vector(right_vec)) => left_vec
+            .borrow()
             .iter()
-            .zip(right_vec.iter())
-            .all(|(l, r)| equal(arena, *l.borrow(), *r.borrow())),
+            .zip(right_vec.borrow().iter())
+            .all(|(l, r)| equal(arena, *l, *r)),
         (Value::String(left_string), Value::String(right_string)) => left_string == right_string,
         _ => eqv(arena, left, right),
     }
@@ -260,7 +266,10 @@ mod tests {
         assert_eq!("#\\newline", &format!("{}", Value::Character('\n')));
         assert_eq!("#\\x", &format!("{}", Value::Character('x')));
         assert_eq!("abc", &format!("{}", Value::Symbol("abc".to_string())));
-        assert_eq!("\"abc\"", &format!("{}", Value::String("abc".to_string())));
+        assert_eq!(
+            "\"abc\"",
+            &format!("{}", Value::String(RefCell::new(vec!['a', 'b', 'c'])))
+        );
     }
 
     #[test]
@@ -274,10 +283,10 @@ mod tests {
 
     #[test]
     fn format_vec() {
-        assert_eq!("#()", &format!("{}", Value::Vector(vec![])));
+        assert_eq!("#()", &format!("{}", Value::Vector(RefCell::new(vec![]))));
         assert_eq!(
             "#(=>1 =>2)",
-            &format!("{}", Value::Vector(vec![RefCell::new(1), RefCell::new(2)]))
+            &format!("{}", Value::Vector(RefCell::new(vec![1, 2])))
         );
     }
 }

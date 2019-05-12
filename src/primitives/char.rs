@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use arena::Arena;
+use std::convert::TryFrom;
 use util::check_len;
 use value::{pretty_print, Value};
 
@@ -29,7 +30,7 @@ pub fn char_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
 pub fn char_to_integer(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(1), Some(1))?;
     let res = match arena.get(args[0]) {
-        Value::Character(c) => Value::Integer(*c as i64),
+        Value::Character(c) => Value::Integer(i64::from(u32::from(*c))),
         _ => {
             return Err(format!(
                 "char->integer: not a char: {}",
@@ -43,7 +44,13 @@ pub fn char_to_integer(arena: &Arena, args: &[usize]) -> Result<usize, String> {
 pub fn integer_to_char(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(1), Some(1))?;
     let res = match arena.get(args[0]) {
-        Value::Integer(i) => Value::Character(*i as u8 as char),
+        Value::Integer(i) => {
+            let u32i = u32::try_from(*i).map_err(|e| e.to_string())?;
+            Value::Character(
+                std::char::from_u32(u32i)
+                    .ok_or(format!("integer->char: not a valid char: {}", u32i))?,
+            )
+        }
         _ => {
             return Err(format!(
                 "integer->char: not an integer: {}",

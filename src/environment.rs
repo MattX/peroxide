@@ -174,6 +174,15 @@ impl Environment {
 
 pub type RcEnv = Rc<RefCell<Environment>>;
 
+/*
+pub fn filter(closed_env: RcEnv, free_env: RcEnv, free_vars: &[String]) -> Result<RcEnv, String> {
+    // Free bindings should always be to an environment down the chain
+
+
+    let mut filtered = Environment::new(Some(closed_env.clone()));
+}
+*/
+
 // TODO make these fields private and have proper accessors
 #[derive(Debug, PartialEq, Clone)]
 pub struct ActivationFrame {

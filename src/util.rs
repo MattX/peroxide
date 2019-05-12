@@ -64,6 +64,14 @@ pub fn parse_num(s: &str, base: u32) -> Result<i64, String> {
     Ok(r)
 }
 
+pub fn str_to_char_vec(s: &str) -> Vec<char> {
+    s.chars().collect()
+}
+
+pub fn char_vec_to_str(v: &[char]) -> String {
+    v.iter().collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

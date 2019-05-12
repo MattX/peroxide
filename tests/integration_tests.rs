@@ -96,11 +96,11 @@ fn shadow() {
     let arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
-        Value::String("inner".into()),
+        Value::Symbol("inner".into()),
         execute(
             &arena,
             &mut vm_state,
-            "((lambda (x) ((lambda (x) x) \"inner\")) \"outer\")"
+            "((lambda (x) ((lambda (x) x) 'inner)) 'outer)"
         )
         .unwrap()
     );

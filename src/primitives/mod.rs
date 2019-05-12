@@ -41,10 +41,10 @@
 //! OK string->symbol
 //!
 //! OK char?
-//! char=? char<? char<=? char>? char>=?
+//! LIBRARY char=? char<? char<=? char>? char>=?
 //! OK char->integer integer->char
 //!
-//! string?
+//! OK string?
 //! make-string string-length string-ref string-set!
 //!
 //! vector?
@@ -84,7 +84,9 @@ mod extensions;
 mod numeric;
 mod object;
 mod pair;
+mod string;
 mod symbol;
+mod vector;
 
 macro_rules! simple_primitive {
     ($name:expr, $implementation:ident) => {

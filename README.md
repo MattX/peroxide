@@ -4,7 +4,6 @@ A scheme interpreter in Rust. Aims for R5RS compliance. Heavily based
 on the interpreter described in _Lisp in Small Pieces_.
 
 
-
 ## Todo
 
 ### Concrete

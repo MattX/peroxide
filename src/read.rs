@@ -18,6 +18,7 @@ use std::iter::Peekable;
 use arena::Arena;
 use lex;
 use lex::Token;
+use util::str_to_char_vec;
 use value::Value;
 
 #[derive(Debug)]
@@ -55,7 +56,7 @@ where
             Token::Integer(i) => Ok(Value::Integer(*i)),
             Token::Boolean(b) => Ok(Value::Boolean(*b)),
             Token::Character(c) => Ok(Value::Character(*c)),
-            Token::String(s) => Ok(Value::String(s.to_string())),
+            Token::String(s) => Ok(Value::String(RefCell::new(str_to_char_vec(s)))),
             Token::Symbol(s) => Ok(Value::Symbol(s.to_string())),
             Token::OpenParen => read_list(arena, it),
             Token::OpenVector => read_vec(arena, it),
@@ -119,7 +120,7 @@ fn read_vec<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<Value, 
 where
     I: Iterator<Item = &'b Token>,
 {
-    let mut result: Vec<RefCell<usize>> = Vec::new();
+    let mut result: Vec<usize> = Vec::new();
 
     if None == it.peek() {
         return Err(ParseResult::ParseError(
@@ -136,12 +137,12 @@ where
             _ => {
                 let elem = do_read(arena, it)?;
                 let elem_ptr = arena.insert(elem);
-                result.push(RefCell::new(elem_ptr));
+                result.push(elem_ptr);
             }
         }
     }
 
-    Ok(Value::Vector(result))
+    Ok(Value::Vector(RefCell::new(result)))
 }
 
 fn read_quote<'a, 'b, I>(
