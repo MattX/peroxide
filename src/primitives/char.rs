@@ -25,8 +25,6 @@ pub fn char_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     })
 }
 
-// TODO char->integer and integer->char are not standards-compliant as far as I understand.
-
 pub fn char_to_integer(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(1), Some(1))?;
     let res = match arena.get(args[0]) {

@@ -45,13 +45,13 @@
 //! OK char->integer integer->char
 //!
 //! OK string?
-//! make-string string-length string-ref string-set!
+//! OK make-string string-length string-ref string-set!
 //!
 //! vector?
 //! make-vector vector-length vector-ref vector-set!
 //!
-//! procedure?
-//! apply
+//! OK procedure?
+//! OK apply
 //!
 //! call-with-current-continuation
 //! values call-with-values dynamic-wind ~> library or not?
@@ -76,6 +76,7 @@ use primitives::extensions::*;
 use primitives::numeric::*;
 use primitives::object::*;
 use primitives::pair::*;
+use primitives::string::*;
 use primitives::symbol::*;
 use value::Value;
 
@@ -97,7 +98,7 @@ macro_rules! simple_primitive {
     };
 }
 
-static PRIMITIVES: [Primitive; 29] = [
+static PRIMITIVES: [Primitive; 35] = [
     simple_primitive!("make-syntactic-closure", make_syntactic_closure),
     simple_primitive!("eq?", eq_p),
     simple_primitive!("eqv?", eqv_p),
@@ -126,6 +127,12 @@ static PRIMITIVES: [Primitive; 29] = [
     simple_primitive!("char?", char_p),
     simple_primitive!("char->integer", char_to_integer),
     simple_primitive!("integer->char", integer_to_char),
+    simple_primitive!("string?", string_p),
+    simple_primitive!("make-string", make_string),
+    simple_primitive!("string-length", string_length),
+    simple_primitive!("string-set!", string_set_b),
+    simple_primitive!("string-ref", string_ref),
+    simple_primitive!("procedure?", procedure_p),
     Primitive {
         name: "apply",
         implementation: PrimitiveImplementation::Apply,

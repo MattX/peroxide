@@ -12,10 +12,16 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 
+; Numeric
+
+(define (zero? x) (= 0 x))
+(define (positive? x) (> 0 x))
+(define (negative? x) (< 0 x))
+
 ; Booleans
 
-(define (not x) (if x # f # t))
-(define (boolean? x) (if (eq? x # t) # t (eq? x # f)))
+(define (not x) (if x #f #t))
+(define (boolean? x) (if (eq? x #t) #t (eq? x #f)))
 
 ; Lists and pairs
 
@@ -51,11 +57,10 @@
 (define (cddddr x) (cdr (cdr (cdr (cdr x)))))
 
 (define (null? x) (eq? x '()))
-(define (list? x) (if (pair? x) # t (null? x)))
+(define (list? x) (if (pair? x) #t (null? x)))
 
 (define (list . args) args)
 
-; TODO: signal errors
 (define (length ls)
  (define (length* ls acc)
   (if (null? x)
@@ -63,11 +68,63 @@
    (length* (cdr ls) (+ 1 acc))))
  (length* ls 0))
 
+(define (append2 l1 l2)
+ (if (null? l1)
+  l2
+  (cons (car l1) (append (cdr l1) l2))))
+
+(define (appendn lists)
+ (if (null? lists)
+  '()
+  (if (null? (cdr lists))
+   (car lists)
+   (appendn (list (car lists) (appendn (cdr lists)))))))
+
 (define (append . lists)
- (define (append2 l1 l2)
-  (if (null? l1)
-    l2
-   (cons (car l1) (append2 (cdr l1) l2))))
- (if (= 1 (length lists))
-  (car lists)
-   ))
+ (apply appendn lists))
+
+(define (acc-reverse l acc)
+ (if (null? l)
+  acc
+  (acc-reverse (cdr l) (cons (car l) acc))))
+
+(define (reverse l)
+ (acc-reverse l '()))
+
+(define (list-tail l k)
+ (if (zero? k)
+  x
+  (list-tail? (cdr x) (- k 1))))
+
+(define (list-ref l k)
+ (car (list-tail l k)))
+
+(define (mem predicate obj ls)
+ (if (null? ls)
+  #f
+  (if (predicate obj (car ls))
+   ls
+   (mem predicate obj (cdr ls)))))
+
+(define (memq obj ls)
+ (mem eq? obj ls))
+(define (memv obj ls)
+ (mem eqv? obj ls))
+(define (member obj ls)
+ (mem equal? obj ls))
+
+(define (ass predicate obj ls)
+ (if (null? ls)
+  #f
+  (if (predicate obj (caar ls))
+   (car ls)
+   (ass predicate obj (cdr ls)))))
+
+(define (assq obj ls)
+ (ass eq? obj ls))
+(define (assv obj ls)
+ (ass eqv? obj ls))
+(define (assoc obj ls)
+ (ass equal? obj ls))
+
+(assq 'c '((a 1) (b 2) (c 3) (d 4)))

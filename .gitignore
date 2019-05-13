@@ -3,3 +3,5 @@
 /Cargo.lock
 history.txt
 /perf/
+Supprimerait dist/
+Supprimerait peroxide_kernel.egg-info/

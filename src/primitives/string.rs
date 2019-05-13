@@ -17,7 +17,7 @@ use std::cell::RefCell;
 use util::check_len;
 use value::{pretty_print, Value};
 
-pub fn char_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn string_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(1), Some(1))?;
     Ok(match arena.get(args[0]) {
         Value::String(_) => arena.t,
@@ -37,44 +37,72 @@ pub fn make_string(arena: &Arena, args: &[usize]) -> Result<usize, String> {
             ))
         }
     };
-    let l = match arena.get(args[0]) {
-        Value::Integer(i) if *i >= 0 => *i as usize,
-        _ => {
-            return Err(format!(
-                "make-string: Invalid length: {}.",
-                pretty_print(arena, args[0])
-            ))
-        }
-    };
-    let s: Vec<char> = std::iter::repeat(c).take(l).collect();
+    let l = arena.try_get_integer(args[0]).ok_or(format!(
+        "make-string: Invalid length: {}.",
+        pretty_print(arena, args[0])
+    ))?;
+    if l < 0 {
+        return Err(format!(
+            "make-string: String cannot have negative length: {}.",
+            l
+        ));
+    }
+    let s: Vec<char> = std::iter::repeat(c).take(l as usize).collect();
     Ok(arena.insert(Value::String(RefCell::new(s))))
 }
 
 pub fn string_length(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(1), Some(1))?;
-    let l = match arena.get(args[0]) {
-        Value::String(s) => s.borrow().len() as i64,
-        _ => {
-            return Err(format!(
-                "string-length: Not a string: {}.",
-                pretty_print(arena, args[0])
-            ))
-        }
-    };
-    Ok(arena.insert(Value::Integer(l)))
+    let l = arena
+        .try_get_string(args[0])
+        .ok_or(format!(
+            "string-length: Not a string: {}.",
+            pretty_print(arena, args[0])
+        ))?
+        .borrow()
+        .len();
+    Ok(arena.insert(Value::Integer(l as i64)))
 }
 
 pub fn string_set_b(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(3), Some(3))?;
-    let borrowed_string = match arena.get(args[0]) {
-        Value::String(s) => s.borrow(),
-        _ => {
-            return Err(format!(
-                "string-set!: Not a string: {}.",
-                pretty_print(arena, args[0])
-            ))
-        }
-    };
-    // TODO finish
+    let mut borrowed_string = arena
+        .try_get_string(args[0])
+        .ok_or(format!(
+            "string-set!: Not a string: {}.",
+            pretty_print(arena, args[0])
+        ))?
+        .borrow_mut();
+    let idx = arena.try_get_integer(args[1]).ok_or(format!(
+        "string-set: Invalid index: {}.",
+        pretty_print(arena, args[1])
+    ))?;
+    let chr = arena.try_get_character(args[2]).ok_or(format!(
+        "string-set: Invalid character: {}.",
+        pretty_print(arena, args[2])
+    ))?;
+    if idx < 0 || idx >= borrowed_string.len() as i64 {
+        return Err(format!("string-set!: Invalid index: {}.", idx));
+    }
+    borrowed_string[idx as usize] = chr;
     Ok(arena.unspecific)
+}
+
+pub fn string_ref(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(2), Some(2))?;
+    let borrowed_string = arena
+        .try_get_string(args[0])
+        .ok_or(format!(
+            "string_ref: Not a string: {}.",
+            pretty_print(arena, args[0])
+        ))?
+        .borrow();
+    let idx = arena.try_get_integer(args[1]).ok_or(format!(
+        "string_ref: Invalid index: {}.",
+        pretty_print(arena, args[1])
+    ))?;
+    if idx < 0 || idx >= borrowed_string.len() as i64 {
+        return Err(format!("string_ref: Invalid index: {}.", idx));
+    }
+    Ok(arena.insert(Value::Character(borrowed_string[idx as usize])))
 }

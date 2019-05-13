@@ -19,7 +19,7 @@ def install_my_kernel_spec(user=True, prefix=None):
         os.chmod(td, 0o755)  # Starts off as 700, not user readable
         with open(os.path.join(td, 'kernel.json'), 'w') as f:
             json.dump(kernel_json, f, sort_keys=True)
-        shutil.copy("../target/debug/peroxide", td)
+        shutil.copy("../target/debug/main", td)
 
         KernelSpecManager().install_kernel_spec(td, 'peroxide', user=user, prefix=prefix)
 

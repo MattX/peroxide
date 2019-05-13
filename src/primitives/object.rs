@@ -32,6 +32,16 @@ pub fn equal_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     Ok(arena.insert(Value::Boolean(value::equal(arena, args[0], args[1]))))
 }
 
+pub fn procedure_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    Ok(match arena.get(args[0]) {
+        Value::Lambda { .. } => arena.t,
+        Value::Primitive(_) => arena.t,
+        //TODO add continuations
+        _ => arena.f,
+    })
+}
+
 // TODO rename this to write and create an actual display method.
 pub fn display(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     for a in args.iter() {

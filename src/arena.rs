@@ -102,6 +102,13 @@ impl Arena {
         }
     }
 
+    pub fn try_get_pair(&self, at: usize) -> Option<(&RefCell<usize>, &RefCell<usize>)> {
+        match self.get(at) {
+            Value::Pair(car, cdr) => Some((car, cdr)),
+            _ => None,
+        }
+    }
+
     pub fn collect(&mut self, roots: &[usize]) {
         self.values.collect(roots);
     }

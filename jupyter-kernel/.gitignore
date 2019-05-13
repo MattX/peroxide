@@ -5,3 +5,6 @@ env/
 build/
 
 **/__pycache__/
+
+dist/
+peroxide_kernel.egg-info/
