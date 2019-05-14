@@ -28,7 +28,7 @@ pub fn make_syntactic_closure(arena: &Arena, args: &[usize]) -> Result<usize, St
             )),
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let environment = match arena.get(args[0]) {
+    let closed_env = match arena.get(args[0]) {
         Value::Environment(_) => Ok(args[0]),
         _ => Err(format!(
             "make-syntactic-closure: not an environment: {}",
@@ -36,7 +36,7 @@ pub fn make_syntactic_closure(arena: &Arena, args: &[usize]) -> Result<usize, St
         )),
     }?;
     Ok(arena.insert(Value::SyntacticClosure {
-        environment,
+        closed_env,
         free_variables,
         expr: args[2],
     }))

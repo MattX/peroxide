@@ -28,13 +28,13 @@
 //! Another small thing is dealing with recursive trees as allowed by R7RS.
 
 use arena::Arena;
-use compile_run;
 use environment::{Environment, EnvironmentValue, Macro, RcEnv};
 use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 use util::{check_len, max_optional};
 use value::{pretty_print, vec_from_list, Value};
+use {compile_run, environment};
 use {parse_compile_run, VmState};
 
 #[derive(Debug)]
@@ -131,6 +131,17 @@ pub fn parse(
         Value::EmptyList => Err("Cannot evaluate empty list".into()),
         Value::Pair(car, cdr) => {
             parse_pair(arena, vms, env, *car.borrow(), *cdr.borrow(), toplevel)
+        }
+        Value::SyntacticClosure {
+            closed_env,
+            free_variables,
+            expr,
+        } => {
+            let closed_env = arena
+                .try_get_environment(*closed_env)
+                .expect("Syntactic closure created with non-environment argument.");
+            let inner_env = environment::filter(closed_env, env, free_variables)?;
+            parse(arena, vms, &inner_env, *expr, toplevel)
         }
         _ => Ok(SyntaxElement::Quote(Box::new(Quote { quoted: value }))),
     }

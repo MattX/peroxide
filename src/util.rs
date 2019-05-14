@@ -72,6 +72,10 @@ pub fn char_vec_to_str(v: &[char]) -> String {
     v.iter().collect()
 }
 
+pub fn same_object<T>(a: &T, b: &T) -> bool {
+    a as *const T == b as *const T
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

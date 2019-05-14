@@ -43,7 +43,7 @@ pub enum Value {
     ActivationFrame(RefCell<ActivationFrame>),
     Environment(RcEnv),
     SyntacticClosure {
-        environment: usize,
+        closed_env: usize,
         free_variables: Vec<String>,
         expr: usize,
     },

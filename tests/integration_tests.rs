@@ -301,3 +301,24 @@ fn apply() {
         execute(&arena, &mut vm_state, "(apply + (apply - 2 3) 6)").unwrap()
     );
 }
+
+#[test]
+fn syntactic_closure() {
+    let arena = Arena::default();
+    let mut vm_state = VmState::new(&arena);
+    assert_eq!(
+        Value::Symbol("outer".into()),
+        execute(
+            &arena,
+            &mut vm_state,
+            "(define x 'outer)\
+             (define-syntax tst\
+             (lambda (form usage-env def-env)\
+             (define outer-x (make-syntactic-closure def-env '() 'x))\
+             outer-x))\
+             ((lambda (x)\
+             (tst)) 'inner)"
+        )
+        .unwrap()
+    );
+}

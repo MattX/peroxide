@@ -27,6 +27,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::option::Option;
 use std::rc::Rc;
+use util::same_object;
 use value::Value;
 
 #[derive(Debug)]
@@ -127,6 +128,9 @@ impl Environment {
     }
 
     /// Define a macro in the current environment (topmost frame).
+    ///
+    /// It is legal to call [define_macro] with a name that is already used by a macro. In this
+    /// case, the macro will be replaced.
     pub fn define_macro(&mut self, name: &str, lambda: usize, definition_environment: RcEnv) {
         self.values.insert(
             name.to_string(),
@@ -174,14 +178,38 @@ impl Environment {
 
 pub type RcEnv = Rc<RefCell<Environment>>;
 
-/*
-pub fn filter(closed_env: RcEnv, free_env: RcEnv, free_vars: &[String]) -> Result<RcEnv, String> {
-    // Free bindings should always be to an environment down the chain
-
-
-    let mut filtered = Environment::new(Some(closed_env.clone()));
+fn is_parent_of(parent: &RcEnv, kid: &RcEnv) -> bool {
+    if same_object::<Environment>(&parent.borrow(), &kid.borrow()) {
+        return true;
+    }
+    match &kid.borrow().parent {
+        None => false,
+        Some(p) => is_parent_of(parent, p),
+    }
 }
-*/
+
+pub fn filter(closed_env: &RcEnv, free_env: &RcEnv, free_vars: &[String]) -> Result<RcEnv, String> {
+    // Free bindings should always be to an environment down the chain.
+    if !is_parent_of(&closed_env, &free_env) {
+        return Err("Syntactic closure used outside of definition environment.".into());
+    }
+
+    let mut filtered = Environment {
+        parent: Some(closed_env.clone()),
+        // The new environment has the same altitude as its parent, because it does not
+        // correspond to a new activation frame at runtime.
+        altitude: closed_env.borrow().altitude,
+        values: HashMap::new(),
+        variable_names: vec![],
+    };
+    for free_var in free_vars.iter() {
+        filtered
+            .values
+            .insert(free_var.clone(), free_env.borrow().get(free_var));
+    }
+
+    Ok(Rc::new(RefCell::new(filtered)))
+}
 
 // TODO make these fields private and have proper accessors
 #[derive(Debug, PartialEq, Clone)]

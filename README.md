@@ -10,7 +10,7 @@ on the interpreter described in _Lisp in Small Pieces_.
 
 * ~~Support internal defines~~
 * Support let-syntax and letrec-syntax
-* Support syntactic closures
+* ~~Support syntactic closures~~
 * Add apply and eval
 * Fix the checked vs unchecked references
 * Implement the rest of the stdlib

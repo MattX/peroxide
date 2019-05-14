@@ -15,7 +15,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
-use environment::ActivationFrame;
+use environment::{ActivationFrame, RcEnv};
 use gc::Gc;
 use value::Value;
 
@@ -105,6 +105,13 @@ impl Arena {
     pub fn try_get_pair(&self, at: usize) -> Option<(&RefCell<usize>, &RefCell<usize>)> {
         match self.get(at) {
             Value::Pair(car, cdr) => Some((car, cdr)),
+            _ => None,
+        }
+    }
+
+    pub fn try_get_environment(&self, at: usize) -> Option<&RcEnv> {
+        match self.get(at) {
+            Value::Environment(r) => Some(r),
             _ => None,
         }
     }
