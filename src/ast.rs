@@ -25,7 +25,7 @@
 //! I think the easiest way to do this would be to use two separate arenas for the pre-AST and
 //! post-AST values.
 //!
-//! Another small thing is dealing with recursive trees as allowed by R7RS.
+//! Another small thing is dealing with loopy trees as allowed by R7RS.
 
 use arena::Arena;
 use environment::{Environment, EnvironmentValue, Macro, RcEnv};
@@ -422,32 +422,41 @@ fn parse_formals(arena: &Arena, formals: usize) -> Result<Formals, String> {
     let mut values = Vec::new();
     let mut formal = formals;
     loop {
-        match arena.get(formal) {
-            Value::Symbol(s) => {
-                return Ok(Formals {
-                    values,
-                    rest: Some(s.clone()),
-                });
-            }
-            Value::EmptyList => return Ok(Formals { values, rest: None }),
-            Value::Pair(car, cdr) => {
-                if let Value::Symbol(s) = arena.get(*car.borrow()) {
-                    values.push(s.clone());
-                    formal = *cdr.borrow();
-                } else {
+        if let Some(s) = coerce_symbol(arena, arena.get(formal)) {
+            return Ok(Formals {
+                values,
+                rest: Some(s.into()),
+            });
+        } else {
+            match arena.get(formal) {
+                Value::EmptyList => return Ok(Formals { values, rest: None }),
+                Value::Pair(car, cdr) => {
+                    if let Some(s) = coerce_symbol(arena, arena.get(*car.borrow())) {
+                        values.push(s.into());
+                        formal = *cdr.borrow();
+                    } else {
+                        return Err(format!(
+                            "Malformed formals: {}.",
+                            arena.get(formals).pretty_print(arena)
+                        ));
+                    }
+                }
+                _ => {
                     return Err(format!(
                         "Malformed formals: {}.",
                         arena.get(formals).pretty_print(arena)
                     ));
                 }
             }
-            _ => {
-                return Err(format!(
-                    "Malformed formals: {}.",
-                    arena.get(formals).pretty_print(arena)
-                ));
-            }
         }
+    }
+}
+
+fn coerce_symbol<'a>(arena: &'a Arena, v: &'a Value) -> Option<&'a str> {
+    match v {
+        Value::Symbol(s) => Some(s),
+        Value::SyntacticClosure { expr, .. } => arena.try_get_symbol(*expr),
+        _ => None,
     }
 }
 

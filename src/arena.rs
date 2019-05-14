@@ -102,6 +102,13 @@ impl Arena {
         }
     }
 
+    pub fn try_get_symbol(&self, at: usize) -> Option<&str> {
+        match self.get(at) {
+            Value::Symbol(s) => Some(s),
+            _ => None,
+        }
+    }
+
     pub fn try_get_pair(&self, at: usize) -> Option<(&RefCell<usize>, &RefCell<usize>)> {
         match self.get(at) {
             Value::Pair(car, cdr) => Some((car, cdr)),
