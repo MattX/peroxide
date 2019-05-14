@@ -51,19 +51,14 @@ fn mul2(a: &Value, b: &Value) -> Value {
     }
 }
 
-/// TODO: noncompliant: (- 1) shoud return -1, not 1.
 /// Like [prim_fold_0], but uses the first element of the list as the fold initializer
 macro_rules! prim_fold_1 {
     ($name:ident, $folder:ident) => {
         pub fn $name(arena: &Arena, args: &[usize]) -> Result<usize, String> {
-            let values: Vec<Value> = numeric_vec(arena, args)?;
+            let values = numeric_vec(arena, args)?;
             check_len(&values, Some(1), None)
                 .map_err(|e| format!("{}: {}", stringify!($name), e))?;
-            // TODO can rewrite the thing below without cloning
-            let first = values
-                .first()
-                .expect("with_check_len is broken my bois")
-                .clone();
+            let first = (*values.first().expect("with_check_len is broken my bois")).clone();
             Ok(arena.insert(values[1..].iter().fold(first, |a, b| $folder(&a, &b))))
         }
     };
@@ -84,8 +79,8 @@ fn sub2(a: &Value, b: &Value) -> Value {
 pub fn sub(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     if args.len() == 1 {
         let result = match arena.get(args[0]) {
-            Value::Integer(i) => Value::Integer(-i),
-            Value::Real(f) => Value::Real(-f),
+            Value::Integer(i) => Value::Integer(-*i),
+            Value::Real(f) => Value::Real(-*f),
             _ => {
                 return Err(format!(
                     "(-): non-numeric argument: {}",
@@ -140,7 +135,7 @@ pub fn div(arena: &Arena, args: &[usize]) -> Result<usize, String> {
 macro_rules! prim_monotonic {
     ($name:ident, $pair:ident) => {
         pub fn $name(arena: &Arena, args: &[usize]) -> Result<usize, String> {
-            let values: Vec<Value> = numeric_vec(arena, args)?;
+            let values = numeric_vec(arena, args)?;
             check_len(&values, Some(2), None)
                 .map_err(|e| format!("{}: {}", stringify!($name), e))?;
             let ans = values.windows(2).all(|x| $pair(&x[0], &x[1]));
@@ -229,14 +224,14 @@ pub fn real_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
 /// an error.
 ///
 /// TODO: we probably shouldn't collect into a vector because it makes basic math slow af.
-fn numeric_vec(arena: &Arena, args: &[usize]) -> Result<Vec<Value>, String> {
+fn numeric_vec<'a>(arena: &'a Arena, args: &[usize]) -> Result<Vec<&'a Value>, String> {
     args.iter()
-        .map(|v| verify_numeric(arena.get(*v).clone()))
+        .map(|v| verify_numeric(arena.get(*v)))
         .collect::<Result<Vec<_>, _>>()
 }
 
 /// Checks that a value is numeric
-fn verify_numeric(a: Value) -> Result<Value, String> {
+fn verify_numeric(a: &Value) -> Result<&Value, String> {
     match a {
         Value::Integer(_) => Ok(a),
         Value::Real(_) => Ok(a),
