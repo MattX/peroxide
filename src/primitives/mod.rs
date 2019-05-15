@@ -98,7 +98,7 @@ macro_rules! simple_primitive {
     };
 }
 
-static PRIMITIVES: [Primitive; 35] = [
+static PRIMITIVES: [Primitive; 44] = [
     simple_primitive!("make-syntactic-closure", make_syntactic_closure),
     simple_primitive!("eq?", eq_p),
     simple_primitive!("eqv?", eqv_p),
@@ -127,6 +127,15 @@ static PRIMITIVES: [Primitive; 35] = [
     simple_primitive!("char?", char_p),
     simple_primitive!("char->integer", char_to_integer),
     simple_primitive!("integer->char", integer_to_char),
+    simple_primitive!("char-alphabetic?", char_alphabetic_p),
+    simple_primitive!("char-numeric?", char_numeric_p),
+    simple_primitive!("char-whitespace?", char_whitespace_p),
+    simple_primitive!("char-lower-case?", char_lower_case_p),
+    simple_primitive!("char-upper-case?", char_upper_case_p),
+    simple_primitive!("char-upcase", char_upcase),
+    simple_primitive!("char-downcase", char_downcase),
+    simple_primitive!("char-upcase-unicode", char_upcase_unicode),
+    simple_primitive!("char-downcase-unicode", char_downcase_unicode),
     simple_primitive!("string?", string_p),
     simple_primitive!("make-string", make_string),
     simple_primitive!("string-length", string_length),

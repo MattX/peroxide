@@ -19,7 +19,7 @@ use environment::ActivationFrame;
 use primitives::PrimitiveImplementation;
 use std::cell::RefCell;
 use value::Value::Lambda;
-use value::{list_from_vec, pretty_print, Value};
+use value::{list_from_vec, pretty_print, vec_from_list, Value};
 
 #[derive(Debug)]
 pub enum Instruction {
@@ -256,12 +256,15 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), String> {
 
 fn apply(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), String> {
     let af = arena.get_activation_frame(vm.value).borrow();
-    if af.values.is_empty() {
-        return Err("apply: no arguments.".into());
+    let n_args = af.values.len();
+    if n_args < 2 {
+        return Err("apply: too few arguments.".into());
     }
+    let mut values = af.values[1..n_args - 1].to_vec();
+    values.extend(vec_from_list(arena, af.values[n_args - 1])?.into_iter());
     let new_af = ActivationFrame {
-        parent: Some(vm.value),
-        values: af.values[1..].to_vec(),
+        parent: None,
+        values,
     };
     vm.value = arena.insert(Value::ActivationFrame(RefCell::new(new_af)));
     vm.fun = af.values[0];

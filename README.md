@@ -9,11 +9,15 @@ on the interpreter described in _Lisp in Small Pieces_.
 ### Concrete
 
 * ~~Support internal defines~~
-* Support let-syntax and letrec-syntax
+* ~~Support let-syntax and letrec-syntax~~
 * ~~Support syntactic closures~~
-* Add apply and eval
+* Add ~~apply~~ and eval
 * Fix the checked vs unchecked references
+* Write define-syntax
 * Implement the rest of the stdlib
+* Implement fixlet optimization
+* Implement name lookup on error
+* Assign names to lambdas when possible
 * Add `call/cc`
 * Turn the GC on (oh noooo)
 * Allow fully disabling rustyline [using features](
