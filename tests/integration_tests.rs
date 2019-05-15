@@ -322,3 +322,24 @@ fn syntactic_closure() {
         .unwrap()
     );
 }
+
+#[test]
+fn let_syntax() {
+    let arena = Arena::default();
+    let mut vm_state = VmState::new(&arena);
+    assert_eq!(
+        Value::Symbol("outer".into()),
+        execute(
+            &arena,
+            &mut vm_state,
+            "(define x 'outer)\
+             (let-syntax ((tst\
+             (lambda (form usage-env def-env)\
+             (define outer-x (make-syntactic-closure def-env '() 'x))\
+             outer-x)))\
+             ((lambda (x)\
+             (tst)) 'inner))"
+        )
+        .unwrap()
+    );
+}

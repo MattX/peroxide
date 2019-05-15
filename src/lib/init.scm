@@ -127,3 +127,7 @@
 (define (assoc obj ls)
  (ass equal? obj ls))
 
+(define (map1r f ls)
+ (if (null? ls)
+      '()
+ ))

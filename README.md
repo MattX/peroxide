@@ -14,7 +14,7 @@ on the interpreter described in _Lisp in Small Pieces_.
 * Add apply and eval
 * Fix the checked vs unchecked references
 * Implement the rest of the stdlib
-* Add `call/cc` (oh no)
+* Add `call/cc`
 * Turn the GC on (oh noooo)
 * Allow fully disabling rustyline [using features](
 https://doc.rust-lang.org/cargo/reference/manifest.html#the-features-section).

@@ -37,7 +37,8 @@ pub struct Environment {
 
     // The value can be a none to hide a value defined in a parent environment.
     values: HashMap<String, Option<EnvironmentValue>>,
-    variable_names: Vec<String>,
+    variable_names: HashMap<(usize, usize), String>,
+    variable_count: usize,
 }
 
 // Gruik
@@ -76,7 +77,8 @@ impl Environment {
             parent,
             altitude,
             values: HashMap::new(),
-            variable_names: Vec::new(),
+            variable_names: HashMap::new(),
+            variable_count: 0,
         }
     }
 
@@ -91,14 +93,26 @@ impl Environment {
         env
     }
 
+    pub fn new_syntactic(parent: &Rc<RefCell<Environment>>) -> Environment {
+        Environment {
+            parent: Some(parent.clone()),
+            altitude: parent.borrow().altitude,
+            values: HashMap::new(),
+            variable_names: HashMap::new(),
+            variable_count: 0,
+        }
+    }
+
     /// Define a new variable. The variable will be added to the topmost environment frame, and
     /// may shadow a variable from a lower frame.
     ///
     /// It is not an error to define a name that already exists in the topmost environment frame.
     /// In this case, a new activation frame location will be allocated to the variable.
     pub fn define(&mut self, name: &str, initialized: bool) -> usize {
-        let index = self.variable_names.len();
-        self.variable_names.push(name.to_string());
+        let index = self.variable_count;
+        self.variable_count += 1;
+        self.variable_names
+            .insert((self.altitude, index), name.to_string());
         self.values.insert(
             name.to_string(),
             Some(EnvironmentValue::Variable(Variable {
@@ -194,18 +208,15 @@ pub fn filter(closed_env: &RcEnv, free_env: &RcEnv, free_vars: &[String]) -> Res
         return Err("Syntactic closure used outside of definition environment.".into());
     }
 
-    let mut filtered = Environment {
-        parent: Some(closed_env.clone()),
-        // The new environment has the same altitude as its parent, because it does not
-        // correspond to a new activation frame at runtime.
-        altitude: closed_env.borrow().altitude,
-        values: HashMap::new(),
-        variable_names: vec![],
-    };
+    let mut filtered = Environment::new_syntactic(closed_env);
     for free_var in free_vars.iter() {
-        filtered
-            .values
-            .insert(free_var.clone(), free_env.borrow().get(free_var));
+        let var = free_env.borrow().get(free_var);
+        filtered.values.insert(free_var.clone(), var.clone());
+        if let Some(EnvironmentValue::Variable(v)) = var {
+            filtered
+                .variable_names
+                .insert((v.altitude, v.index), free_var.clone());
+        }
     }
 
     Ok(Rc::new(RefCell::new(filtered)))

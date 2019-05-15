@@ -183,7 +183,8 @@ fn parse_pair(
             Symbol::Set => parse_set(arena, vms, env, &rest),
             Symbol::Define => parse_define(arena, vms, env, &rest, toplevel),
             Symbol::DefineSyntax => parse_define_syntax(arena, vms, env, &rest, toplevel),
-            Symbol::LetSyntax | Symbol::LetRecSyntax => Err(format!("Can't parse {} for now.", s)),
+            Symbol::LetSyntax => parse_let_syntax(arena, vms, env, &rest, false),
+            Symbol::LetrecSyntax => parse_let_syntax(arena, vms, env, &rest, true),
             Symbol::Macro(m) => {
                 let expanded = expand_macro_full(arena, vms, env, m, cdr)?;
                 parse(arena, vms, env, expanded, toplevel)
@@ -471,16 +472,56 @@ fn parse_define_syntax(
         return Err("Illegally placed define-syntax.".into());
     }
     check_len(rest, Some(2), Some(2))?;
-    let symbol = match arena.get(rest[0]) {
-        Value::Symbol(s) => s,
-        _ => {
-            return Err(format!(
-                "Target of define-syntax must be symbol, not {}.",
-                arena.get(rest[0])
-            ))
-        }
-    };
-    let mac = parse_compile_run(arena, vms, rest[1])?;
+
+    let symbol = arena.try_get_symbol(rest[0]).ok_or(format!(
+        "define-syntax: target must be symbol, not {}.",
+        pretty_print(arena, rest[0])
+    ))?;
+    let mac = make_macro(arena, vms, rest[1])?;
+    env.borrow_mut().define_macro(symbol, mac, env.clone());
+
+    // TODO remove this somehow
+    Ok(SyntaxElement::Quote(Box::new(Quote {
+        quoted: arena.unspecific,
+    })))
+}
+
+fn parse_let_syntax(
+    arena: &Arena,
+    vms: &mut VmState,
+    env: &RcEnv,
+    rest: &[usize],
+    rec: bool,
+) -> Result<SyntaxElement, String> {
+    check_len(rest, Some(2), None)?;
+    let bindings = vec_from_list(arena, rest[0])?;
+    let inner_env = Rc::new(RefCell::new(Environment::new_syntactic(env)));
+    let definition_env = if rec { env } else { &inner_env };
+    for b in bindings.iter() {
+        let binding = vec_from_list(arena, *b)?;
+        check_len(&binding, Some(2), Some(2))?;
+
+        let symbol = arena.try_get_symbol(binding[0]).ok_or(format!(
+            "let-syntax: target must be symbol, not {}.",
+            pretty_print(arena, rest[0])
+        ))?;
+        let mac = make_macro(arena, vms, binding[1])?;
+        inner_env
+            .borrow_mut()
+            .define_macro(symbol, mac, definition_env.clone());
+    }
+
+    // Letrec and letrec syntax are allowed to have internal defines for some reason. We just
+    // create a lambda with no args and the body, and apply it immediately with no args.
+    let lambda = parse_split_lambda(arena, vms, &inner_env, arena.empty_list, &rest[1..])?;
+    Ok(SyntaxElement::Application(Box::new(Application {
+        function: lambda,
+        args: vec![],
+    })))
+}
+
+fn make_macro(arena: &Arena, vms: &mut VmState, val: usize) -> Result<usize, String> {
+    let mac = parse_compile_run(arena, vms, val)?;
     match arena.get(mac) {
         Value::Lambda { .. } => (), // TODO check the lambda takes 3 args
         _ => {
@@ -490,12 +531,7 @@ fn parse_define_syntax(
             ))
         }
     };
-    env.borrow_mut().define_macro(symbol, mac, env.clone());
-
-    // TODO remove this somehow
-    Ok(SyntaxElement::Quote(Box::new(Quote {
-        quoted: arena.unspecific,
-    })))
+    Ok(mac)
 }
 
 fn expand_macro_full(
@@ -558,7 +594,7 @@ enum Symbol {
     Define,
     DefineSyntax,
     LetSyntax,
-    LetRecSyntax,
+    LetrecSyntax,
     Macro(Macro),
     Variable,
 }
@@ -574,7 +610,7 @@ fn match_symbol(env: &RcEnv, sym: &str) -> Symbol {
             "define" => Symbol::Define,
             "define-syntax" => Symbol::DefineSyntax,
             "let-syntax" => Symbol::LetSyntax,
-            "letrec-syntax" => Symbol::LetRecSyntax,
+            "letrec-syntax" => Symbol::LetrecSyntax,
             _ => Symbol::Variable,
         },
         Some(EnvironmentValue::Macro(m)) => Symbol::Macro(m),
