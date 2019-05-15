@@ -16,26 +16,10 @@ extern crate peroxide;
 
 use peroxide::arena::Arena;
 use peroxide::read;
+use peroxide::read::read_many;
 use peroxide::value::Value;
 use peroxide::VmState;
 use peroxide::{lex, parse_compile_run};
-
-fn read_many(arena: &Arena, code: &str) -> Result<Vec<usize>, String> {
-    let tokens = lex::lex(code)?;
-    let segments = lex::segment(tokens)?;
-    if !segments.remainder.is_empty() {
-        return Err(format!(
-            "Unterminated expression: dangling tokens {:?}",
-            segments.remainder
-        ));
-    }
-    segments
-        .segments
-        .iter()
-        .map(|s| read::read_tokens(arena, s))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("{:?}", e))
-}
 
 fn execute(arena: &Arena, vm_state: &mut VmState, code: &str) -> Result<Value, String> {
     let mut results: Vec<_> = read_many(arena, code)?

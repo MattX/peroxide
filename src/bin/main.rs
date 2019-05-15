@@ -23,7 +23,7 @@ use peroxide::lex::SegmentationResult;
 use peroxide::lex::Token;
 use peroxide::repl::GetLineError;
 use peroxide::repl::{FileRepl, ReadlineRepl, Repl, StdIoRepl};
-use peroxide::VmState;
+use peroxide::{initialize, VmState};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -53,6 +53,7 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
 
     let arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
+    initialize(&arena, &mut vm_state, "src/lib/init.scm")?;
     loop {
         if !handle_one_expr_wrap(&mut *repl, &arena, &mut vm_state) {
             break;

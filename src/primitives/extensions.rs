@@ -13,6 +13,8 @@
 // limitations under the License.
 
 use arena::Arena;
+use environment;
+use environment::{EnvironmentValue, RcEnv};
 use util::check_len;
 use value::{pretty_print, vec_from_list, Value};
 
@@ -40,4 +42,56 @@ pub fn make_syntactic_closure(arena: &Arena, args: &[usize]) -> Result<usize, St
         free_variables,
         expr: args[2],
     }))
+}
+
+/// Resolve an identifier in a given environment.
+///
+/// The outer Result is an error if the passed `val` is not a valid identifier. The inner
+/// Option<EnvironmentValue> corresponds to the normal return type for an environment query.
+fn get_in_env(arena: &Arena, env: &RcEnv, val: usize) -> Result<Option<EnvironmentValue>, String> {
+    match arena.get(val) {
+        Value::Symbol(s) => Ok(env.borrow().get(s)),
+        Value::SyntacticClosure {
+            closed_env,
+            free_variables,
+            expr,
+        } => {
+            let closed_env = arena
+                .try_get_environment(*closed_env)
+                .expect("Syntactic closure created with non-environment argument.");
+            let inner_env = environment::filter(closed_env, env, free_variables)?;
+            get_in_env(arena, &inner_env, *expr)
+        }
+        _ => Err(format!("Non-identifier: {}", pretty_print(arena, val))),
+    }
+}
+
+pub fn identifier_equal_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(4), Some(4))?;
+    let env1 = arena.try_get_environment(args[0]).ok_or(format!(
+        "identifier=?: not an environment: {}",
+        pretty_print(arena, args[0])
+    ))?;
+    let env2 = arena.try_get_environment(args[2]).ok_or(format!(
+        "identifier=?: not an environment: {}",
+        pretty_print(arena, args[2])
+    ))?;
+
+    // I think this is not actually correct, we should use the env from the syntactic closure
+    // if an identifier is a syntactically closed symbol.
+    let binding1 = get_in_env(arena, env1, args[1])?;
+    let binding2 = get_in_env(arena, env2, args[3])?;
+
+    let res = match (binding1, binding2) {
+        (None, None) => true,
+        (Some(EnvironmentValue::Variable(v1)), Some(EnvironmentValue::Variable(v2))) => {
+            v1.altitude == v2.altitude && v1.index == v2.index
+        }
+        (Some(EnvironmentValue::Macro(m1)), Some(EnvironmentValue::Macro(m2))) => {
+            // Lambdas are unique so no need to check environment equality
+            m1.lambda == m2.lambda
+        }
+        _ => false,
+    };
+    Ok(arena.insert(Value::Boolean(res)))
 }

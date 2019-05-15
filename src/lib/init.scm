@@ -62,72 +62,101 @@
 (define (list . args) args)
 
 (define (length ls)
- (define (length* ls acc)
-  (if (null? x)
-   acc
-   (length* (cdr ls) (+ 1 acc))))
- (length* ls 0))
+  (define (length* ls acc)
+    (if (null? x)
+        acc
+        (length* (cdr ls) (+ 1 acc))))
+  (length* ls 0))
 
 (define (append2 l1 l2)
- (if (null? l1)
-  l2
-  (cons (car l1) (append (cdr l1) l2))))
+  (if (null? l1)
+      l2
+      (cons (car l1) (append (cdr l1) l2))))
 
 (define (appendn lists)
- (if (null? lists)
-  '()
-  (if (null? (cdr lists))
-   (car lists)
-   (appendn (list (car lists) (appendn (cdr lists)))))))
+  (if (null? lists)
+      '()
+      (if (null? (cdr lists))
+          (car lists)
+          (appendn (list (car lists) (appendn (cdr lists)))))))
 
 (define (append . lists)
- (apply appendn lists))
+  (apply appendn lists))
 
 (define (acc-reverse l acc)
- (if (null? l)
-  acc
-  (acc-reverse (cdr l) (cons (car l) acc))))
+  (if (null? l)
+      acc
+      (acc-reverse (cdr l) (cons (car l) acc))))
 
 (define (reverse l)
- (acc-reverse l '()))
+  (acc-reverse l '()))
 
 (define (list-tail l k)
- (if (zero? k)
-  x
-  (list-tail? (cdr x) (- k 1))))
+  (if (zero? k)
+      x
+      (list-tail? (cdr x) (- k 1))))
 
 (define (list-ref l k)
- (car (list-tail l k)))
+  (car (list-tail l k)))
 
 (define (mem predicate obj ls)
- (if (null? ls)
-  #f
-  (if (predicate obj (car ls))
-   ls
-   (mem predicate obj (cdr ls)))))
+  (if (null? ls)
+      #f
+      (if (predicate obj (car ls))
+          ls
+          (mem predicate obj (cdr ls)))))
 
 (define (memq obj ls)
- (mem eq? obj ls))
+  (mem eq? obj ls))
 (define (memv obj ls)
- (mem eqv? obj ls))
+  (mem eqv? obj ls))
 (define (member obj ls)
- (mem equal? obj ls))
+  (mem equal? obj ls))
 
 (define (ass predicate obj ls)
- (if (null? ls)
-  #f
-  (if (predicate obj (caar ls))
-   (car ls)
-   (ass predicate obj (cdr ls)))))
+  (if (null? ls)
+      #f
+      (if (predicate obj (caar ls))
+          (car ls)
+          (ass predicate obj (cdr ls)))))
 
 (define (assq obj ls)
- (ass eq? obj ls))
+  (ass eq? obj ls))
 (define (assv obj ls)
- (ass eqv? obj ls))
+  (ass eqv? obj ls))
 (define (assoc obj ls)
- (ass equal? obj ls))
+  (ass equal? obj ls))
 
-(define (map1r f ls)
- (if (null? ls)
-      '()
- ))
+; Control features
+
+(define (any? values)
+  (if (null? values)
+      #f
+      (if (car values)
+          #t
+          (any? (cdr values)))))
+
+(define (map1acc fn ls acc)
+  (if (null? ls)
+      (reverse acc)
+      (map1acc fn (cdr ls) (cons (fn (car ls)) acc))))
+
+(define (map1 fn ls)
+  (map1acc fn ls '()))
+
+(define (mapnacc fn lists acc)
+  (if (any? (map1 null? lists))
+      (reverse acc)
+      (mapnacc fn (map1 cdr lists) (cons (apply fn (map1 car lists)) acc))))
+
+(define (map fn . lists)
+  ((lambda (len)
+     (if (= 0 len)
+         #f
+         (if (= 1 len)
+             (map1 fn (car lists))
+             (mapnacc fn lists '()))))
+   (length lists)))
+
+(define (for-each fn . lists)
+  (apply map fn lists))

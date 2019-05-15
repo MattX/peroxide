@@ -48,7 +48,8 @@ pub fn lex(input: &str) -> Result<Vec<Token>, String> {
         consume_leading_spaces(&mut it);
         if let Some(&c) = it.peek() {
             if c == ';' {
-                break; // comment
+                consume_to_newline(&mut it);
+                continue;
             }
             let token = if c.is_digit(10) || c == '.' || c == '-' || c == '+' {
                 consume_number(&mut it)?
@@ -86,6 +87,14 @@ pub fn lex(input: &str) -> Result<Vec<Token>, String> {
     }
 
     Ok(tokens)
+}
+
+fn consume_to_newline(it: &mut Iterator<Item = char>) {
+    while let Some(c) = it.next() {
+        if c == '\n' {
+            break;
+        }
+    }
 }
 
 fn consume_leading_spaces<I>(it: &mut Peekable<I>)

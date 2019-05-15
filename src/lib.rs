@@ -21,7 +21,9 @@ use std::rc::Rc;
 use arena::Arena;
 use ast::{largest_toplevel_reference, SyntaxElement};
 use environment::{ActivationFrame, Environment, RcEnv};
-use value::Value;
+use read::read_many;
+use std::fs;
+use value::{pretty_print, Value};
 use vm::Instruction;
 
 pub mod arena;
@@ -61,12 +63,23 @@ impl VmState {
     }
 }
 
+pub fn initialize(arena: &Arena, state: &mut VmState, fname: &str) -> Result<(), String> {
+    let contents = fs::read_to_string(fname).map_err(|e| e.to_string())?;
+    let values = read_many(arena, &contents)?;
+    println!("Values: {:?}", values);
+    for v in values.iter() {
+        println!("> {}", pretty_print(arena, *v));
+        parse_compile_run(arena, state, *v)?;
+    }
+    Ok(())
+}
+
 /// High-level interface to parse, compile, and run a value that's been read.
 pub fn parse_compile_run(arena: &Arena, state: &mut VmState, read: usize) -> Result<usize, String> {
     let cloned_env = state.global_environment.clone();
     let syntax_tree = ast::parse(arena, state, &cloned_env, read, true)
         .map_err(|e| format!("Syntax error: {}", e))?;
-    println!(" => {:?}", syntax_tree);
+    // println!(" => {:?}", syntax_tree);
     compile_run(arena, state, &syntax_tree)
 }
 
@@ -91,7 +104,7 @@ pub fn compile_run(
     )
     .map_err(|e| format!("Compilation error: {}", e))?;
     state.code.push(Instruction::Finish);
-    println!(" => {:?}", &state.code[start_pc..state.code.len()]);
+    // println!(" => {:?}", &state.code[start_pc..state.code.len()]);
     vm::run(arena, &state.code, start_pc, state.global_frame)
         .map_err(|e| format!("Runtime error: {}", e))
 }

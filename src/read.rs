@@ -46,6 +46,23 @@ pub fn read(arena: &Arena, input: &str) -> Result<usize, String> {
     read_tokens(arena, &tokens).map_err(|e| format!("{:?}", e))
 }
 
+pub fn read_many(arena: &Arena, code: &str) -> Result<Vec<usize>, String> {
+    let tokens = lex::lex(code)?;
+    let segments = lex::segment(tokens)?;
+    if !segments.remainder.is_empty() {
+        return Err(format!(
+            "Unterminated expression: dangling tokens {:?}",
+            segments.remainder
+        ));
+    }
+    segments
+        .segments
+        .iter()
+        .map(|s| read_tokens(arena, s))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("{:?}", e))
+}
+
 fn do_read<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
 where
     I: Iterator<Item = &'b Token>,
