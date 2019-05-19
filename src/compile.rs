@@ -14,11 +14,11 @@
 
 use ast::SyntaxElement;
 use environment::RcEnv;
-use vm::Instruction;
+use vm::{Code, Instruction};
 
 pub fn compile(
     tree: &SyntaxElement,
-    to: &mut Vec<Instruction>,
+    code: &mut Code,
     env: &RcEnv,
     tail: bool,
     toplevel: bool,
@@ -26,96 +26,101 @@ pub fn compile(
     if tail && toplevel {
         panic!("Toplevel expression is not in tail position")
     }
-    let initial_len = to.len();
+    let initial_len = code.code_size();
     match tree {
         SyntaxElement::Quote(q) => {
-            to.push(Instruction::Constant(q.quoted));
+            code.push(Instruction::Constant(q.quoted));
         }
         SyntaxElement::If(i) => {
-            compile(&i.cond, to, env, false, false)?;
-            let conditional_jump_idx = to.len();
-            to.push(Instruction::NoOp); // Is rewritten as a conditional jump below
-            compile(&i.t, to, env, tail, false)?;
-            let mut true_end = to.len();
+            compile(&i.cond, code, env, false, false)?;
+            let cond_jump = code.code_size();
+            code.push(Instruction::NoOp); // Is rewritten as a conditional jump below
+            compile(&i.t, code, env, tail, false)?;
+            let mut true_end = code.code_size();
             if let Some(ref f) = i.f {
-                to.push(Instruction::NoOp);
+                code.push(Instruction::NoOp);
                 true_end += 1;
-                compile(f, to, env, tail, false)?;
-                to[true_end - 1] = Instruction::Jump(to.len() - true_end);
+                compile(f, code, env, tail, false)?;
+                let jump_offset = code.code_size() - true_end;
+                code.replace(true_end - 1, Instruction::Jump(jump_offset));
             }
-            to[conditional_jump_idx] = Instruction::JumpFalse(true_end - conditional_jump_idx - 1);
+            code.replace(cond_jump, Instruction::JumpFalse(true_end - cond_jump - 1));
         }
         SyntaxElement::Begin(b) => {
-            compile_sequence(&b.expressions, to, env, tail)?;
+            compile_sequence(&b.expressions, code, env, tail)?;
         }
         SyntaxElement::Set(s) => {
-            compile(&s.value, to, env, false, false)?;
-            to.push(make_set_instruction(env, s.altitude, s.index));
+            compile(&s.value, code, env, false, false)?;
+            code.push(make_set_instruction(env, s.altitude, s.index));
         }
         SyntaxElement::Reference(r) => {
-            to.push(make_get_instruction(env, r.altitude, r.index));
+            code.push(make_get_instruction(env, r.altitude, r.index));
         }
         SyntaxElement::Lambda(l) => {
-            to.push(Instruction::CreateClosure(1));
-            let skip_pos = to.len();
-            to.push(Instruction::NoOp); // Will be replaced with over function code
-            to.push(Instruction::CheckArity {
+            code.push(Instruction::CreateClosure(1));
+            let skip_pos = code.code_size();
+            code.push(Instruction::NoOp); // Will be replaced with over function code
+            code.push(Instruction::CheckArity {
                 arity: l.arity,
                 dotted: l.dotted,
             });
             if l.dotted {
-                to.push(Instruction::PackFrame(l.arity));
+                code.push(Instruction::PackFrame(l.arity));
             }
-            to.push(Instruction::ExtendFrame(l.defines.len()));
-            to.push(Instruction::ExtendEnv);
+            code.push(Instruction::ExtendFrame(l.defines.len()));
+            code.push(Instruction::ExtendEnv);
+            code.set_env(&l.env);
 
             if !l.defines.is_empty() {
-                compile_sequence(&l.defines, to, &l.env, false)?;
+                compile_sequence(&l.defines, code, &l.env, false)?;
             }
-            compile_sequence(&l.expressions, to, &l.env, true)?;
-            to.push(Instruction::Return);
-            to[skip_pos] = Instruction::Jump(to.len() - skip_pos - 1);
+            compile_sequence(&l.expressions, code, &l.env, true)?;
+
+            code.pop_env();
+            code.push(Instruction::Return);
+            let jump_offset = code.code_size() - skip_pos - 1;
+            code.replace(skip_pos, Instruction::Jump(jump_offset));
         }
         SyntaxElement::Application(a) => {
-            compile(&a.function, to, env, false, false)?;
-            to.push(Instruction::PushValue);
+            compile(&a.function, code, env, false, false)?;
+            code.push(Instruction::PushValue);
             for instr in a.args.iter() {
-                compile(instr, to, env, false, false)?;
-                to.push(Instruction::PushValue);
+                compile(instr, code, env, false, false)?;
+                code.push(Instruction::PushValue);
             }
-            to.push(Instruction::CreateFrame(a.args.len()));
-            to.push(Instruction::PopFunction);
+            code.push(Instruction::CreateFrame(a.args.len()));
+            code.push(Instruction::PopFunction);
             if !tail {
-                to.push(Instruction::PreserveEnv);
+                code.push(Instruction::PreserveEnv);
             }
-            to.push(Instruction::FunctionInvoke { tail });
+            code.push(Instruction::FunctionInvoke { tail });
             if !tail {
-                to.push(Instruction::RestoreEnv);
+                code.push(Instruction::RestoreEnv);
             }
         }
     }
-    Ok(to.len() - initial_len)
+    Ok(code.code_size() - initial_len)
 }
 
 fn compile_sequence(
     expressions: &[SyntaxElement],
-    to: &mut Vec<Instruction>,
+    code: &mut Code,
     env: &RcEnv,
     tail: bool,
 ) -> Result<usize, String> {
-    let initial_len = to.len();
+    let initial_len = code.code_size();
     for instr in expressions[..expressions.len() - 1].iter() {
-        compile(instr, to, env, false, false)?;
+        compile(instr, code, env, false, false)?;
     }
     compile(
         // This should have been caught at the syntax step.
         expressions.last().expect("Empty sequence."),
-        to,
+        code,
         env,
         tail,
         false,
     )?;
-    Ok(to.len() - initial_len)
+    Ok(code.code_size() - initial_len)
 }
 
 fn make_get_instruction(env: &RcEnv, altitude: usize, index: usize) -> Instruction {

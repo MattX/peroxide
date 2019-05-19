@@ -160,6 +160,8 @@ fn construct_reference(env: &RcEnv, name: &str) -> Result<Reference, String> {
         )),
         None => {
             let index = env.define_implicit(name);
+            // TODO: remove this, or find a better way to surface it.
+            println!("Warning: reference to undefined variable {}", name);
             Ok(Reference { altitude: 0, index })
         }
     }
@@ -253,9 +255,6 @@ fn parse_split_lambda(
     formals: usize,
     body: &[usize],
 ) -> Result<SyntaxElement, String> {
-    if body.is_empty() {
-        return Err("Lambda cannot have empty body.".into());
-    }
     let formals = parse_formals(arena, formals)?;
     let mut raw_env = Environment::new_initial(Some(env.clone()), &formals.values[..]);
     if let Some(s) = &formals.rest {
@@ -285,6 +284,9 @@ fn parse_split_lambda(
         .iter()
         .map(|e| parse(arena, vms, &env, *e, false))
         .collect::<Result<Vec<_>, _>>()?;
+    if expressions.is_empty() {
+        return Err("Lambda cannot have empty body".into());
+    }
     Ok(SyntaxElement::Lambda(Box::new(Lambda {
         env,
         arity: formals.values.len(),

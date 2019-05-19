@@ -15,11 +15,13 @@
 // TODO in this file: stop calling the activation frame an environment.
 
 use arena::Arena;
-use environment::ActivationFrame;
+use environment::{ActivationFrame, RcEnv};
 use primitives::PrimitiveImplementation;
 use std::cell::RefCell;
 use value::Value::Lambda;
 use value::{list_from_vec, pretty_print, vec_from_list, Value};
+
+static MAX_RECURSION_DEPTH: usize = 1000;
 
 #[derive(Debug)]
 pub enum Instruction {
@@ -48,10 +50,68 @@ pub enum Instruction {
     Finish,
 }
 
+/// A struct to hold the VM instructions and a mapping of instruction to lexical environment.
+///
+/// This is essentially used to provide variable names when an undefined value is accessed.
+///
+/// Any given part of the bytecode corresponds to a statically-known lexical environment. `env_map`
+/// keeps a vec of (bytecode address where an environment starts, environment), which we can
+/// binary-search to get the current environment from the current pc.
+// TODO: we don't need env_stack at runtime, so it should be moved to compile.rs.
+#[derive(Debug)]
+pub struct Code {
+    instructions: Vec<Instruction>,
+    env_map: Vec<(usize, RcEnv)>,
+    env_stack: Vec<RcEnv>,
+}
+
+impl Code {
+    pub fn new(global_environment: &RcEnv) -> Self {
+        Code {
+            instructions: vec![],
+            env_map: vec![(0, global_environment.clone())],
+            env_stack: vec![global_environment.clone()],
+        }
+    }
+
+    pub fn push(&mut self, i: Instruction) {
+        self.instructions.push(i);
+    }
+
+    pub fn replace(&mut self, index: usize, new: Instruction) {
+        self.instructions[index] = new;
+    }
+
+    pub fn code_size(&self) -> usize {
+        self.instructions.len()
+    }
+
+    pub fn set_env(&mut self, env: &RcEnv) {
+        self.env_map.push((self.instructions.len(), env.clone()));
+        self.env_stack.push(env.clone());
+    }
+
+    pub fn pop_env(&mut self) {
+        let e = self
+            .env_stack
+            .pop()
+            .expect("Popping environment with no environments on stack.");
+        self.env_stack.push(e);
+    }
+
+    pub fn find_env(&self, at: usize) -> &RcEnv {
+        let env_index = self
+            .env_map
+            .binary_search_by_key(&at, |(instr, _env)| *instr)
+            .unwrap_or_else(|e| e - 1);
+        &self.env_map[env_index].1
+    }
+}
+
 #[derive(Debug)]
 struct Vm<'a> {
     value: usize,
-    code: &'a [Instruction],
+    code: &'a mut Code,
     pc: usize,
     return_stack: Vec<usize>,
     stack: Vec<usize>,
@@ -60,7 +120,7 @@ struct Vm<'a> {
     fun: usize,
 }
 
-pub fn run(arena: &Arena, code: &[Instruction], pc: usize, env: usize) -> Result<usize, String> {
+pub fn run(arena: &Arena, code: &mut Code, pc: usize, env: usize) -> Result<usize, String> {
     let mut vm = Vm {
         value: arena.unspecific,
         code,
@@ -72,7 +132,7 @@ pub fn run(arena: &Arena, code: &[Instruction], pc: usize, env: usize) -> Result
         fun: 0,
     };
     loop {
-        match vm.code[vm.pc] {
+        match vm.code.instructions[vm.pc] {
             Instruction::Constant(v) => vm.value = v,
             Instruction::JumpFalse(offset) => {
                 if !arena.get(vm.value).truthy() {
@@ -97,7 +157,10 @@ pub fn run(arena: &Arena, code: &[Instruction], pc: usize, env: usize) -> Result
                     .get(arena, 0, index);
                 if vm.value == arena.undefined {
                     // TODO maintain a mapping and print variable name here.
-                    return Err(format!("Variable used before definition: global {}", index));
+                    return Err(format!(
+                        "Variable used before definition: {}",
+                        resolve_variable(vm.code, vm.pc, 0, index)
+                    ));
                 }
             }
             Instruction::DeepArgumentSet { depth, index } => {
@@ -118,8 +181,8 @@ pub fn run(arena: &Arena, code: &[Instruction], pc: usize, env: usize) -> Result
                 if vm.value == arena.undefined {
                     // TODO maintain a mapping and print variable name here.
                     return Err(format!(
-                        "Variable used before definition: {}/{}",
-                        depth, index
+                        "Variable used before definition: {}",
+                        resolve_variable(vm.code, vm.pc, depth, index)
                     ));
                 }
             }
@@ -230,6 +293,9 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), String> {
             code, environment, ..
         } => {
             if !tail {
+                if vm.return_stack.len() > MAX_RECURSION_DEPTH {
+                    return Err("Maximum recursion depth exceeded".into());
+                }
                 vm.return_stack.push(vm.pc);
             }
             vm.env = *environment;
@@ -269,4 +335,9 @@ fn apply(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), String> {
     vm.value = arena.insert(Value::ActivationFrame(RefCell::new(new_af)));
     vm.fun = af.values[0];
     invoke(arena, vm, tail)
+}
+
+fn resolve_variable(code: &Code, pc: usize, depth: usize, index: usize) -> String {
+    let env = code.find_env(pc).borrow();
+    env.get_name(env.depth(depth), index)
 }

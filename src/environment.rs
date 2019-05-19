@@ -165,6 +165,16 @@ impl Environment {
         }
     }
 
+    pub fn get_name(&self, altitude: usize, index: usize) -> String {
+        if let Some(s) = self.variable_names.get(&(altitude, index)) {
+            s.clone()
+        } else if let Some(ref e) = self.parent {
+            e.borrow().get_name(altitude, index)
+        } else {
+            panic!("Referencing undefined variable {}/{}", altitude, index);
+        }
+    }
+
     /// Returns the depth of a variable of the given altitude, assuming this environment is
     /// current.
     pub fn depth(&self, altitude: usize) -> usize {

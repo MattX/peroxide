@@ -13,13 +13,16 @@ on the interpreter described in _Lisp in Small Pieces_.
 * ~~Support syntactic closures~~
 * Add ~~apply~~ and eval
 * Fix the checked vs unchecked references
-* Write define-syntax
+* Write syntax-rules
 * Implement the rest of the stdlib
 * Implement fixlet optimization
-* Implement name lookup on error
+* ~~Implement name lookup on error~~
 * Assign names to lambdas when possible
 * Add `call/cc`
 * Turn the GC on (oh noooo)
+* Keep track of which lines map to which tokens, which map to which
+expressions, which map to what bytecode. This will let us have
+much better error messages.
 * Allow fully disabling rustyline [using features](
 https://doc.rust-lang.org/cargo/reference/manifest.html#the-features-section).
 

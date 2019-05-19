@@ -24,7 +24,7 @@ use environment::{ActivationFrame, Environment, RcEnv};
 use read::read_many;
 use std::fs;
 use value::{pretty_print, Value};
-use vm::Instruction;
+use vm::{Code, Instruction};
 
 pub mod arena;
 pub mod ast;
@@ -43,7 +43,7 @@ pub mod vm;
 pub struct VmState {
     pub global_environment: RcEnv,
     pub global_frame: usize,
-    pub code: Vec<Instruction>,
+    pub code: Code,
 }
 
 impl VmState {
@@ -56,9 +56,9 @@ impl VmState {
         primitives::register_primitives(&arena, &global_environment, global_frame);
 
         VmState {
-            global_environment,
+            global_environment: global_environment.clone(),
             global_frame,
-            code: vec![],
+            code: Code::new(&global_environment),
         }
     }
 }
@@ -94,7 +94,7 @@ pub fn compile_run(
             .borrow_mut()
             .ensure_index(arena, n);
     }
-    let start_pc = state.code.len();
+    let start_pc = state.code.code_size();
     compile::compile(
         &syntax_tree,
         &mut state.code,
@@ -105,6 +105,6 @@ pub fn compile_run(
     .map_err(|e| format!("Compilation error: {}", e))?;
     state.code.push(Instruction::Finish);
     // println!(" => {:?}", &state.code[start_pc..state.code.len()]);
-    vm::run(arena, &state.code, start_pc, state.global_frame)
+    vm::run(arena, &mut state.code, start_pc, state.global_frame)
         .map_err(|e| format!("Runtime error: {}", e))
 }

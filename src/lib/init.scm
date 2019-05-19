@@ -63,7 +63,7 @@
 
 (define (length ls)
   (define (length* ls acc)
-    (if (null? x)
+    (if (null? ls)
         acc
         (length* (cdr ls) (+ 1 acc))))
   (length* ls 0))
@@ -71,7 +71,7 @@
 (define (append2 l1 l2)
   (if (null? l1)
       l2
-      (cons (car l1) (append (cdr l1) l2))))
+      (cons (car l1) (append2 (cdr l1) l2))))
 
 (define (appendn lists)
   (if (null? lists)
@@ -94,7 +94,7 @@
 (define (list-tail l k)
   (if (zero? k)
       x
-      (list-tail? (cdr x) (- k 1))))
+      (list-tail (cdr x) (- k 1))))
 
 (define (list-ref l k)
   (car (list-tail l k)))
