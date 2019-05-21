@@ -41,7 +41,6 @@
 //! OK string->symbol
 //!
 //! OK char?
-//! LIBRARY char=? char<? char<=? char>? char>=?
 //! OK char->integer integer->char
 //!
 //! OK string?
@@ -78,6 +77,7 @@ use primitives::object::*;
 use primitives::pair::*;
 use primitives::string::*;
 use primitives::symbol::*;
+use primitives::vector::*;
 use value::Value;
 
 mod char;
@@ -98,7 +98,7 @@ macro_rules! simple_primitive {
     };
 }
 
-static PRIMITIVES: [Primitive; 45] = [
+static PRIMITIVES: [Primitive; 50] = [
     simple_primitive!("make-syntactic-closure", make_syntactic_closure),
     simple_primitive!("identifier=?", identifier_equal_p),
     simple_primitive!("eq?", eq_p),
@@ -142,6 +142,11 @@ static PRIMITIVES: [Primitive; 45] = [
     simple_primitive!("string-length", string_length),
     simple_primitive!("string-set!", string_set_b),
     simple_primitive!("string-ref", string_ref),
+    simple_primitive!("vector?", vector_p),
+    simple_primitive!("make-vector", make_vector),
+    simple_primitive!("vector-length", vector_length),
+    simple_primitive!("vector-set!", vector_set_b),
+    simple_primitive!("vector-ref", vector_ref),
     simple_primitive!("procedure?", procedure_p),
     Primitive {
         name: "apply",

@@ -102,6 +102,13 @@ impl Arena {
         }
     }
 
+    pub fn try_get_vector(&self, at: usize) -> Option<&RefCell<Vec<usize>>> {
+        match self.get(at) {
+            Value::Vector(v) => Some(v),
+            _ => None,
+        }
+    }
+
     pub fn try_get_symbol(&self, at: usize) -> Option<&str> {
         match self.get(at) {
             Value::Symbol(s) => Some(s),

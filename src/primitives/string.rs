@@ -104,19 +104,19 @@ pub fn string_ref(arena: &Arena, args: &[usize]) -> Result<usize, String> {
         .try_get_string(args[0])
         .ok_or_else(|| {
             format!(
-                "string_ref: Not a string: {}.",
+                "string-ref: Not a string: {}.",
                 pretty_print(arena, args[0])
             )
         })?
         .borrow();
     let idx = arena.try_get_integer(args[1]).ok_or_else(|| {
         format!(
-            "string_ref: Invalid index: {}.",
+            "string-ref: Invalid index: {}.",
             pretty_print(arena, args[1])
         )
     })?;
     if idx < 0 || idx >= borrowed_string.len() as i64 {
-        return Err(format!("string_ref: Invalid index: {}.", idx));
+        return Err(format!("string-ref: Invalid index: {}.", idx));
     }
     Ok(arena.insert(Value::Character(borrowed_string[idx as usize])))
 }

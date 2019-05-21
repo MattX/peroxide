@@ -159,6 +159,30 @@
 (define (assoc obj ls)
   (ass equal? obj ls))
 
+; Characters
+
+(define (char=? . c)
+  (apply = (map char->integer c)))
+(define (char<? . c)
+  (apply < (map char->integer c)))
+(define (char>? . c)
+  (apply > (map char->integer c)))
+(define (char<=? . c)
+  (apply <= (map char->integer c)))
+(define (char>=? . c)
+  (apply >= (map char->integer c)))
+
+(define (char-ci=? . c)
+  (apply char=? (map char-downcase c)))
+(define (char-ci<? . c)
+  (apply char<? (map char-downcase c)))
+(define (char-ci>? . c)
+  (apply char>? (map char-downcase c)))
+(define (char-ci<=? . c)
+  (apply char<=? (map char-downcase c)))
+(define (char-ci>=? . c)
+  (apply char>=? (map char-downcase c)))
+
 ; Control features
 
 (define (any? values)
