@@ -11,6 +11,38 @@
 ;; WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
+;;
+;;
+;; Portions of this file are taken from Chibi Scheme.
+;; https://github.com/ashinn/chibi-scheme/blob/d0cb74bef464accdc9fef6b67c03de27f00567bb/lib/init-7.scm
+;;
+;; Chibi Scheme is covered by the following license:
+;;
+;;   Copyright (c) 2000-2015 Alex Shinn
+;;   All rights reserved.
+;;   
+;;   Redistribution and use in source and binary forms, with or without
+;;   modification, are permitted provided that the following conditions
+;;   are met:
+;;   1. Redistributions of source code must retain the above copyright
+;;      notice, this list of conditions and the following disclaimer.
+;;   2. Redistributions in binary form must reproduce the above copyright
+;;      notice, this list of conditions and the following disclaimer in the
+;;      documentation and/or other materials provided with the distribution.
+;;   3. The name of the author may not be used to endorse or promote products
+;;      derived from this software without specific prior written permission.
+;;   
+;;   THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+;;   IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+;;   OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+;;   IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+;;   INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+;;   NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+;;   DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+;;   THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+;;   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+;;   THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+;;
 
 ; Numeric
 
@@ -93,8 +125,8 @@
 
 (define (list-tail l k)
   (if (zero? k)
-      x
-      (list-tail (cdr x) (- k 1))))
+      l
+      (list-tail (cdr l) (- k 1))))
 
 (define (list-ref l k)
   (car (list-tail l k)))
@@ -160,3 +192,61 @@
 
 (define (for-each fn . lists)
   (apply map fn lists))
+
+;; Syntax
+;; BEGIN CHIBI
+
+(define sc-macro-transformer
+  (lambda (f)
+    (lambda (expr use-env mac-env)
+      (make-syntactic-closure mac-env '() (f expr use-env)))))
+
+(define rsc-macro-transformer
+  (lambda (f)
+    (lambda (expr use-env mac-env)
+      (f expr mac-env))))
+
+(define er-macro-transformer
+  (lambda (f)
+    (lambda (expr use-env mac-env)
+      ((lambda (rename compare) (f expr rename compare))
+       ((lambda (renames)
+          (lambda (identifier)
+            ((lambda (cell)
+               (if cell
+                   (cdr cell)
+                   ((lambda (name)
+                      (set! renames (cons (cons identifier name) renames))
+                      name)
+                    (make-syntactic-closure mac-env '() identifier))))
+             (assq identifier renames))))
+        '())
+       (lambda (x y) (identifier=? use-env x use-env y))))))
+
+(define-syntax cond
+  (er-macro-transformer
+   (lambda (expr rename compare)
+     (display "expr" expr)
+     (if (null? (cdr expr))
+         (if #f #f)
+         ((lambda (cl)
+            (display "cl" cl)
+            (if (compare (rename 'else) (car cl))
+                (if (pair? (cddr expr))
+                    (error "non-final else in cond" expr)
+                    (cons (rename 'begin) (cdr cl)))
+                (if #f
+                    (list (list (rename 'lambda) (list (rename 'tmp))
+                                (list (rename 'if) (rename 'tmp)
+                                      (if (null? (cdr cl))
+                                          (rename 'tmp)
+                                          (list (car (cddr cl)) (rename 'tmp)))
+                                      (cons (rename 'cond) (cddr expr))))
+                          (car cl))
+                    (list (rename 'if)
+                          (car cl)
+                          (cons (rename 'begin) (cdr cl))
+                          (cons (rename 'cond) (cddr expr))))))
+          (cadr expr))))))
+
+;; END CHIBI

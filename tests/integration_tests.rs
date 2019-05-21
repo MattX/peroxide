@@ -15,11 +15,11 @@
 extern crate peroxide;
 
 use peroxide::arena::Arena;
-use peroxide::read;
+use peroxide::initialize;
+use peroxide::parse_compile_run;
 use peroxide::read::read_many;
 use peroxide::value::Value;
 use peroxide::VmState;
-use peroxide::{lex, parse_compile_run};
 
 fn execute(arena: &Arena, vm_state: &mut VmState, code: &str) -> Result<Value, String> {
     let mut results: Vec<_> = read_many(arena, code)?
@@ -323,6 +323,23 @@ fn let_syntax() {
              outer-x)))\
              ((lambda (x)\
              (tst)) 'inner))"
+        )
+        .unwrap()
+    );
+}
+
+#[test]
+fn cond() {
+    let arena = Arena::default();
+    let mut vm_state = VmState::new(&arena);
+    initialize(&arena, &mut vm_state, "src/lib/init.scm").unwrap();
+    assert_eq!(
+        Value::Symbol("greater".into()),
+        execute(
+            &arena,
+            &mut vm_state,
+            "(cond ((> 3 2) 'greater)
+             ((< 3 2) 'less))"
         )
         .unwrap()
     );

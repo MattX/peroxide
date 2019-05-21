@@ -68,17 +68,23 @@ fn get_in_env(arena: &Arena, env: &RcEnv, val: usize) -> Result<Option<Environme
 
 pub fn identifier_equal_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(4), Some(4))?;
-    let env1 = arena.try_get_environment(args[0]).ok_or(format!(
-        "identifier=?: not an environment: {}",
-        pretty_print(arena, args[0])
-    ))?;
-    let env2 = arena.try_get_environment(args[2]).ok_or(format!(
-        "identifier=?: not an environment: {}",
-        pretty_print(arena, args[2])
-    ))?;
+    let env1 = arena.try_get_environment(args[0]).ok_or_else(|| {
+        format!(
+            "identifier=?: not an environment: {}",
+            pretty_print(arena, args[0])
+        )
+    })?;
+    let env2 = arena.try_get_environment(args[2]).ok_or_else(|| {
+        format!(
+            "identifier=?: not an environment: {}",
+            pretty_print(arena, args[2])
+        )
+    })?;
 
-    // I think this is not actually correct, we should use the env from the syntactic closure
-    // if an identifier is a syntactically closed symbol.
+    if !identifier_p(arena, args[1]) || !identifier_p(arena, args[3]) {
+        return Ok(arena.f);
+    }
+
     let binding1 = get_in_env(arena, env1, args[1])?;
     let binding2 = get_in_env(arena, env2, args[3])?;
 
@@ -94,4 +100,12 @@ pub fn identifier_equal_p(arena: &Arena, args: &[usize]) -> Result<usize, String
         _ => false,
     };
     Ok(arena.insert(Value::Boolean(res)))
+}
+
+fn identifier_p(arena: &Arena, value: usize) -> bool {
+    match arena.get(value) {
+        Value::Symbol(_) => true,
+        Value::SyntacticClosure { expr, .. } => identifier_p(arena, *expr),
+        _ => false,
+    }
 }

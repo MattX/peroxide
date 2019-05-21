@@ -18,6 +18,7 @@ on the interpreter described in _Lisp in Small Pieces_.
 * Implement fixlet optimization
 * ~~Implement name lookup on error~~
 * Assign names to lambdas when possible
+* There are more places where syntactic closures should be stripped.
 * Add `call/cc`
 * Turn the GC on (oh noooo)
 * Keep track of which lines map to which tokens, which map to which

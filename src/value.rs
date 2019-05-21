@@ -66,8 +66,8 @@ impl fmt::Display for Value {
             }
             Value::EmptyList => write!(f, "()"),
             Value::Pair(a, b) => write!(f, "(=>{} . =>{})", a.borrow(), b.borrow()),
-            Value::Vector(vals) => {
-                let contents = vals
+            Value::Vector(values) => {
+                let contents = values
                     .borrow()
                     .iter()
                     .map(|v| format!("=>{}", v))
@@ -114,6 +114,16 @@ impl Value {
         match self {
             Value::Pair(_, _) => self.print_pair(arena),
             Value::Vector(_) => self.print_vector(arena),
+            Value::SyntacticClosure {
+                closed_env,
+                free_variables,
+                expr,
+            } => format!(
+                "#syntactic-closure[{} {:?} {}]",
+                closed_env,
+                free_variables,
+                arena.get(*expr).pretty_print(arena)
+            ),
             _ => format!("{}", self),
         }
     }

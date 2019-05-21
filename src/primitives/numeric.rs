@@ -159,8 +159,8 @@ fn equal2(a: &Value, b: &Value) -> bool {
 prim_monotonic!(less_than, less_than2);
 fn less_than2(a: &Value, b: &Value) -> bool {
     match cast_same(a, b) {
-        (Value::Integer(ia), Value::Integer(ib)) => ia > ib,
-        (Value::Real(fa), Value::Real(fb)) => fa > fb,
+        (Value::Integer(ia), Value::Integer(ib)) => ia < ib,
+        (Value::Real(fa), Value::Real(fb)) => fa < fb,
         _ => panic!(
             "cast_same did not return equal numeric types: ({}, {})",
             a, b
@@ -171,8 +171,8 @@ fn less_than2(a: &Value, b: &Value) -> bool {
 prim_monotonic!(greater_than, greater_than2);
 fn greater_than2(a: &Value, b: &Value) -> bool {
     match cast_same(a, b) {
-        (Value::Integer(ia), Value::Integer(ib)) => ia < ib,
-        (Value::Real(fa), Value::Real(fb)) => fa < fb,
+        (Value::Integer(ia), Value::Integer(ib)) => ia > ib,
+        (Value::Real(fa), Value::Real(fb)) => fa > fb,
         _ => panic!(
             "cast_same did not return equal numeric types: ({}, {})",
             a, b

@@ -124,24 +124,14 @@ pub fn parse(
     value: usize,
     toplevel: bool,
 ) -> Result<SyntaxElement, String> {
+    let (env, value) = resolve_syntactic_closure(arena, env, value)?;
     match arena.get(value) {
         Value::Symbol(s) => Ok(SyntaxElement::Reference(Box::new(construct_reference(
-            env, s,
+            &env, s,
         )?))),
         Value::EmptyList => Err("Cannot evaluate empty list".into()),
         Value::Pair(car, cdr) => {
-            parse_pair(arena, vms, env, *car.borrow(), *cdr.borrow(), toplevel)
-        }
-        Value::SyntacticClosure {
-            closed_env,
-            free_variables,
-            expr,
-        } => {
-            let closed_env = arena
-                .try_get_environment(*closed_env)
-                .expect("Syntactic closure created with non-environment argument.");
-            let inner_env = environment::filter(closed_env, env, free_variables)?;
-            parse(arena, vms, &inner_env, *expr, toplevel)
+            parse_pair(arena, vms, &env, *car.borrow(), *cdr.borrow(), toplevel)
         }
         _ => Ok(SyntaxElement::Quote(Box::new(Quote { quoted: value }))),
     }
@@ -176,24 +166,27 @@ fn parse_pair(
     toplevel: bool,
 ) -> Result<SyntaxElement, String> {
     let rest = vec_from_list(arena, cdr)?;
+    let (env, car) = resolve_syntactic_closure(arena, env, car)?;
     match arena.get(car) {
-        Value::Symbol(s) => match match_symbol(env, s) {
+        Value::Symbol(s) => match match_symbol(&env, s) {
             Symbol::Quote => parse_quote(&rest),
-            Symbol::If => parse_if(arena, vms, env, &rest),
-            Symbol::Begin => parse_begin(arena, vms, env, &rest, toplevel),
-            Symbol::Lambda => parse_lambda(arena, vms, env, &rest),
-            Symbol::Set => parse_set(arena, vms, env, &rest),
-            Symbol::Define => parse_define(arena, vms, env, &rest, toplevel),
-            Symbol::DefineSyntax => parse_define_syntax(arena, vms, env, &rest, toplevel),
-            Symbol::LetSyntax => parse_let_syntax(arena, vms, env, &rest, false),
-            Symbol::LetrecSyntax => parse_let_syntax(arena, vms, env, &rest, true),
+            Symbol::If => parse_if(arena, vms, &env, &rest),
+            Symbol::Begin => parse_begin(arena, vms, &env, &rest, toplevel),
+            Symbol::Lambda => parse_lambda(arena, vms, &env, &rest),
+            Symbol::Set => parse_set(arena, vms, &env, &rest),
+            Symbol::Define => parse_define(arena, vms, &env, &rest, toplevel),
+            Symbol::DefineSyntax => parse_define_syntax(arena, vms, &env, &rest, toplevel),
+            Symbol::LetSyntax => parse_let_syntax(arena, vms, &env, &rest, false),
+            Symbol::LetrecSyntax => parse_let_syntax(arena, vms, &env, &rest, true),
             Symbol::Macro(m) => {
-                let expanded = expand_macro_full(arena, vms, env, m, cdr)?;
-                parse(arena, vms, env, expanded, toplevel)
+                // TODO fix this to avoid reconstructing the pair
+                let expr = arena.insert(Value::Pair(RefCell::new(car), RefCell::new(cdr)));
+                let expanded = expand_macro_full(arena, vms, &env, m, expr)?;
+                parse(arena, vms, &env, expanded, toplevel)
             }
-            _ => parse_application(arena, vms, env, car, &rest),
+            _ => parse_application(arena, vms, &env, car, &rest),
         },
-        _ => parse_application(arena, vms, env, car, &rest),
+        _ => parse_application(arena, vms, &env, car, &rest),
     }
 }
 
@@ -425,41 +418,35 @@ fn parse_formals(arena: &Arena, formals: usize) -> Result<Formals, String> {
     let mut values = Vec::new();
     let mut formal = formals;
     loop {
-        if let Some(s) = coerce_symbol(arena, arena.get(formal)) {
-            return Ok(Formals {
-                values,
-                rest: Some(s.into()),
-            });
-        } else {
-            match arena.get(formal) {
-                Value::EmptyList => return Ok(Formals { values, rest: None }),
-                Value::Pair(car, cdr) => {
-                    if let Some(s) = coerce_symbol(arena, arena.get(*car.borrow())) {
-                        values.push(s.into());
+        match arena.get(strip_syntactic_closure(arena, formal)) {
+            Value::Symbol(s) => {
+                return Ok(Formals {
+                    values,
+                    rest: Some(s.clone()),
+                })
+            }
+            Value::EmptyList => return Ok(Formals { values, rest: None }),
+            Value::Pair(car, cdr) => {
+                match arena.get(strip_syntactic_closure(arena, *car.borrow())) {
+                    Value::Symbol(s) => {
+                        values.push(s.clone());
                         formal = *cdr.borrow();
-                    } else {
+                    }
+                    _ => {
                         return Err(format!(
                             "Malformed formals: {}.",
                             arena.get(formals).pretty_print(arena)
-                        ));
+                        ))
                     }
                 }
-                _ => {
-                    return Err(format!(
-                        "Malformed formals: {}.",
-                        arena.get(formals).pretty_print(arena)
-                    ));
-                }
+            }
+            _ => {
+                return Err(format!(
+                    "Malformed formals: {}.",
+                    arena.get(formals).pretty_print(arena)
+                ));
             }
         }
-    }
-}
-
-fn coerce_symbol<'a>(arena: &'a Arena, v: &'a Value) -> Option<&'a str> {
-    match v {
-        Value::Symbol(s) => Some(s),
-        Value::SyntacticClosure { expr, .. } => arena.try_get_symbol(*expr),
-        _ => None,
     }
 }
 
@@ -475,10 +462,12 @@ fn parse_define_syntax(
     }
     check_len(rest, Some(2), Some(2))?;
 
-    let symbol = arena.try_get_symbol(rest[0]).ok_or(format!(
-        "define-syntax: target must be symbol, not {}.",
-        pretty_print(arena, rest[0])
-    ))?;
+    let symbol = arena.try_get_symbol(rest[0]).ok_or_else(|| {
+        format!(
+            "define-syntax: target must be symbol, not {}.",
+            pretty_print(arena, rest[0])
+        )
+    })?;
     let mac = make_macro(arena, vms, rest[1])?;
     env.borrow_mut().define_macro(symbol, mac, env.clone());
 
@@ -503,10 +492,12 @@ fn parse_let_syntax(
         let binding = vec_from_list(arena, *b)?;
         check_len(&binding, Some(2), Some(2))?;
 
-        let symbol = arena.try_get_symbol(binding[0]).ok_or(format!(
-            "let-syntax: target must be symbol, not {}.",
-            pretty_print(arena, rest[0])
-        ))?;
+        let symbol = arena.try_get_symbol(binding[0]).ok_or_else(|| {
+            format!(
+                "let-syntax: target must be symbol, not {}.",
+                pretty_print(arena, rest[0])
+            )
+        })?;
         let mac = make_macro(arena, vms, binding[1])?;
         inner_env
             .borrow_mut()
@@ -547,6 +538,7 @@ fn expand_macro_full(
     while let Some(m) = get_macro(arena, env, expanded) {
         expanded = expand_macro(arena, vms, env, m, expanded)?;
     }
+    println!("Expanded: {}", pretty_print(arena, expanded));
     Ok(expanded)
 }
 
@@ -672,6 +664,34 @@ fn collect_internal_defines(
     rest.extend(&body[i..]);
     assert_eq!(body.len(), defines.len() + rest.len());
     Ok((defines, rest))
+}
+
+fn resolve_syntactic_closure(
+    arena: &Arena,
+    env: &RcEnv,
+    value: usize,
+) -> Result<(RcEnv, usize), String> {
+    match arena.get(value) {
+        Value::SyntacticClosure {
+            closed_env,
+            free_variables,
+            expr,
+        } => {
+            let closed_env = arena
+                .try_get_environment(*closed_env)
+                .expect("Syntactic closure created with non-environment argument.");
+            let inner_env = environment::filter(closed_env, env, free_variables)?;
+            resolve_syntactic_closure(arena, &inner_env, *expr)
+        }
+        _ => Ok((env.clone(), value)),
+    }
+}
+
+fn strip_syntactic_closure(arena: &Arena, value: usize) -> usize {
+    match arena.get(value) {
+        Value::SyntacticClosure { expr, .. } => strip_syntactic_closure(arena, *expr),
+        _ => value,
+    }
 }
 
 /// Returns the largest toplevel reference encountered in the tree, if any.

@@ -20,11 +20,13 @@ use value::{pretty_print, Value};
 
 fn get_char_arg(arena: &Arena, args: &[usize], prim_name: &str) -> Result<char, String> {
     check_len(args, Some(1), Some(1))?;
-    arena.try_get_character(args[0]).ok_or(format!(
-        "{}: not a char: {}",
-        prim_name,
-        pretty_print(arena, args[0])
-    ))
+    arena.try_get_character(args[0]).ok_or_else(|| {
+        format!(
+            "{}: not a char: {}",
+            prim_name,
+            pretty_print(arena, args[0])
+        )
+    })
 }
 
 pub fn char_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
@@ -43,13 +45,16 @@ pub fn char_to_integer(arena: &Arena, args: &[usize]) -> Result<usize, String> {
 
 pub fn integer_to_char(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(1), Some(1))?;
-    let int = arena.try_get_integer(args[0]).ok_or(format!(
-        "integer->char: not an integer: {}",
-        pretty_print(arena, args[0])
-    ))?;
+    let int = arena.try_get_integer(args[0]).ok_or_else(|| {
+        format!(
+            "integer->char: not an integer: {}",
+            pretty_print(arena, args[0])
+        )
+    })?;
     let u32i = u32::try_from(int).map_err(|e| e.to_string())?;
     let res = Value::Character(
-        std::char::from_u32(u32i).ok_or(format!("integer->char: not a valid char: {}", u32i))?,
+        std::char::from_u32(u32i)
+            .ok_or_else(|| format!("integer->char: not a valid char: {}", u32i))?,
     );
     Ok(arena.insert(res))
 }

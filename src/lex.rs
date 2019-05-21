@@ -90,7 +90,7 @@ pub fn lex(input: &str) -> Result<Vec<Token>, String> {
 }
 
 fn consume_to_newline(it: &mut Iterator<Item = char>) {
-    while let Some(c) = it.next() {
+    for c in it {
         if c == '\n' {
             break;
         }

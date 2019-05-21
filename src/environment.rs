@@ -61,10 +61,17 @@ pub struct Variable {
     pub initialized: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Macro {
     pub lambda: usize,
     pub definition_environment: RcEnv,
+}
+
+impl std::fmt::Debug for Macro {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        // hide the environment field to avoid environment -> macro -> environment reference loops
+        write!(f, "Macro {{Lambda={}}}", self.lambda)
+    }
 }
 
 impl Environment {
