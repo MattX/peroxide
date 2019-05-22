@@ -184,6 +184,9 @@ impl Environment {
 
     /// Returns the depth of a variable of the given altitude, assuming this environment is
     /// current.
+    ///
+    /// Confusingly, if you pass in a depth instead of an altitude, it will return an altitude
+    /// instead of a depth.
     pub fn depth(&self, altitude: usize) -> usize {
         self.altitude - altitude
     }

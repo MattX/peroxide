@@ -50,10 +50,12 @@
 (define (positive? x) (> 0 x))
 (define (negative? x) (< 0 x))
 
+
 ; Booleans
 
 (define (not x) (if x #f #t))
 (define (boolean? x) (if (eq? x #t) #t (eq? x #f)))
+
 
 ; Lists and pairs
 
@@ -159,29 +161,6 @@
 (define (assoc obj ls)
   (ass equal? obj ls))
 
-; Characters
-
-(define (char=? . c)
-  (apply = (map char->integer c)))
-(define (char<? . c)
-  (apply < (map char->integer c)))
-(define (char>? . c)
-  (apply > (map char->integer c)))
-(define (char<=? . c)
-  (apply <= (map char->integer c)))
-(define (char>=? . c)
-  (apply >= (map char->integer c)))
-
-(define (char-ci=? . c)
-  (apply char=? (map char-downcase c)))
-(define (char-ci<? . c)
-  (apply char<? (map char-downcase c)))
-(define (char-ci>? . c)
-  (apply char>? (map char-downcase c)))
-(define (char-ci<=? . c)
-  (apply char<=? (map char-downcase c)))
-(define (char-ci>=? . c)
-  (apply char>=? (map char-downcase c)))
 
 ; Control features
 
@@ -216,6 +195,32 @@
 
 (define (for-each fn . lists)
   (apply map fn lists))
+
+
+; Characters
+
+(define (char=? . c)
+  (apply = (map char->integer c)))
+(define (char<? . c)
+  (apply < (map char->integer c)))
+(define (char>? . c)
+  (apply > (map char->integer c)))
+(define (char<=? . c)
+  (apply <= (map char->integer c)))
+(define (char>=? . c)
+  (apply >= (map char->integer c)))
+
+(define (char-ci=? . c)
+  (apply char=? (map char-downcase c)))
+(define (char-ci<? . c)
+  (apply char<? (map char-downcase c)))
+(define (char-ci>? . c)
+  (apply char>? (map char-downcase c)))
+(define (char-ci<=? . c)
+  (apply char<=? (map char-downcase c)))
+(define (char-ci>=? . c)
+  (apply char>=? (map char-downcase c)))
+
 
 ;; Syntax
 ;; BEGIN CHIBI
@@ -259,7 +264,7 @@
                 (if (pair? (cddr expr))
                     (error "non-final else in cond" expr)
                     (cons (rename 'begin) (cdr cl)))
-                (if #f
+                (if (if (null? (cdr cl)) #t (compare (rename '=>) (cadr cl)))
                     (list (list (rename 'lambda) (list (rename 'tmp))
                                 (list (rename 'if) (rename 'tmp)
                                       (if (null? (cdr cl))

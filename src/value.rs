@@ -43,7 +43,7 @@ pub enum Value {
     ActivationFrame(RefCell<ActivationFrame>),
     Environment(RcEnv),
     SyntacticClosure {
-        closed_env: usize,
+        closed_env: RefCell<usize>,
         free_variables: Vec<String>,
         expr: usize,
     },
@@ -120,7 +120,7 @@ impl Value {
                 expr,
             } => format!(
                 "#syntactic-closure[{} {:?} {}]",
-                closed_env,
+                closed_env.borrow(),
                 free_variables,
                 arena.get(*expr).pretty_print(arena)
             ),

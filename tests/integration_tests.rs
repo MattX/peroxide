@@ -329,7 +329,7 @@ fn let_syntax() {
 }
 
 #[test]
-fn cond() {
+fn cond1() {
     let arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     initialize(&arena, &mut vm_state, "src/lib/init.scm").unwrap();
@@ -344,3 +344,40 @@ fn cond() {
         .unwrap()
     );
 }
+
+#[test]
+fn cond2() {
+    let arena = Arena::default();
+    let mut vm_state = VmState::new(&arena);
+    initialize(&arena, &mut vm_state, "src/lib/init.scm").unwrap();
+    assert_eq!(
+        Value::Symbol("equal".into()),
+        execute(
+            &arena,
+            &mut vm_state,
+            "(cond ((> 3 3) 'greater)
+      ((< 3 3) 'less)
+      (else 'equal))"
+        )
+        .unwrap()
+    );
+}
+
+/*
+#[test]
+fn cond3() {
+    let arena = Arena::default();
+    let mut vm_state = VmState::new(&arena);
+    initialize(&arena, &mut vm_state, "src/lib/init.scm").unwrap();
+    assert_eq!(
+        Value::Integer(2),
+        execute(
+            &arena,
+            &mut vm_state,
+            "(cond ((assv 'b '((a 1) (b 2))) => cadr)\
+             (else #f))"
+        )
+            .unwrap()
+    );
+}
+*/

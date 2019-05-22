@@ -678,7 +678,7 @@ fn resolve_syntactic_closure(
             expr,
         } => {
             let closed_env = arena
-                .try_get_environment(*closed_env)
+                .try_get_environment(*closed_env.borrow())
                 .expect("Syntactic closure created with non-environment argument.");
             let inner_env = environment::filter(closed_env, env, free_variables)?;
             resolve_syntactic_closure(arena, &inner_env, *expr)

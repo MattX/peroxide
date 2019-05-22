@@ -15,6 +15,7 @@
 use arena::Arena;
 use environment;
 use environment::{EnvironmentValue, RcEnv};
+use std::cell::RefCell;
 use util::check_len;
 use value::{pretty_print, vec_from_list, Value};
 
@@ -38,7 +39,7 @@ pub fn make_syntactic_closure(arena: &Arena, args: &[usize]) -> Result<usize, St
         )),
     }?;
     Ok(arena.insert(Value::SyntacticClosure {
-        closed_env,
+        closed_env: RefCell::new(closed_env),
         free_variables,
         expr: args[2],
     }))
@@ -57,7 +58,7 @@ fn get_in_env(arena: &Arena, env: &RcEnv, val: usize) -> Result<Option<Environme
             expr,
         } => {
             let closed_env = arena
-                .try_get_environment(*closed_env)
+                .try_get_environment(*closed_env.borrow())
                 .expect("Syntactic closure created with non-environment argument.");
             let inner_env = environment::filter(closed_env, env, free_variables)?;
             get_in_env(arena, &inner_env, *expr)
