@@ -77,7 +77,7 @@ pub fn initialize(arena: &Arena, state: &mut VmState, fname: &str) -> Result<(),
 /// High-level interface to parse, compile, and run a value that's been read.
 pub fn parse_compile_run(arena: &Arena, state: &mut VmState, read: usize) -> Result<usize, String> {
     let cloned_env = state.global_environment.clone();
-    let syntax_tree = ast::parse(arena, state, &cloned_env, read, true)
+    let syntax_tree = ast::parse(arena, state, &cloned_env, read, 0)
         .map_err(|e| format!("Syntax error: {}", e))?;
     // println!(" => {:?}", syntax_tree);
     compile_run(arena, state, &syntax_tree)
