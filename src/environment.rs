@@ -301,8 +301,38 @@ impl ActivationFrame {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub struct ActivationFrameInfo {
+    pub parent: Option<Rc<RefCell<ActivationFrameInfo>>>,
     pub altitude: usize,
     pub entries: usize,
+}
+
+pub type RcAfi = Rc<RefCell<ActivationFrameInfo>>;
+
+impl ActivationFrameInfo {
+    pub fn add_entry(&mut self) -> usize {
+        let entry_index = self.entries;
+        self.entries += 1;
+        entry_index
+    }
+}
+
+impl Default for ActivationFrameInfo {
+    fn default() -> Self {
+        ActivationFrameInfo {
+            parent: None,
+            altitude: 0,
+            entries: 0,
+        }
+    }
+}
+
+pub fn extend_af_info(af_info: &RcAfi) -> RcAfi {
+    let new_af_info = ActivationFrameInfo {
+        parent: Some(af_info.clone()),
+        altitude: af_info.borrow().altitude + 1,
+        entries: 0,
+    };
+    Rc::new(RefCell::new(new_af_info))
 }

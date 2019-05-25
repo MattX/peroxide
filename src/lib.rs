@@ -20,7 +20,7 @@ use std::rc::Rc;
 
 use arena::Arena;
 use ast::{largest_toplevel_reference, SyntaxElement};
-use environment::{ActivationFrame, Environment, RcEnv};
+use environment::{ActivationFrame, Environment, RcEnv, ActivationFrameInfo};
 use read::read_many;
 use std::fs;
 use value::{pretty_print, Value};
@@ -77,7 +77,12 @@ pub fn initialize(arena: &Arena, state: &mut VmState, fname: &str) -> Result<(),
 /// High-level interface to parse, compile, and run a value that's been read.
 pub fn parse_compile_run(arena: &Arena, state: &mut VmState, read: usize) -> Result<usize, String> {
     let cloned_env = state.global_environment.clone();
-    let syntax_tree = ast::parse(arena, state, &cloned_env, read, 0)
+    let global_af_info = Rc::new(RefCell::new(ActivationFrameInfo {
+        parent: None,
+        altitude: 0,
+        entries: arena.get_activation_frame(state.global_frame).borrow().values.len(),
+    }));
+    let syntax_tree = ast::parse(arena, state, &cloned_env, &global_af_info, read)
         .map_err(|e| format!("Syntax error: {}", e))?;
     // println!(" => {:?}", syntax_tree);
     compile_run(arena, state, &syntax_tree)
