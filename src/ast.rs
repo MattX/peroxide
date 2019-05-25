@@ -33,7 +33,7 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 use util::{check_len, max_optional};
-use value::{pretty_print, vec_from_list, Value};
+use value::{pretty_print, vec_from_list, SyntacticClosure, Value};
 use {compile_run, environment};
 use {parse_compile_run, VmState};
 
@@ -102,6 +102,12 @@ pub struct Set {
 pub struct Application {
     pub function: SyntaxElement,
     pub args: Vec<SyntaxElement>,
+}
+
+#[derive(Debug)]
+pub enum Identifier {
+    Bare(String),
+    SyntacticClosure(usize),
 }
 
 /// Structure that holds a function's formal argument list.
@@ -242,7 +248,6 @@ fn parse_lambda(
     parse_split_lambda(arena, vms, env, rest[0], &rest[1..rest.len()], altitude)
 }
 
-// TODO parse internal defines
 fn parse_split_lambda(
     arena: &Arena,
     vms: &mut VmState,
@@ -686,11 +691,11 @@ fn resolve_syntactic_closure(
     value: usize,
 ) -> Result<(RcEnv, usize), String> {
     match arena.get(value) {
-        Value::SyntacticClosure {
+        Value::SyntacticClosure(SyntacticClosure {
             closed_env,
             free_variables,
             expr,
-        } => {
+        }) => {
             let closed_env = arena
                 .try_get_environment(*closed_env.borrow())
                 .expect("Syntactic closure created with non-environment argument.");
@@ -703,7 +708,9 @@ fn resolve_syntactic_closure(
 
 fn strip_syntactic_closure(arena: &Arena, value: usize) -> usize {
     match arena.get(value) {
-        Value::SyntacticClosure { expr, .. } => strip_syntactic_closure(arena, *expr),
+        Value::SyntacticClosure(SyntacticClosure { expr, .. }) => {
+            strip_syntactic_closure(arena, *expr)
+        }
         _ => value,
     }
 }

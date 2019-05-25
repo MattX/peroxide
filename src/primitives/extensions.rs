@@ -17,7 +17,7 @@ use environment;
 use environment::{EnvironmentValue, RcEnv};
 use std::cell::RefCell;
 use util::check_len;
-use value::{pretty_print, vec_from_list, Value};
+use value::{pretty_print, vec_from_list, SyntacticClosure, Value};
 
 pub fn make_syntactic_closure(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(3), Some(3))?;
@@ -38,11 +38,11 @@ pub fn make_syntactic_closure(arena: &Arena, args: &[usize]) -> Result<usize, St
             pretty_print(arena, args[0])
         )),
     }?;
-    Ok(arena.insert(Value::SyntacticClosure {
+    Ok(arena.insert(Value::SyntacticClosure(SyntacticClosure {
         closed_env: RefCell::new(closed_env),
         free_variables,
         expr: args[2],
-    }))
+    })))
 }
 
 /// Resolve an identifier in a given environment.
@@ -52,11 +52,11 @@ pub fn make_syntactic_closure(arena: &Arena, args: &[usize]) -> Result<usize, St
 fn get_in_env(arena: &Arena, env: &RcEnv, val: usize) -> Result<Option<EnvironmentValue>, String> {
     match arena.get(val) {
         Value::Symbol(s) => Ok(env.borrow().get(s)),
-        Value::SyntacticClosure {
+        Value::SyntacticClosure(SyntacticClosure {
             closed_env,
             free_variables,
             expr,
-        } => {
+        }) => {
             let closed_env = arena
                 .try_get_environment(*closed_env.borrow())
                 .expect("Syntactic closure created with non-environment argument.");
@@ -106,7 +106,7 @@ pub fn identifier_equal_p(arena: &Arena, args: &[usize]) -> Result<usize, String
 fn identifier_p(arena: &Arena, value: usize) -> bool {
     match arena.get(value) {
         Value::Symbol(_) => true,
-        Value::SyntacticClosure { expr, .. } => identifier_p(arena, *expr),
+        Value::SyntacticClosure(SyntacticClosure { expr, .. }) => identifier_p(arena, *expr),
         _ => false,
     }
 }

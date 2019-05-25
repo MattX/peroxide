@@ -17,10 +17,48 @@ use std::fmt;
 use std::ops::Deref;
 
 use arena::Arena;
-use environment::{ActivationFrame, RcEnv};
+use environment::{ActivationFrame, Environment, RcEnv};
 use gc;
 use primitives::Primitive;
+use std::rc::Rc;
 use util::char_vec_to_str;
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct SyntacticClosure {
+    pub closed_env: RefCell<usize>,
+    pub free_variables: Vec<String>,
+    pub expr: usize,
+}
+
+impl SyntacticClosure {
+    pub fn push_env(&self, arena: &Arena, altitude: usize) -> RcEnv {
+        let env = arena
+            .try_get_environment(*self.closed_env.borrow())
+            .expect("Syntactic closure created with non-env");
+        let inner_env = Rc::new(RefCell::new(Environment::new_with_altitude(
+            Some(env.clone()),
+            altitude,
+        )));
+        let inner_env_val = Value::Environment(inner_env.clone());
+        RefCell::replace(&self.closed_env, arena.insert(inner_env_val));
+        inner_env
+    }
+
+    pub fn pop_env(&self, arena: &Arena) {
+        let env = arena
+            .try_get_environment(*self.closed_env.borrow())
+            .expect("Syntactic closure created with non-env");
+        let parent_env = env
+            .borrow()
+            .parent()
+            .expect("Popping from syntactic closure with no parent env.")
+            .clone();
+        RefCell::replace(
+            &self.closed_env,
+            arena.insert(Value::Environment(parent_env)),
+        );
+    }
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {
@@ -35,18 +73,11 @@ pub enum Value {
     EmptyList,
     Pair(RefCell<usize>, RefCell<usize>),
     Vector(RefCell<Vec<usize>>),
-    Lambda {
-        code: usize,
-        environment: usize,
-    },
+    Lambda { code: usize, environment: usize },
     Primitive(&'static Primitive),
     ActivationFrame(RefCell<ActivationFrame>),
     Environment(RcEnv),
-    SyntacticClosure {
-        closed_env: RefCell<usize>,
-        free_variables: Vec<String>,
-        expr: usize,
-    },
+    SyntacticClosure(SyntacticClosure),
 }
 
 impl fmt::Display for Value {
@@ -114,11 +145,11 @@ impl Value {
         match self {
             Value::Pair(_, _) => self.print_pair(arena),
             Value::Vector(_) => self.print_vector(arena),
-            Value::SyntacticClosure {
+            Value::SyntacticClosure(SyntacticClosure {
                 closed_env,
                 free_variables,
                 expr,
-            } => format!(
+            }) => format!(
                 "#syntactic-closure[{} {:?} {}]",
                 closed_env.borrow(),
                 free_variables,

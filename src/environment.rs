@@ -75,11 +75,7 @@ impl std::fmt::Debug for Macro {
 }
 
 impl Environment {
-    pub fn new(parent: Option<Rc<RefCell<Environment>>>) -> Environment {
-        let altitude = parent
-            .as_ref()
-            .map(|p| p.borrow().altitude + 1)
-            .unwrap_or(0);
+    pub fn new_with_altitude(parent: Option<Rc<RefCell<Environment>>>, altitude: usize) -> Self {
         Environment {
             parent,
             altitude,
@@ -89,25 +85,27 @@ impl Environment {
         }
     }
 
+    pub fn new(parent: Option<Rc<RefCell<Environment>>>) -> Self {
+        let altitude = parent
+            .as_ref()
+            .map(|p| p.borrow().altitude + 1)
+            .unwrap_or(0);
+        Self::new_with_altitude(parent, altitude)
+    }
+
+    pub fn new_syntactic(parent: &Rc<RefCell<Environment>>) -> Self {
+        Self::new_with_altitude(Some(parent.clone()), parent.borrow().altitude)
+    }
+
     pub fn new_initial<T: AsRef<str>>(
         parent: Option<Rc<RefCell<Environment>>>,
         bindings: &[T],
-    ) -> Environment {
+    ) -> Self {
         let mut env = Environment::new(parent);
         for identifier in bindings.iter() {
             env.define(identifier.as_ref(), true);
         }
         env
-    }
-
-    pub fn new_syntactic(parent: &Rc<RefCell<Environment>>) -> Environment {
-        Environment {
-            parent: Some(parent.clone()),
-            altitude: parent.borrow().altitude,
-            values: HashMap::new(),
-            variable_names: HashMap::new(),
-            variable_count: 0,
-        }
     }
 
     /// Define a new variable. The variable will be added to the topmost environment frame, and
@@ -118,6 +116,20 @@ impl Environment {
     pub fn define(&mut self, name: &str, initialized: bool) -> usize {
         let index = self.variable_count;
         self.variable_count += 1;
+        self.define_explicit(name, index, initialized)
+    }
+
+    /// Define a value on the global environment (bottommost frame).
+    pub fn define_implicit(&mut self, name: &str) -> usize {
+        if let Some(ref e) = self.parent {
+            e.borrow_mut().define_implicit(name)
+        } else {
+            self.define(name, false)
+        }
+    }
+
+    /// Define a variable pointing to a specific index in the frame.
+    pub fn define_explicit(&mut self, name: &str, index: usize, initialized: bool) -> usize {
         self.variable_names
             .insert((self.altitude, index), name.to_string());
         self.values.insert(
@@ -136,15 +148,6 @@ impl Environment {
         match self.get(name) {
             Some(EnvironmentValue::Variable(v)) => v.index,
             _ => self.define(name, initialized),
-        }
-    }
-
-    /// Define a value on the global environment (bottommost frame).
-    pub fn define_implicit(&mut self, name: &str) -> usize {
-        if let Some(ref e) = self.parent {
-            e.borrow_mut().define_implicit(name)
-        } else {
-            self.define(name, false)
         }
     }
 
@@ -193,6 +196,10 @@ impl Environment {
 
     pub fn altitude(&self) -> usize {
         self.altitude
+    }
+
+    pub fn parent(&self) -> Option<&RcEnv> {
+        (&self.parent).as_ref()
     }
 
     pub fn mark_initialized(&mut self, name: &str) {
@@ -292,4 +299,10 @@ impl ActivationFrame {
             panic!("Accessing depth with no parent.");
         }
     }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct ActivationFrameInfo {
+    pub altitude: usize,
+    pub entries: usize,
 }
