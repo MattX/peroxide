@@ -332,7 +332,7 @@ fn let_syntax() {
 fn cond1() {
     let arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
-    initialize(&arena, &mut vm_state, "src/lib/init.scm").unwrap();
+    initialize(&arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
     assert_eq!(
         Value::Symbol("greater".into()),
         execute(
@@ -349,7 +349,7 @@ fn cond1() {
 fn cond2() {
     let arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
-    initialize(&arena, &mut vm_state, "src/lib/init.scm").unwrap();
+    initialize(&arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
     assert_eq!(
         Value::Symbol("equal".into()),
         execute(
@@ -368,7 +368,7 @@ fn cond2() {
 fn cond3() {
     let arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
-    initialize(&arena, &mut vm_state, "src/lib/init.scm").unwrap();
+    initialize(&arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
     assert_eq!(
         Value::Integer(2),
         execute(

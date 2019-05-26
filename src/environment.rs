@@ -33,12 +33,10 @@ use value::Value;
 #[derive(Debug)]
 pub struct Environment {
     parent: Option<Rc<RefCell<Environment>>>,
-    altitude: usize,
 
     // The value can be a none to hide a value defined in a parent environment.
     values: HashMap<String, Option<EnvironmentValue>>,
     variable_names: HashMap<(usize, usize), String>,
-    variable_count: usize,
 }
 
 // Gruik
@@ -75,35 +73,22 @@ impl std::fmt::Debug for Macro {
 }
 
 impl Environment {
-    pub fn new_with_altitude(parent: Option<Rc<RefCell<Environment>>>, altitude: usize) -> Self {
+    pub fn new(parent: Option<Rc<RefCell<Environment>>>) -> Self {
         Environment {
             parent,
-            altitude,
             values: HashMap::new(),
             variable_names: HashMap::new(),
-            variable_count: 0,
         }
-    }
-
-    pub fn new(parent: Option<Rc<RefCell<Environment>>>) -> Self {
-        let altitude = parent
-            .as_ref()
-            .map(|p| p.borrow().altitude + 1)
-            .unwrap_or(0);
-        Self::new_with_altitude(parent, altitude)
-    }
-
-    pub fn new_syntactic(parent: &Rc<RefCell<Environment>>) -> Self {
-        Self::new_with_altitude(Some(parent.clone()), parent.borrow().altitude)
     }
 
     pub fn new_initial<T: AsRef<str>>(
         parent: Option<Rc<RefCell<Environment>>>,
+        af_info: &RcAfi,
         bindings: &[T],
     ) -> Self {
         let mut env = Environment::new(parent);
         for identifier in bindings.iter() {
-            env.define(identifier.as_ref(), true);
+            env.define(identifier.as_ref(), af_info, true);
         }
         env
     }
@@ -113,29 +98,46 @@ impl Environment {
     ///
     /// It is not an error to define a name that already exists in the topmost environment frame.
     /// In this case, a new activation frame location will be allocated to the variable.
-    pub fn define(&mut self, name: &str, initialized: bool) -> usize {
-        let index = self.variable_count;
-        self.variable_count += 1;
-        self.define_explicit(name, index, initialized)
+    pub fn define(&mut self, name: &str, af_info: &RcAfi, initialized: bool) -> usize {
+        let index = af_info.borrow().entries;
+        af_info.borrow_mut().entries += 1;
+        self.define_explicit(name, af_info.borrow().altitude, index, initialized)
     }
 
     /// Define a value on the global environment (bottommost frame).
-    pub fn define_implicit(&mut self, name: &str) -> usize {
+    pub fn define_toplevel(&mut self, name: &str, af_info: &RcAfi) -> usize {
         if let Some(ref e) = self.parent {
-            e.borrow_mut().define_implicit(name)
+            e.borrow_mut().define_toplevel(name, af_info)
         } else {
-            self.define(name, false)
+            let toplevel_afi = get_toplevel_afi(af_info);
+            self.define(name, &toplevel_afi, false)
+        }
+    }
+
+    /// Define a variable if it is not already present. Used for top-level defines.
+    ///
+    /// Returns the index of the variable in either case.
+    pub fn define_if_absent(&mut self, name: &str, af_info: &RcAfi, initialized: bool) -> usize {
+        match self.get(name) {
+            Some(EnvironmentValue::Variable(v)) => v.index,
+            _ => self.define(name, af_info, initialized),
         }
     }
 
     /// Define a variable pointing to a specific index in the frame.
-    pub fn define_explicit(&mut self, name: &str, index: usize, initialized: bool) -> usize {
+    pub fn define_explicit(
+        &mut self,
+        name: &str,
+        altitude: usize,
+        index: usize,
+        initialized: bool,
+    ) -> usize {
         self.variable_names
-            .insert((self.altitude, index), name.to_string());
+            .insert((altitude, index), name.to_string());
         self.values.insert(
             name.to_string(),
             Some(EnvironmentValue::Variable(Variable {
-                altitude: self.altitude,
+                altitude,
                 index,
                 initialized,
             })),
@@ -143,18 +145,12 @@ impl Environment {
         index
     }
 
-    /// Define a variable if it is not already present. Used for top-level defines.
-    pub fn define_if_absent(&mut self, name: &str, initialized: bool) -> usize {
-        match self.get(name) {
-            Some(EnvironmentValue::Variable(v)) => v.index,
-            _ => self.define(name, initialized),
-        }
-    }
-
     /// Define a macro in the current environment (topmost frame).
     ///
     /// It is legal to call [define_macro] with a name that is already used by a macro. In this
     /// case, the macro will be replaced.
+    ///
+    /// TODO: definition environment should be a weak ref to avoid cycles?
     pub fn define_macro(&mut self, name: &str, lambda: usize, definition_environment: RcEnv) {
         self.values.insert(
             name.to_string(),
@@ -181,21 +177,8 @@ impl Environment {
         } else if let Some(ref e) = self.parent {
             e.borrow().get_name(altitude, index)
         } else {
-            panic!("Referencing undefined variable {}/{}", altitude, index);
+            format!("unnamed variable {}/{}", altitude, index)
         }
-    }
-
-    /// Returns the depth of a variable of the given altitude, assuming this environment is
-    /// current.
-    ///
-    /// Confusingly, if you pass in a depth instead of an altitude, it will return an altitude
-    /// instead of a depth.
-    pub fn depth(&self, altitude: usize) -> usize {
-        self.altitude - altitude
-    }
-
-    pub fn altitude(&self) -> usize {
-        self.altitude
     }
 
     pub fn parent(&self) -> Option<&RcEnv> {
@@ -235,7 +218,7 @@ pub fn filter(closed_env: &RcEnv, free_env: &RcEnv, free_vars: &[String]) -> Res
         return Err("Syntactic closure used outside of definition environment.".into());
     }
 
-    let mut filtered = Environment::new_syntactic(closed_env);
+    let mut filtered = Environment::new(Some(closed_env.clone()));
     for free_var in free_vars.iter() {
         let var = free_env.borrow().get(free_var);
         filtered.values.insert(free_var.clone(), var.clone());
@@ -335,4 +318,13 @@ pub fn extend_af_info(af_info: &RcAfi) -> RcAfi {
         entries: 0,
     };
     Rc::new(RefCell::new(new_af_info))
+}
+
+pub fn get_toplevel_afi(af_info: &RcAfi) -> RcAfi {
+    let borrowed_afi = af_info.borrow();
+    if let Some(ref p) = borrowed_afi.parent.clone() {
+        get_toplevel_afi(p)
+    } else {
+        af_info.clone()
+    }
 }

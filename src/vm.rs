@@ -338,6 +338,7 @@ fn apply(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), String> {
 }
 
 fn resolve_variable(code: &Code, pc: usize, depth: usize, index: usize) -> String {
-    let env = code.find_env(pc).borrow();
-    env.get_name(env.depth(depth), index)
+    //let env = code.find_env(pc).borrow();
+    //env.get_name(env.depth(depth), index)
+    return "{name resolution is broken for now, we apologize for the inconvenience.}".into();
 }

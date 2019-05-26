@@ -19,8 +19,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use arena::Arena;
-use ast::{largest_toplevel_reference, SyntaxElement};
-use environment::{ActivationFrame, Environment, RcEnv, ActivationFrameInfo};
+use ast::SyntaxElement;
+use environment::{ActivationFrame, ActivationFrameInfo, Environment, RcEnv};
 use read::read_many;
 use std::fs;
 use value::{pretty_print, Value};
@@ -80,10 +80,18 @@ pub fn parse_compile_run(arena: &Arena, state: &mut VmState, read: usize) -> Res
     let global_af_info = Rc::new(RefCell::new(ActivationFrameInfo {
         parent: None,
         altitude: 0,
-        entries: arena.get_activation_frame(state.global_frame).borrow().values.len(),
+        entries: arena
+            .get_activation_frame(state.global_frame)
+            .borrow()
+            .values
+            .len(),
     }));
     let syntax_tree = ast::parse(arena, state, &cloned_env, &global_af_info, read)
         .map_err(|e| format!("Syntax error: {}", e))?;
+    arena
+        .get_activation_frame(state.global_frame)
+        .borrow_mut()
+        .ensure_index(arena, global_af_info.borrow().entries);
     // println!(" => {:?}", syntax_tree);
     compile_run(arena, state, &syntax_tree)
 }
@@ -93,12 +101,6 @@ pub fn compile_run(
     state: &mut VmState,
     syntax_tree: &SyntaxElement,
 ) -> Result<usize, String> {
-    if let Some(n) = largest_toplevel_reference(&syntax_tree) {
-        arena
-            .get_activation_frame(state.global_frame)
-            .borrow_mut()
-            .ensure_index(arena, n);
-    }
     let start_pc = state.code.code_size();
     compile::compile(
         &syntax_tree,

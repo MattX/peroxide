@@ -28,11 +28,11 @@
 //! Another small thing is dealing with loopy trees as allowed by R7RS.
 
 use arena::Arena;
-use environment::{Environment, EnvironmentValue, Macro, RcEnv, RcAfi};
+use environment::{Environment, EnvironmentValue, Macro, RcAfi, RcEnv};
 use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
-use util::{check_len, max_optional};
+use util::check_len;
 use value::{pretty_print, vec_from_list, SyntacticClosure, Value};
 use {compile_run, environment};
 use {parse_compile_run, VmState};
@@ -51,6 +51,7 @@ pub enum SyntaxElement {
 #[derive(Debug)]
 pub struct Reference {
     pub altitude: usize,
+    pub depth: usize,
     pub index: usize,
 }
 
@@ -94,6 +95,7 @@ impl fmt::Debug for Lambda {
 #[derive(Debug)]
 pub struct Set {
     pub altitude: usize,
+    pub depth: usize,
     pub index: usize,
     pub value: SyntaxElement,
 }
@@ -133,7 +135,7 @@ pub fn parse(
     let (env, value) = resolve_syntactic_closure(arena, env, value)?;
     match arena.get(value) {
         Value::Symbol(s) => Ok(SyntaxElement::Reference(Box::new(construct_reference(
-            &env, s,
+            &env, af_info, s,
         )?))),
         Value::EmptyList => Err("Cannot evaluate empty list".into()),
         Value::Pair(car, cdr) => {
@@ -143,11 +145,12 @@ pub fn parse(
     }
 }
 
-fn construct_reference(env: &RcEnv, name: &str) -> Result<Reference, String> {
+fn construct_reference(env: &RcEnv, afi: &RcAfi, name: &str) -> Result<Reference, String> {
     let mut env = env.borrow_mut();
     match env.get(name) {
         Some(EnvironmentValue::Variable(v)) => Ok(Reference {
             altitude: v.altitude,
+            depth: afi.borrow().altitude - v.altitude,
             index: v.index,
         }),
         Some(_) => Err(format!(
@@ -155,10 +158,14 @@ fn construct_reference(env: &RcEnv, name: &str) -> Result<Reference, String> {
             name
         )),
         None => {
-            let index = env.define_implicit(name);
+            let index = env.define_toplevel(name, afi);
             // TODO: remove this, or find a better way to surface it.
             println!("Warning: reference to undefined variable {}.", name);
-            Ok(Reference { altitude: 0, index })
+            Ok(Reference {
+                altitude: 0,
+                depth: afi.borrow().altitude,
+                index,
+            })
         }
     }
 }
@@ -176,23 +183,23 @@ fn parse_pair(
     match arena.get(car) {
         Value::Symbol(s) => match match_symbol(&env, s) {
             Symbol::Quote => parse_quote(&rest),
-            Symbol::If => parse_if(arena, vms, &env,af_info, &rest),
-            Symbol::Begin => parse_begin(arena, vms, &env,af_info, &rest),
-            Symbol::Lambda => parse_lambda(arena, vms, &env,af_info, &rest),
-            Symbol::Set => parse_set(arena, vms, &env,af_info, &rest),
-            Symbol::Define => parse_define(arena, vms, &env,af_info, &rest),
+            Symbol::If => parse_if(arena, vms, &env, af_info, &rest),
+            Symbol::Begin => parse_begin(arena, vms, &env, af_info, &rest),
+            Symbol::Lambda => parse_lambda(arena, vms, &env, af_info, &rest),
+            Symbol::Set => parse_set(arena, vms, &env, af_info, &rest),
+            Symbol::Define => parse_define(arena, vms, &env, af_info, &rest),
             Symbol::DefineSyntax => parse_define_syntax(arena, vms, &env, af_info, &rest),
-            Symbol::LetSyntax => parse_let_syntax(arena, vms, &env,af_info, &rest, false),
+            Symbol::LetSyntax => parse_let_syntax(arena, vms, &env, af_info, &rest, false),
             Symbol::LetrecSyntax => parse_let_syntax(arena, vms, &env, af_info, &rest, true),
             Symbol::Macro(m) => {
                 // TODO fix this to avoid reconstructing the pair
                 let expr = arena.insert(Value::Pair(RefCell::new(car), RefCell::new(cdr)));
                 let expanded = expand_macro_full(arena, vms, &env, m, expr)?;
-                parse(arena, vms, &env,af_info, expanded)
+                parse(arena, vms, &env, af_info, expanded)
             }
-            _ => parse_application(arena, vms, &env,af_info, car, &rest),
+            _ => parse_application(arena, vms, &env, af_info, car, &rest),
         },
-        _ => parse_application(arena, vms, &env,af_info, car, &rest),
+        _ => parse_application(arena, vms, &env, af_info, car, &rest),
     }
 }
 
@@ -213,8 +220,8 @@ fn parse_if(
 ) -> Result<SyntaxElement, String> {
     check_len(rest, Some(2), Some(3))?;
     let cond = parse(arena, vms, env, af_info, rest[0])?;
-    let t = parse(arena, vms, env, af_info, rest[1],)?;
-    let f_s: Option<Result<_, _>> = rest.get(2).map(|e| parse(arena, vms, env, af_info, *e,));
+    let t = parse(arena, vms, env, af_info, rest[1])?;
+    let f_s: Option<Result<_, _>> = rest.get(2).map(|e| parse(arena, vms, env, af_info, *e));
 
     // This dark magic swaps the option and the result (then `?`s the result)
     // https://doc.rust-lang.org/rust-by-example/error/multiple_error_types/option_result.html
@@ -257,23 +264,24 @@ fn parse_split_lambda(
     body: &[usize],
 ) -> Result<SyntaxElement, String> {
     let formals = parse_formals(arena, formals)?;
-    let mut raw_env = Environment::new_initial(Some(env.clone()), &formals.values[..]);
+    let inner_afi = environment::extend_af_info(af_info);
+    let mut raw_env = Environment::new_initial(Some(env.clone()), &inner_afi, &formals.values[..]);
     if let Some(s) = &formals.rest {
-        raw_env.define(s, true);
+        raw_env.define(s, &inner_afi, true);
     }
     let (unparsed_defines, rest) = collect_internal_defines(arena, vms, env, body)?;
     for (target, _expression) in unparsed_defines.iter() {
-        raw_env.define(target, false);
+        raw_env.define(target, &inner_afi, false);
     }
     let env = Rc::new(RefCell::new(raw_env));
-    let inner_af_info = environment::extend_af_info(af_info);
     let defines = unparsed_defines
         .iter()
         .map(|(target, expression)| {
-            let value = expression.parse(arena, vms, &env, &inner_af_info)?;
+            let value = expression.parse(arena, vms, &env, &inner_afi)?;
             if let Some(EnvironmentValue::Variable(v)) = env.borrow().get(target) {
                 Ok(SyntaxElement::Set(Box::new(Set {
                     altitude: v.altitude,
+                    depth: inner_afi.borrow().altitude - v.altitude,
                     index: v.index,
                     value,
                 })))
@@ -282,10 +290,9 @@ fn parse_split_lambda(
             }
         })
         .collect::<Result<Vec<SyntaxElement>, String>>()?;
-    let inner_af_info = environment::extend_af_info(af_info);
     let expressions = rest
         .iter()
-        .map(|e| parse(arena, vms, &env, &inner_af_info, *e))
+        .map(|e| parse(arena, vms, &env, &inner_afi, *e))
         .collect::<Result<Vec<_>, _>>()?;
     if expressions.is_empty() {
         return Err("Lambda cannot have empty body".into());
@@ -312,6 +319,7 @@ fn parse_set(
         match env.borrow().get(name) {
             Some(EnvironmentValue::Variable(v)) => Ok(SyntaxElement::Set(Box::new(Set {
                 altitude: v.altitude,
+                depth: af_info.borrow().altitude - v.altitude,
                 index: v.index,
                 value,
             }))),
@@ -341,10 +349,11 @@ fn parse_define(
         return Err("Define in illegal position.".into());
     }
     let (symbol, define_value) = get_define_value(arena, rest)?;
-    let index = env.borrow_mut().define_if_absent(&symbol, false);
+    let index = env.borrow_mut().define_if_absent(&symbol, af_info, false);
     let value = define_value.parse(arena, vms, env, af_info)?;
     Ok(SyntaxElement::Set(Box::new(Set {
         altitude: 0,
+        depth: af_info.borrow().altitude,
         index,
         value,
     })))
@@ -504,7 +513,7 @@ fn parse_let_syntax(
 ) -> Result<SyntaxElement, String> {
     check_len(rest, Some(2), None)?;
     let bindings = vec_from_list(arena, rest[0])?;
-    let inner_env = Rc::new(RefCell::new(Environment::new_syntactic(env)));
+    let inner_env = Rc::new(RefCell::new(Environment::new(Some(env.clone()))));
     let definition_env = if rec { env } else { &inner_env };
     for b in bindings.iter() {
         let binding = vec_from_list(arena, *b)?;
@@ -718,53 +727,5 @@ fn strip_syntactic_closure(arena: &Arena, value: usize) -> usize {
             strip_syntactic_closure(arena, *expr)
         }
         _ => value,
-    }
-}
-
-/// Returns the largest toplevel reference encountered in the tree, if any.
-pub fn largest_toplevel_reference(se: &SyntaxElement) -> Option<usize> {
-    match se {
-        SyntaxElement::Reference(r) => match (r.altitude, r.index) {
-            (0, i) => Some(i),
-            _ => None,
-        },
-        SyntaxElement::Lambda(l) => {
-            let largest_in_defines = l
-                .defines
-                .iter()
-                .map(largest_toplevel_reference)
-                .fold(None, max_optional);
-            let largest_in_body = l
-                .expressions
-                .iter()
-                .map(largest_toplevel_reference)
-                .fold(None, max_optional);
-            max_optional(largest_in_defines, largest_in_body)
-        }
-        SyntaxElement::Begin(b) => b
-            .expressions
-            .iter()
-            .map(largest_toplevel_reference)
-            .fold(None, max_optional),
-        SyntaxElement::Set(s) => {
-            let r = if s.altitude == 0 { Some(s.index) } else { None };
-            max_optional(r, largest_toplevel_reference(&s.value))
-        }
-        SyntaxElement::Quote(_) => None,
-        SyntaxElement::If(i) => max_optional(
-            largest_toplevel_reference(&i.cond),
-            max_optional(
-                largest_toplevel_reference(&i.t),
-                (&i.f).as_ref().and_then(largest_toplevel_reference),
-            ),
-        ),
-        SyntaxElement::Application(a) => {
-            let largest_in_args = a
-                .args
-                .iter()
-                .map(largest_toplevel_reference)
-                .fold(None, max_optional);
-            max_optional(largest_toplevel_reference(&a.function), largest_in_args)
-        }
     }
 }

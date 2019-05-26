@@ -31,14 +31,11 @@ pub struct SyntacticClosure {
 }
 
 impl SyntacticClosure {
-    pub fn push_env(&self, arena: &Arena, altitude: usize) -> RcEnv {
+    pub fn push_env(&self, arena: &Arena) -> RcEnv {
         let env = arena
             .try_get_environment(*self.closed_env.borrow())
             .expect("Syntactic closure created with non-env");
-        let inner_env = Rc::new(RefCell::new(Environment::new_with_altitude(
-            Some(env.clone()),
-            altitude,
-        )));
+        let inner_env = Rc::new(RefCell::new(Environment::new(Some(env.clone()))));
         let inner_env_val = Value::Environment(inner_env.clone());
         RefCell::replace(&self.closed_env, arena.insert(inner_env_val));
         inner_env

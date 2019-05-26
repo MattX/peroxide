@@ -51,10 +51,10 @@ pub fn compile(
         }
         SyntaxElement::Set(s) => {
             compile(&s.value, code, env, false, false)?;
-            code.push(make_set_instruction(env, s.altitude, s.index));
+            code.push(make_set_instruction(s.altitude, s.depth, s.index));
         }
         SyntaxElement::Reference(r) => {
-            code.push(make_get_instruction(env, r.altitude, r.index));
+            code.push(make_get_instruction(r.altitude, r.depth, r.index));
         }
         SyntaxElement::Lambda(l) => {
             code.push(Instruction::CreateClosure(1));
@@ -123,8 +123,7 @@ fn compile_sequence(
     Ok(code.code_size() - initial_len)
 }
 
-fn make_get_instruction(env: &RcEnv, altitude: usize, index: usize) -> Instruction {
-    let depth = env.borrow().depth(altitude);
+fn make_get_instruction(altitude: usize, depth: usize, index: usize) -> Instruction {
     match (altitude, false) {
         (0, true) => Instruction::GlobalArgumentGet { index },
         (0, false) => Instruction::CheckedGlobalArgumentGet { index },
@@ -133,8 +132,7 @@ fn make_get_instruction(env: &RcEnv, altitude: usize, index: usize) -> Instructi
     }
 }
 
-fn make_set_instruction(env: &RcEnv, altitude: usize, index: usize) -> Instruction {
-    let depth = env.borrow().depth(altitude);
+fn make_set_instruction(altitude: usize, depth: usize, index: usize) -> Instruction {
     match altitude {
         0 => Instruction::GlobalArgumentSet { index },
         _ => Instruction::DeepArgumentSet { depth, index },

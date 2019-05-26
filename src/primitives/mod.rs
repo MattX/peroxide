@@ -69,7 +69,7 @@
 use std::fmt::{Debug, Error, Formatter};
 
 use arena::Arena;
-use environment::RcEnv;
+use environment::{ActivationFrameInfo, RcEnv};
 use primitives::char::*;
 use primitives::extensions::*;
 use primitives::numeric::*;
@@ -78,6 +78,8 @@ use primitives::pair::*;
 use primitives::string::*;
 use primitives::symbol::*;
 use primitives::vector::*;
+use std::cell::RefCell;
+use std::rc::Rc;
 use value::Value;
 
 mod char;
@@ -181,8 +183,13 @@ impl PartialEq for Primitive {
 pub fn register_primitives(arena: &Arena, global_environment: &RcEnv, global_frame: usize) {
     let mut borrowed_env = global_environment.borrow_mut();
     let mut frame = arena.get_activation_frame(global_frame).borrow_mut();
+    let afi = Rc::new(RefCell::new(ActivationFrameInfo {
+        parent: None,
+        altitude: 0,
+        entries: frame.values.len(),
+    }));
     for prim in PRIMITIVES.iter() {
-        borrowed_env.define(prim.name, true);
+        borrowed_env.define(prim.name, &afi, true);
         frame.values.push(arena.insert(Value::Primitive(prim)));
     }
 }
