@@ -117,8 +117,8 @@ pub enum Identifier {
 /// `(x y . z)` will be represented as `Formals { values: [x, y], rest: Some(z) }`
 #[derive(Debug)]
 pub struct Formals {
-    pub values: Vec<String>,
-    pub rest: Option<String>,
+    pub values: Vec<DefineTarget>,
+    pub rest: Option<DefineTarget>,
 }
 
 /// Parses an expression into an AST (aka `SyntaxElement`)
@@ -265,20 +265,25 @@ fn parse_split_lambda(
 ) -> Result<SyntaxElement, String> {
     let formals = parse_formals(arena, formals)?;
     let inner_afi = environment::extend_af_info(af_info);
-    let mut raw_env = Environment::new_initial(Some(env.clone()), &inner_afi, &formals.values[..]);
+    let mut raw_env = Environment::new(Some(env.clone()));
+
+    for define_target in formals.values.iter() {
+        raw_env.define(&define_target.coerce_symbol(arena), &inner_afi, true);
+    }
     if let Some(s) = &formals.rest {
-        raw_env.define(s, &inner_afi, true);
+        raw_env.define(&s.coerce_symbol(arena), &inner_afi, true);
     }
     let (unparsed_defines, rest) = collect_internal_defines(arena, vms, env, body)?;
-    for (target, _expression) in unparsed_defines.iter() {
-        raw_env.define(target, &inner_afi, false);
+    for define_data in unparsed_defines.iter() {
+        raw_env.define(&define_data.target.coerce_symbol(arena), &inner_afi, false);
     }
+
     let env = Rc::new(RefCell::new(raw_env));
     let defines = unparsed_defines
         .iter()
-        .map(|(target, expression)| {
-            let value = expression.parse(arena, vms, &env, &inner_afi)?;
-            if let Some(EnvironmentValue::Variable(v)) = env.borrow().get(target) {
+        .map(|define_data| {
+            let value = define_data.value.parse(arena, vms, &env, &inner_afi)?;
+            if let Some(EnvironmentValue::Variable(v)) = env.borrow().get(&define_data.target.coerce_symbol(arena)) {
                 Ok(SyntaxElement::Set(Box::new(Set {
                     altitude: v.altitude,
                     depth: inner_afi.borrow().altitude - v.altitude,
@@ -290,10 +295,12 @@ fn parse_split_lambda(
             }
         })
         .collect::<Result<Vec<SyntaxElement>, String>>()?;
+
     let expressions = rest
         .iter()
         .map(|e| parse(arena, vms, &env, &inner_afi, *e))
         .collect::<Result<Vec<_>, _>>()?;
+
     if expressions.is_empty() {
         return Err("Lambda cannot have empty body".into());
     }
@@ -348,9 +355,10 @@ fn parse_define(
     if af_info.borrow().altitude != 0 {
         return Err("Define in illegal position.".into());
     }
-    let (symbol, define_value) = get_define_value(arena, rest)?;
+    let define_data = get_define_data(arena, rest)?;
+    let symbol = define_data.target.coerce_symbol(arena);
     let index = env.borrow_mut().define_if_absent(&symbol, af_info, false);
-    let value = define_value.parse(arena, vms, env, af_info)?;
+    let value = define_data.value.parse(arena, vms, env, af_info)?;
     Ok(SyntaxElement::Set(Box::new(Set {
         altitude: 0,
         depth: af_info.borrow().altitude,
@@ -359,6 +367,25 @@ fn parse_define(
     })))
 }
 
+#[derive(Debug)]
+pub enum DefineTarget {
+    Bare(String),
+    SyntacticClosure(usize),
+}
+
+impl DefineTarget {
+    fn coerce_symbol(&self, arena: &Arena) -> String {
+        match self {
+            DefineTarget::Bare(s) => s.clone(),
+            DefineTarget::SyntacticClosure(v) => match arena.get(strip_syntactic_closure(arena, *v)) {
+                Value::Symbol(s) => s.clone(),
+                _ => panic!("Define target is a synclos no enclosing a symbol"),
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
 enum DefineValue {
     Value(usize),
     Lambda { formals: usize, body: Vec<usize> },
@@ -381,11 +408,20 @@ impl DefineValue {
     }
 }
 
-fn get_define_value(arena: &Arena, rest: &[usize]) -> Result<(String, DefineValue), String> {
+#[derive(Debug)]
+struct DefineData {
+    pub target: DefineTarget,
+    pub value: DefineValue,
+}
+
+fn get_define_data(arena: &Arena, rest: &[usize]) -> Result<DefineData, String> {
     let res = match arena.get(rest[0]) {
         Value::Symbol(s) => {
             check_len(rest, Some(2), Some(2))?;
-            (s.clone(), DefineValue::Value(rest[1]))
+            DefineData {
+                target: DefineTarget::Bare(s.clone()),
+                value: DefineValue::Value(rest[1]),
+            }
         }
         _ => get_lambda_define_value(arena, rest)?,
     };
@@ -393,18 +429,18 @@ fn get_define_value(arena: &Arena, rest: &[usize]) -> Result<(String, DefineValu
 }
 
 /// Helper method to parse direct lambda defines `(define (x y z) y z)`.
-fn get_lambda_define_value(arena: &Arena, rest: &[usize]) -> Result<(String, DefineValue), String> {
+fn get_lambda_define_value(arena: &Arena, rest: &[usize]) -> Result<DefineData, String> {
     check_len(rest, Some(2), None)?;
     if let Value::Pair(car, cdr) = arena.get(rest[0]) {
         if let Value::Symbol(s) = arena.get(*car.borrow()) {
             let variable = s.clone();
-            Ok((
-                variable,
-                DefineValue::Lambda {
+            Ok(DefineData {
+                target: DefineTarget::Bare(variable),
+                value: DefineValue::Lambda {
                     formals: *cdr.borrow(),
                     body: rest[1..rest.len()].to_vec(),
-                },
-            ))
+                }
+            })
         } else {
             Err(format!(
                 "Expected symbol for method name in define method, got `{}`.",
@@ -442,33 +478,31 @@ fn parse_formals(arena: &Arena, formals: usize) -> Result<Formals, String> {
     let mut values = Vec::new();
     let mut formal = formals;
     loop {
-        match arena.get(strip_syntactic_closure(arena, formal)) {
-            Value::Symbol(s) => {
-                return Ok(Formals {
-                    values,
-                    rest: Some(s.clone()),
-                })
-            }
-            Value::EmptyList => return Ok(Formals { values, rest: None }),
-            Value::Pair(car, cdr) => {
-                match arena.get(strip_syntactic_closure(arena, *car.borrow())) {
-                    Value::Symbol(s) => {
-                        values.push(s.clone());
+        if let Some(dt) = get_define_target(arena, formal) {
+            return Ok(Formals {
+                values,
+                rest: Some(dt),
+            })
+        } else {
+            match arena.get(formal) {
+                Value::EmptyList => return Ok(Formals { values, rest: None }),
+                Value::Pair(car, cdr) => {
+                    if let Some(dt) = get_define_target(arena, *car.borrow()) {
+                        values.push(dt);
                         formal = *cdr.borrow();
-                    }
-                    _ => {
-                        return Err(format!(
-                            "Malformed formals: {}.",
-                            arena.get(formals).pretty_print(arena)
-                        ))
-                    }
+                    } else  {
+                            return Err(format!(
+                                "Malformed formals: {}.",
+                                arena.get(formals).pretty_print(arena)
+                            ))
+                        }
                 }
-            }
-            _ => {
-                return Err(format!(
-                    "Malformed formals: {}.",
-                    arena.get(formals).pretty_print(arena)
-                ));
+                _ => {
+                    return Err(format!(
+                        "Malformed formals: {}.",
+                        arena.get(formals).pretty_print(arena)
+                    ));
+                }
             }
         }
     }
@@ -652,7 +686,7 @@ fn collect_internal_defines(
     vms: &mut VmState,
     env: &RcEnv,
     body: &[usize],
-) -> Result<(Vec<(String, DefineValue)>, Vec<usize>), String> {
+) -> Result<(Vec<DefineData>, Vec<usize>), String> {
     // TODO figure out a nice way to push macro expanded, non-define values. Right know
     //      we'll perform macro expansion both here and at the actual parse site.
 
@@ -671,7 +705,7 @@ fn collect_internal_defines(
                 Value::Symbol(s) => match match_symbol(env, s) {
                     Symbol::Define => {
                         let rest = vec_from_list(arena, *cdr.borrow())?;
-                        let dv = get_define_value(arena, &rest)?;
+                        let dv = get_define_data(arena, &rest)?;
                         defines.push(dv);
                     }
                     Symbol::Begin => {
@@ -727,5 +761,17 @@ fn strip_syntactic_closure(arena: &Arena, value: usize) -> usize {
             strip_syntactic_closure(arena, *expr)
         }
         _ => value,
+    }
+}
+
+fn get_define_target(arena: &Arena, value: usize) -> Option<DefineTarget> {
+    match arena.get(value) {
+        Value::Symbol(s) => Some(DefineTarget::Bare(s.clone())),
+        Value::SyntacticClosure(sc) => match arena.get(sc.expr) {
+            Value::Symbol(_) => Some(DefineTarget::SyntacticClosure(value)),
+            Value::SyntacticClosure(_) => get_define_target(arena, sc.expr),
+            _ => None
+        }
+        _ => None
     }
 }
