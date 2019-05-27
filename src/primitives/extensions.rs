@@ -90,7 +90,7 @@ pub fn identifier_equal_p(arena: &Arena, args: &[usize]) -> Result<usize, String
     let binding2 = get_in_env(arena, env2, args[3])?;
 
     let res = match (binding1, binding2) {
-        (None, None) => true,
+        (None, None) => coerce_symbol(arena, args[1]) == coerce_symbol(arena, args[3]),
         (Some(EnvironmentValue::Variable(v1)), Some(EnvironmentValue::Variable(v2))) => {
             v1.altitude == v2.altitude && v1.index == v2.index
         }
@@ -101,6 +101,17 @@ pub fn identifier_equal_p(arena: &Arena, args: &[usize]) -> Result<usize, String
         _ => false,
     };
     Ok(arena.insert(Value::Boolean(res)))
+}
+
+fn coerce_symbol(arena: &Arena, value: usize) -> String {
+    match arena.get(value) {
+        Value::Symbol(s) => s.clone(),
+        Value::SyntacticClosure(sc) => coerce_symbol(arena, sc.expr),
+        _ => panic!(
+            "Coercing non-identifier {} to symbol.",
+            pretty_print(arena, value)
+        ),
+    }
 }
 
 fn is_identifier(arena: &Arena, value: usize) -> bool {

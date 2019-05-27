@@ -35,6 +35,8 @@ pub struct Environment {
 
     // The value can be a none to hide a value defined in a parent environment.
     values: HashMap<String, Option<EnvironmentValue>>,
+
+    /// Map of (altitude, index) to variable name.
     variable_names: HashMap<(usize, usize), String>,
 }
 
@@ -77,7 +79,7 @@ pub struct Macro {
 impl std::fmt::Debug for Macro {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         // hide the environment field to avoid environment -> macro -> environment reference loops
-        write!(f, "Macro {{Lambda={}}}", self.lambda)
+        write!(f, "Macro{{Lambda={}}}", self.lambda)
     }
 }
 
@@ -256,6 +258,14 @@ impl ActivationFrame {
             p.borrow().get(arena, depth - 1, index)
         } else {
             panic!("Accessing depth with no parent.")
+        }
+    }
+
+    pub fn depth(&self, arena: &Arena) -> usize {
+        if let Some(p) = self.get_parent(arena) {
+            p.borrow().depth(arena) + 1
+        } else {
+            0
         }
     }
 

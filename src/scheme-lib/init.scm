@@ -102,20 +102,17 @@
         (length* (cdr ls) (+ 1 acc))))
   (length* ls 0))
 
-(define (append2 l1 l2)
-  (if (null? l1)
-      l2
-      (cons (car l1) (append2 (cdr l1) l2))))
+(define (append-helper ls res)
+  (if (null? ls)
+      res
+      (append-helper (cdr ls) (cons (car ls) res))))
 
-(define (appendn lists)
-  (if (null? lists)
+(define (append . o)
+  (if (null? o)
       '()
-      (if (null? (cdr lists))
-          (car lists)
-          (appendn (list (car lists) (appendn (cdr lists)))))))
-
-(define (append . lists)
-  (apply appendn lists))
+      ((lambda (lol)
+         (append-helper (cdr lol) (car lol)))
+(reverse o))))
 
 (define (acc-reverse l acc)
   (if (null? l)
@@ -384,33 +381,21 @@
             (error "bad let syntax" expr)))
       (if (identifier? (cadr expr)) (car (cddr expr)) (cadr expr))))))
 
-(define-syntax case
+(define-syntax let*
   (er-macro-transformer
    (lambda (expr rename compare)
-     (define (body exprs)
-       (cond
-        ((null? exprs)
-         (rename 'tmp))
-        ((compare (rename '=>) (car exprs))
-         `(,(cadr exprs) ,(rename 'tmp)))
-        (else
-         `(,(rename 'begin) ,@exprs))))
-     (define (clause ls)
-       (cond
-        ((null? ls) #f)
-        ((compare (rename 'else) (caar ls))
-         (body (cdar ls)))
-        ((and (pair? (car (car ls))) (null? (cdr (car (car ls)))))
-         `(,(rename 'if) (,(rename 'eqv?) ,(rename 'tmp)
-                          (,(rename 'quote) ,(car (caar ls))))
-           ,(body (cdar ls))
-           ,(clause (cdr ls))))
-        (else
-         `(,(rename 'if) (,(rename 'memv) ,(rename 'tmp)
-                          (,(rename 'quote) ,(caar ls)))
-           ,(body (cdar ls))
-           ,(clause (cdr ls))))))
-     `(let ((,(rename 'tmp) ,(cadr expr)))
-        ,(clause (cddr expr))))))
+     (if (null? (cdr expr)) (error "empty let*" expr))
+     (if (null? (cddr expr)) (error "no let* body" expr))
+     (if (null? (cadr expr))
+         `(,(rename 'let) () ,@(cddr expr))
+         (if (if (list? (cadr expr))
+                 (every
+                  (lambda (x)
+                    (if (pair? x) (if (pair? (cdr x)) (null? (cddr x)) #f) #f))
+                  (cadr expr))
+                 #f)
+             `(,(rename 'let) (,(caar (cdr expr)))
+               (,(rename 'let*) ,(cdar (cdr expr)) ,@(cddr expr)))
+              (error "bad let* syntax"))))))
 
 ;; END CHIBI

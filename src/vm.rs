@@ -18,12 +18,12 @@ use arena::Arena;
 use environment::{ActivationFrame, RcEnv};
 use primitives::PrimitiveImplementation;
 use std::cell::RefCell;
-use value::Value::Lambda;
+use std::fmt::Write;
 use value::{list_from_vec, pretty_print, vec_from_list, Value};
 
 static MAX_RECURSION_DEPTH: usize = 1000;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Instruction {
     Constant(usize),
     JumpFalse(usize),
@@ -63,6 +63,8 @@ pub struct Code {
     instructions: Vec<Instruction>,
     env_map: Vec<(usize, RcEnv)>,
     env_stack: Vec<RcEnv>,
+    lambda_map: Vec<(usize, Option<String>)>,
+    lambda_stack: Vec<String>,
 }
 
 impl Code {
@@ -71,6 +73,8 @@ impl Code {
             instructions: vec![],
             env_map: vec![(0, global_environment.clone())],
             env_stack: vec![global_environment.clone()],
+            lambda_map: vec![(0, None)],
+            lambda_stack: vec![],
         }
     }
 
@@ -86,7 +90,7 @@ impl Code {
         self.instructions.len()
     }
 
-    pub fn set_env(&mut self, env: &RcEnv) {
+    pub fn push_env(&mut self, env: &RcEnv) {
         self.env_map.push((self.instructions.len(), env.clone()));
         self.env_stack.push(env.clone());
     }
@@ -96,7 +100,7 @@ impl Code {
             .env_stack
             .pop()
             .expect("Popping environment with no environments on stack.");
-        self.env_stack.push(e);
+        self.env_map.push((self.instructions.len(), e));
     }
 
     pub fn find_env(&self, at: usize) -> &RcEnv {
@@ -105,6 +109,25 @@ impl Code {
             .binary_search_by_key(&at, |(instr, _env)| *instr)
             .unwrap_or_else(|e| e - 1);
         &self.env_map[env_index].1
+    }
+
+    pub fn push_lambda(&mut self, l: &str) {
+        self.lambda_map
+            .push((self.instructions.len(), Some(l.into())));
+        self.lambda_stack.push(l.into());
+    }
+
+    pub fn pop_lambda(&mut self) {
+        let e = self.lambda_stack.pop();
+        self.lambda_map.push((self.instructions.len(), e));
+    }
+
+    pub fn find_lambda(&self, at: usize) -> &Option<String> {
+        let lambda_index = self
+            .lambda_map
+            .binary_search_by_key(&at, |(instr, _env)| *instr)
+            .unwrap_or_else(|e| e - 1);
+        &self.lambda_map[lambda_index].1
     }
 }
 
@@ -152,14 +175,17 @@ pub fn run(arena: &Arena, code: &mut Code, pc: usize, env: usize) -> Result<usiz
                     .get(arena, 0, index);
             }
             Instruction::CheckedGlobalArgumentGet { index } => {
-                vm.value = get_activation_frame(arena, vm.global_env)
+                vm.value = arena
+                    .get_activation_frame(vm.global_env)
                     .borrow()
                     .get(arena, 0, index);
                 if vm.value == arena.undefined {
-                    // TODO maintain a mapping and print variable name here.
-                    return Err(format!(
-                        "Variable used before definition: {}",
-                        resolve_variable(vm.code, vm.pc, 0, index)
+                    return Err(error_stack(
+                        &vm,
+                        format!(
+                            "Variable used before definition: {}",
+                            resolve_variable(vm.code, vm.pc, 0, index)
+                        ),
                     ));
                 }
             }
@@ -175,28 +201,33 @@ pub fn run(arena: &Arena, code: &mut Code, pc: usize, env: usize) -> Result<usiz
                     .get(arena, depth, index);
             }
             Instruction::CheckedLocalArgumentGet { depth, index } => {
-                vm.value = get_activation_frame(arena, vm.env)
-                    .borrow()
-                    .get(arena, depth, index);
+                let frame = arena.get_activation_frame(vm.env).borrow();
+                vm.value = frame.get(arena, depth, index);
                 if vm.value == arena.undefined {
-                    // TODO maintain a mapping and print variable name here.
-                    return Err(format!(
-                        "Variable used before definition: {}",
-                        resolve_variable(vm.code, vm.pc, depth, index)
+                    let current_depth = frame.depth(arena);
+                    return Err(error_stack(
+                        &vm,
+                        format!(
+                            "Variable used before definition: {}",
+                            resolve_variable(vm.code, vm.pc, current_depth - depth, index)
+                        ),
                     ));
                 }
             }
             Instruction::CheckArity { arity, dotted } => {
                 let actual_arity = get_activation_frame(arena, vm.value).borrow().values.len();
                 if dotted && actual_arity < arity {
-                    return Err(format!(
-                        "Expected at least {} arguments, got {}.",
-                        arity, actual_arity
+                    return Err(error_stack(
+                        &vm,
+                        format!(
+                            "Expected at least {} arguments, got {}.",
+                            arity, actual_arity
+                        ),
                     ));
                 } else if !dotted && actual_arity != arity {
-                    return Err(format!(
-                        "Expected {} arguments, got {}.",
-                        arity, actual_arity
+                    return Err(error_stack(
+                        &vm,
+                        format!("Expected {} arguments, got {}.", arity, actual_arity),
                     ));
                 }
             }
@@ -211,7 +242,7 @@ pub fn run(arena: &Arena, code: &mut Code, pc: usize, env: usize) -> Result<usiz
                     .expect("Returning with no values on return stack.");
             }
             Instruction::CreateClosure(offset) => {
-                vm.value = arena.insert(Lambda {
+                vm.value = arena.insert(Value::Lambda {
                     code: vm.pc + offset,
                     environment: vm.env,
                 })
@@ -253,15 +284,15 @@ pub fn run(arena: &Arena, code: &mut Code, pc: usize, env: usize) -> Result<usiz
                 match arena.get(fun_r) {
                     Value::Lambda { .. } | Value::Primitive(_) => vm.fun = fun_r,
                     _ => {
-                        return Err(format!(
-                            "Cannot apply non-function: {}",
-                            pretty_print(arena, fun_r)
+                        return Err(error_stack(
+                            &vm,
+                            format!("Cannot apply non-function: {}", pretty_print(arena, fun_r)),
                         ))
                     }
                 }
             }
             Instruction::FunctionInvoke { tail } => {
-                invoke(arena, &mut vm, tail)?;
+                invoke(arena, &mut vm, tail).map_err(|e| error_stack(&vm, e))?;
             }
             Instruction::CreateFrame(size) => {
                 let mut frame = ActivationFrame {
@@ -273,7 +304,7 @@ pub fn run(arena: &Arena, code: &mut Code, pc: usize, env: usize) -> Result<usiz
                 }
                 vm.value = arena.insert(Value::ActivationFrame(RefCell::new(frame)));
             }
-            Instruction::NoOp => return Err("NoOp encountered.".into()),
+            Instruction::NoOp => panic!("NoOp encountered."),
             Instruction::Finish => break,
         }
         vm.pc += 1;
@@ -337,8 +368,26 @@ fn apply(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), String> {
     invoke(arena, vm, tail)
 }
 
-fn resolve_variable(code: &Code, pc: usize, depth: usize, index: usize) -> String {
-    //let env = code.find_env(pc).borrow();
-    //env.get_name(env.depth(depth), index)
-    return format!("{}/{}", depth, index);
+fn resolve_variable(code: &Code, pc: usize, altitude: usize, index: usize) -> String {
+    let env = code.find_env(pc).borrow();
+    env.get_name(altitude, index)
+}
+
+fn error_stack(vm: &Vm, message: String) -> String {
+    let mut message = message;
+    let name = vm
+        .code
+        .find_lambda(vm.pc)
+        .clone()
+        .unwrap_or_else(|| "[toplevel]".into());
+    write!(message, "\n\tat {}", name).unwrap();
+    for ret in vm.return_stack.iter().rev() {
+        let name = vm
+            .code
+            .find_lambda(*ret)
+            .clone()
+            .unwrap_or_else(|| "[toplevel]".into());
+        write!(message, "\n\tat {}", name).unwrap();
+    }
+    message
 }

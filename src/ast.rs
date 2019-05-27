@@ -80,14 +80,15 @@ pub struct Lambda {
     pub dotted: bool,
     pub defines: Vec<SyntaxElement>,
     pub expressions: Vec<SyntaxElement>,
+    pub name: Option<String>,
 }
 
 impl fmt::Debug for Lambda {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(
             f,
-            "Lambda {{ arity = {}, dotted = {}, defines = {:?}, expressions = {:?} }}",
-            self.arity, self.dotted, self.defines, self.expressions
+            "Lambda{{ name = {:?} arity = {}, dotted = {}, defines = {:?}, expressions = {:?} }}",
+            self.name, self.arity, self.dotted, self.defines, self.expressions
         )
     }
 }
@@ -255,7 +256,15 @@ fn parse_lambda(
     rest: &[usize],
 ) -> Result<SyntaxElement, String> {
     check_len(rest, Some(2), None)?;
-    parse_split_lambda(arena, vms, env, af_info, rest[0], &rest[1..rest.len()])
+    parse_split_lambda(
+        arena,
+        vms,
+        env,
+        af_info,
+        rest[0],
+        &rest[1..rest.len()],
+        None,
+    )
 }
 
 fn parse_split_lambda(
@@ -265,6 +274,7 @@ fn parse_split_lambda(
     af_info: &RcAfi,
     formals: usize,
     body: &[usize],
+    name: Option<String>,
 ) -> Result<SyntaxElement, String> {
     let formals = parse_formals(arena, formals)?;
     let inner_afi = environment::extend_af_info(af_info);
@@ -289,9 +299,13 @@ fn parse_split_lambda(
     let defines = unparsed_defines
         .iter()
         .map(|define_data| {
-            let value = define_data
-                .value
-                .parse(arena, vms, &inner_env, &inner_afi)?;
+            let value = define_data.value.parse(
+                arena,
+                vms,
+                &inner_env,
+                &inner_afi,
+                define_data.target.coerce_symbol(),
+            )?;
             if let Some(EnvironmentValue::Variable(v)) =
                 get_in_env(arena, &inner_env, &define_data.target)
             {
@@ -322,6 +336,7 @@ fn parse_split_lambda(
         dotted: formals.rest.is_some(),
         defines,
         expressions,
+        name,
     })))
 }
 
@@ -372,7 +387,7 @@ fn parse_define(
     // TODO: don't do this and instead allow defining syncloses at top level?
     let symbol = define_data.target.coerce_symbol();
     let index = env.borrow_mut().define_if_absent(&symbol, af_info, false);
-    let value = define_data.value.parse(arena, vms, env, af_info)?;
+    let value = define_data.value.parse(arena, vms, env, af_info, symbol)?;
     Ok(SyntaxElement::Set(Box::new(Set {
         altitude: 0,
         depth: af_info.borrow().altitude,
@@ -409,11 +424,12 @@ impl DefineValue {
         vms: &mut VmState,
         env: &RcEnv,
         af_info: &RcAfi,
+        name: String,
     ) -> Result<SyntaxElement, String> {
         match self {
             DefineValue::Value(v) => parse(arena, vms, env, af_info, *v),
             DefineValue::Lambda { formals, body } => {
-                parse_split_lambda(arena, vms, env, af_info, *formals, &body)
+                parse_split_lambda(arena, vms, env, af_info, *formals, &body, Some(name))
             }
         }
     }
@@ -585,6 +601,7 @@ fn parse_let_syntax(
         af_info,
         arena.empty_list,
         &rest[1..],
+        Some("[let-syntax inner lambda]".into()),
     )?;
     Ok(SyntaxElement::Application(Box::new(Application {
         function: lambda,

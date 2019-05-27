@@ -69,13 +69,15 @@ pub fn compile(
             }
             code.push(Instruction::ExtendFrame(l.defines.len()));
             code.push(Instruction::ExtendEnv);
-            code.set_env(&l.env);
+            code.push_env(&l.env);
+            code.push_lambda(&l.name.clone().unwrap_or_else(|| "[anonymous]".into()));
 
             if !l.defines.is_empty() {
                 compile_sequence(&l.defines, code, &l.env, false)?;
             }
             compile_sequence(&l.expressions, code, &l.env, true)?;
 
+            code.pop_lambda();
             code.pop_env();
             code.push(Instruction::Return);
             let jump_offset = code.code_size() - skip_pos - 1;
