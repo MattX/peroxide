@@ -158,9 +158,9 @@ fn construct_reference(env: &RcEnv, afi: &RcAfi, name: &str) -> Result<Reference
             name
         )),
         None => {
-            let index = env.define_toplevel(name, afi);
             // TODO: remove this, or find a better way to surface it.
-            println!("Warning: reference to undefined variable {}.", name);
+            println!("Warning: reference to undefined variable {} in {:?}.", name, env);
+            let index = env.define_toplevel(name, afi);
             Ok(Reference {
                 altitude: 0,
                 depth: afi.borrow().altitude,
@@ -179,9 +179,9 @@ fn parse_pair(
     cdr: usize,
 ) -> Result<SyntaxElement, String> {
     let rest = vec_from_list(arena, cdr)?;
-    let (env, car) = resolve_syntactic_closure(arena, env, car)?;
-    match arena.get(car) {
-        Value::Symbol(s) => match match_symbol(&env, s) {
+    let (car_env, resolved_car) = resolve_syntactic_closure(arena, env, car)?;
+    match arena.get(resolved_car) {
+        Value::Symbol(s) => match match_symbol(&car_env, s) {
             Symbol::Quote => parse_quote(&rest),
             Symbol::If => parse_if(arena, vms, &env, af_info, &rest),
             Symbol::Begin => parse_begin(arena, vms, &env, af_info, &rest),
@@ -277,7 +277,7 @@ fn parse_split_lambda(
         define_in_env(arena, &inner_env, &inner_afi, define_target, true);
         targets.push(define_target.clone());
     }
-    let (unparsed_defines, rest) = collect_internal_defines(arena, vms, outer_env, body)?;
+    let (unparsed_defines, rest) = collect_internal_defines(arena, vms, &inner_env, body)?;
     for define_data in unparsed_defines.iter() {
         define_in_env(arena, &inner_env, &inner_afi, &define_data.target, false);
         targets.push(define_data.target.clone());
@@ -606,11 +606,12 @@ fn expand_macro_full(
     mac: Macro,
     expr: usize,
 ) -> Result<usize, String> {
+    println!("Expanding in env: {:?}", env);
     let mut expanded = expand_macro(arena, vms, env, mac, expr)?;
     while let Some(m) = get_macro(arena, env, expanded) {
         expanded = expand_macro(arena, vms, env, m, expanded)?;
     }
-    println!("Expanded: {}", pretty_print(arena, expanded));
+    println!("Expanded: {} in env: {:?}", pretty_print(arena, expanded), env);
     Ok(expanded)
 }
 

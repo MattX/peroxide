@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use arena::Arena;
+use std::fmt::Write;
 use util::check_len;
 use value;
 use value::Value;
@@ -42,11 +43,20 @@ pub fn procedure_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     })
 }
 
+pub fn display_to_string(arena: &Arena, args: &[usize]) -> String {
+    let mut result = String::new();
+    for a in args.iter() {
+        write!(&mut result, "{} ", arena.get(*a).pretty_print(arena)).unwrap();
+    }
+    result
+}
+
 // TODO rename this to write and create an actual display method.
 pub fn display(arena: &Arena, args: &[usize]) -> Result<usize, String> {
-    for a in args.iter() {
-        print!("{} ", arena.get(*a).pretty_print(arena));
-    }
-    println!();
+    println!("{}", display_to_string(arena, args));
     Ok(arena.unspecific)
+}
+
+pub fn error(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    Err(display_to_string(arena, args))
 }

@@ -28,8 +28,8 @@ use std::collections::HashMap;
 use std::option::Option;
 use std::rc::Rc;
 use value::Value;
+use std::fmt::{Debug, Formatter, Error};
 
-#[derive(Debug)]
 pub struct Environment {
     parent: Option<Rc<RefCell<Environment>>>,
 
@@ -42,6 +42,16 @@ pub struct Environment {
 impl PartialEq for Environment {
     fn eq(&self, _other: &Self) -> bool {
         false
+    }
+}
+
+impl Debug for Environment {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        if let Some(ref p) = self.parent {
+            write!(f, "{:?} ← {:?}", p.borrow(), self.values.keys())
+        } else {
+            write!(f, "<toplevel>")
+        }
     }
 }
 

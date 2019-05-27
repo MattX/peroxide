@@ -255,11 +255,9 @@
 (define-syntax cond
   (er-macro-transformer
    (lambda (expr rename compare)
-     (display "expr" expr)
      (if (null? (cdr expr))
          (if #f #f)
          ((lambda (cl)
-            (display "cl" cl)
             (if (compare (rename 'else) (car cl))
                 (if (pair? (cddr expr))
                     (error "non-final else in cond" expr)

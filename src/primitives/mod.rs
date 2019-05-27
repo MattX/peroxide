@@ -100,7 +100,7 @@ macro_rules! simple_primitive {
     };
 }
 
-static PRIMITIVES: [Primitive; 50] = [
+static PRIMITIVES: [Primitive; 51] = [
     simple_primitive!("make-syntactic-closure", make_syntactic_closure),
     simple_primitive!("identifier=?", identifier_equal_p),
     simple_primitive!("eq?", eq_p),
@@ -150,6 +150,7 @@ static PRIMITIVES: [Primitive; 50] = [
     simple_primitive!("vector-set!", vector_set_b),
     simple_primitive!("vector-ref", vector_ref),
     simple_primitive!("procedure?", procedure_p),
+    simple_primitive!("error", error),
     Primitive {
         name: "apply",
         implementation: PrimitiveImplementation::Apply,

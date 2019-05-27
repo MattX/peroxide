@@ -380,3 +380,20 @@ fn cond3() {
             .unwrap()
     );
 }
+
+
+#[test]
+fn cond4() {
+    let arena = Arena::default();
+    let mut vm_state = VmState::new(&arena);
+    initialize(&arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
+    assert_eq!(
+        Value::Symbol("not-one".into()),
+        execute(
+            &arena,
+            &mut vm_state,
+            "((lambda (x) (cond ((= x 1) 'one) (else 'not-one))) 2)"
+        )
+            .unwrap()
+    );
+}
