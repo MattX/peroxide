@@ -27,7 +27,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::option::Option;
 use std::rc::Rc;
-use util::same_object;
 use value::Value;
 
 #[derive(Debug)]
@@ -95,6 +94,8 @@ impl Environment {
 
     /// Define a new variable. The variable will be added to the topmost environment frame, and
     /// may shadow a variable from a lower frame.
+    ///
+    /// The passed ActivationFrameInfo will be updated.
     ///
     /// It is not an error to define a name that already exists in the topmost environment frame.
     /// In this case, a new activation frame location will be allocated to the variable.
@@ -202,21 +203,9 @@ impl Environment {
 
 pub type RcEnv = Rc<RefCell<Environment>>;
 
-fn is_parent_of(parent: &RcEnv, kid: &RcEnv) -> bool {
-    if same_object::<Environment>(&parent.borrow(), &kid.borrow()) {
-        return true;
-    }
-    match &kid.borrow().parent {
-        None => false,
-        Some(p) => is_parent_of(parent, p),
-    }
-}
-
 pub fn filter(closed_env: &RcEnv, free_env: &RcEnv, free_vars: &[String]) -> Result<RcEnv, String> {
-    // Free bindings should always be to an environment down the chain.
-    if !is_parent_of(&closed_env, &free_env) {
-        return Err("Syntactic closure used outside of definition environment.".into());
-    }
+    // TODO: there are some conditions under which syntactic closures may point to nonexistent
+    //       locations, because they have been popped off. We should take care of that somehow.
 
     let mut filtered = Environment::new(Some(closed_env.clone()));
     for free_var in free_vars.iter() {

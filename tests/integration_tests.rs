@@ -363,7 +363,7 @@ fn cond2() {
     );
 }
 
-/*
+
 #[test]
 fn cond3() {
     let arena = Arena::default();
@@ -380,4 +380,3 @@ fn cond3() {
             .unwrap()
     );
 }
-*/

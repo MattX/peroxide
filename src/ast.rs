@@ -116,7 +116,7 @@ pub enum Identifier {
 /// `(x y z)` will be represented as `Formals { values: [x, y, z], rest: None }`
 /// `(x y . z)` will be represented as `Formals { values: [x, y], rest: Some(z) }`
 #[derive(Debug)]
-pub struct Formals {
+struct Formals {
     pub values: Vec<DefineTarget>,
     pub rest: Option<DefineTarget>,
 }
@@ -258,32 +258,36 @@ fn parse_lambda(
 fn parse_split_lambda(
     arena: &Arena,
     vms: &mut VmState,
-    env: &RcEnv,
+    outer_env: &RcEnv,
     af_info: &RcAfi,
     formals: usize,
     body: &[usize],
 ) -> Result<SyntaxElement, String> {
     let formals = parse_formals(arena, formals)?;
     let inner_afi = environment::extend_af_info(af_info);
-    let mut raw_env = Environment::new(Some(env.clone()));
+    let raw_env = Environment::new(Some(outer_env.clone()));
+    let inner_env = Rc::new(RefCell::new(raw_env));
+    let mut targets = Vec::new();
 
     for define_target in formals.values.iter() {
-        raw_env.define(&define_target.coerce_symbol(arena), &inner_afi, true);
+        define_in_env(arena, &inner_env, &inner_afi, define_target, true);
+        targets.push(define_target.clone());
     }
-    if let Some(s) = &formals.rest {
-        raw_env.define(&s.coerce_symbol(arena), &inner_afi, true);
+    if let Some(define_target) = &formals.rest {
+        define_in_env(arena, &inner_env, &inner_afi, define_target, true);
+        targets.push(define_target.clone());
     }
-    let (unparsed_defines, rest) = collect_internal_defines(arena, vms, env, body)?;
+    let (unparsed_defines, rest) = collect_internal_defines(arena, vms, outer_env, body)?;
     for define_data in unparsed_defines.iter() {
-        raw_env.define(&define_data.target.coerce_symbol(arena), &inner_afi, false);
+        define_in_env(arena, &inner_env, &inner_afi, &define_data.target, false);
+        targets.push(define_data.target.clone());
     }
 
-    let env = Rc::new(RefCell::new(raw_env));
     let defines = unparsed_defines
         .iter()
         .map(|define_data| {
-            let value = define_data.value.parse(arena, vms, &env, &inner_afi)?;
-            if let Some(EnvironmentValue::Variable(v)) = env.borrow().get(&define_data.target.coerce_symbol(arena)) {
+            let value = define_data.value.parse(arena, vms, &inner_env, &inner_afi)?;
+            if let Some(EnvironmentValue::Variable(v)) = get_in_env(arena, &inner_env, &define_data.target) {
                 Ok(SyntaxElement::Set(Box::new(Set {
                     altitude: v.altitude,
                     depth: inner_afi.borrow().altitude - v.altitude,
@@ -298,14 +302,15 @@ fn parse_split_lambda(
 
     let expressions = rest
         .iter()
-        .map(|e| parse(arena, vms, &env, &inner_afi, *e))
+        .map(|e| parse(arena, vms, &inner_env, &inner_afi, *e))
         .collect::<Result<Vec<_>, _>>()?;
 
+    pop_envs(arena, &targets);
     if expressions.is_empty() {
         return Err("Lambda cannot have empty body".into());
     }
     Ok(SyntaxElement::Lambda(Box::new(Lambda {
-        env,
+        env: inner_env,
         arity: formals.values.len(),
         dotted: formals.rest.is_some(),
         defines,
@@ -356,6 +361,8 @@ fn parse_define(
         return Err("Define in illegal position.".into());
     }
     let define_data = get_define_data(arena, rest)?;
+
+    // TODO: don't do this and instead
     let symbol = define_data.target.coerce_symbol(arena);
     let index = env.borrow_mut().define_if_absent(&symbol, af_info, false);
     let value = define_data.value.parse(arena, vms, env, af_info)?;
@@ -367,8 +374,8 @@ fn parse_define(
     })))
 }
 
-#[derive(Debug)]
-pub enum DefineTarget {
+#[derive(Debug, Clone)]
+enum DefineTarget {
     Bare(String),
     SyntacticClosure(usize),
 }
@@ -377,10 +384,7 @@ impl DefineTarget {
     fn coerce_symbol(&self, arena: &Arena) -> String {
         match self {
             DefineTarget::Bare(s) => s.clone(),
-            DefineTarget::SyntacticClosure(v) => match arena.get(strip_syntactic_closure(arena, *v)) {
-                Value::Symbol(s) => s.clone(),
-                _ => panic!("Define target is a synclos no enclosing a symbol"),
-            }
+            _ => panic!("Coercing syntactic closure into symbol."),
         }
     }
 }
@@ -755,15 +759,6 @@ fn resolve_syntactic_closure(
     }
 }
 
-fn strip_syntactic_closure(arena: &Arena, value: usize) -> usize {
-    match arena.get(value) {
-        Value::SyntacticClosure(SyntacticClosure { expr, .. }) => {
-            strip_syntactic_closure(arena, *expr)
-        }
-        _ => value,
-    }
-}
-
 fn get_define_target(arena: &Arena, value: usize) -> Option<DefineTarget> {
     match arena.get(value) {
         Value::Symbol(s) => Some(DefineTarget::Bare(s.clone())),
@@ -773,5 +768,39 @@ fn get_define_target(arena: &Arena, value: usize) -> Option<DefineTarget> {
             _ => None
         }
         _ => None
+    }
+}
+
+fn define_in_env(arena: &Arena, env: &RcEnv, afi: &RcAfi, target: &DefineTarget, initialized: bool) {
+    match target {
+        DefineTarget::Bare(s) => {
+            env.borrow_mut().define(s, afi, initialized);
+        },
+        DefineTarget::SyntacticClosure(val) => {
+            let sc = arena.try_get_syntactic_closure(*val).unwrap();
+            let name = arena.try_get_symbol(sc.expr).unwrap();
+            let new_env = sc.push_env(arena);
+            new_env.borrow_mut().define(name, afi, initialized);
+        }
+    }
+}
+
+fn get_in_env(arena: &Arena, env: &RcEnv, target: &DefineTarget) -> Option<EnvironmentValue> {
+    match target {
+        DefineTarget::Bare(s) => env.borrow().get(s),
+        DefineTarget::SyntacticClosure(val) => {
+            let sc = arena.try_get_syntactic_closure(*val).unwrap();
+            let name = arena.try_get_symbol(sc.expr).unwrap();
+            env.borrow().get(name)
+        }
+    }
+}
+
+fn pop_envs(arena: &Arena, targets: &[DefineTarget]) {
+    for target in targets {
+        if let DefineTarget::SyntacticClosure(val) = target {
+                let sc = arena.try_get_syntactic_closure(*val).unwrap();
+                sc.pop_env(arena);
+        }
     }
 }

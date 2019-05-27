@@ -17,7 +17,7 @@ use std::collections::HashMap;
 
 use environment::{ActivationFrame, RcEnv};
 use gc::Gc;
-use value::Value;
+use value::{Value, SyntacticClosure};
 
 pub struct Arena {
     values: Gc<Value>,
@@ -126,6 +126,13 @@ impl Arena {
     pub fn try_get_environment(&self, at: usize) -> Option<&RcEnv> {
         match self.get(at) {
             Value::Environment(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    pub fn try_get_syntactic_closure(&self, at: usize) -> Option<&SyntacticClosure> {
+        match self.get(at) {
+            Value::SyntacticClosure(sc) => Some(sc),
             _ => None,
         }
     }
