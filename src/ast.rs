@@ -33,7 +33,7 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 use util::check_len;
-use value::{pretty_print, vec_from_list, SyntacticClosure, Value};
+use value::{list_from_vec, pretty_print, vec_from_list, SyntacticClosure, Value};
 use {compile_run, environment};
 use {parse_compile_run, VmState};
 
@@ -304,7 +304,7 @@ fn parse_split_lambda(
                 vms,
                 &inner_env,
                 &inner_afi,
-                define_data.target.coerce_symbol(),
+                define_data.target.get_name(arena),
             )?;
             if let Some(EnvironmentValue::Variable(v)) =
                 get_in_env(arena, &inner_env, &define_data.target)
@@ -380,7 +380,10 @@ fn parse_define(
     // TODO the actual check should not be on activation frame altitude, but on syntactic
     //      toplevelness. (eg `(define x (define y 1))` should not work).
     if af_info.borrow().altitude != 0 {
-        return Err("Define in illegal position.".into());
+        return Err(format!(
+            "Define in illegal position: {}",
+            pretty_print(arena, list_from_vec(arena, rest))
+        ));
     }
     let define_data = get_define_data(arena, rest)?;
 
@@ -407,6 +410,17 @@ impl DefineTarget {
         match self {
             DefineTarget::Bare(s) => s.clone(),
             _ => panic!("Coercing syntactic closure into symbol."),
+        }
+    }
+
+    fn get_name(&self, arena: &Arena) -> String {
+        match self {
+            DefineTarget::Bare(s) => s.clone(),
+            DefineTarget::SyntacticClosure(v) => {
+                let sc = arena.try_get_syntactic_closure(*v).unwrap();
+                let symbol = arena.try_get_symbol(sc.expr).unwrap();
+                symbol.into()
+            }
         }
     }
 }
@@ -442,15 +456,14 @@ struct DefineData {
 }
 
 fn get_define_data(arena: &Arena, rest: &[usize]) -> Result<DefineData, String> {
-    let res = match arena.get(rest[0]) {
-        Value::Symbol(s) => {
-            check_len(rest, Some(2), Some(2))?;
-            DefineData {
-                target: DefineTarget::Bare(s.clone()),
-                value: DefineValue::Value(rest[1]),
-            }
+    let res = if let Some(target) = get_define_target(arena, rest[0]) {
+        check_len(rest, Some(2), Some(2))?;
+        DefineData {
+            target,
+            value: DefineValue::Value(rest[1]),
         }
-        _ => get_lambda_define_value(arena, rest)?,
+    } else {
+        get_lambda_define_value(arena, rest)?
     };
     Ok(res)
 }
@@ -666,13 +679,16 @@ fn expand_macro(
 
 fn get_macro(arena: &Arena, env: &RcEnv, expr: usize) -> Option<Macro> {
     match arena.get(expr) {
-        Value::Pair(car, _cdr) => match arena.get(*car.borrow()) {
-            Value::Symbol(s) => match match_symbol(env, &s) {
-                Symbol::Macro(m) => Some(m),
+        Value::Pair(car, _cdr) => {
+            let (res_env, res_car) = resolve_syntactic_closure(arena, env, *car.borrow()).unwrap();
+            match arena.get(res_car) {
+                Value::Symbol(s) => match match_symbol(&res_env, &s) {
+                    Symbol::Macro(m) => Some(m),
+                    _ => None,
+                },
                 _ => None,
-            },
-            _ => None,
-        },
+            }
+        }
         _ => None,
     }
 }
@@ -731,29 +747,33 @@ fn collect_internal_defines(
             *statement
         };
         match arena.get(expanded_statement) {
-            Value::Pair(car, cdr) => match arena.get(*car.borrow()) {
-                Value::Symbol(s) => match match_symbol(env, s) {
-                    Symbol::Define => {
-                        let rest = vec_from_list(arena, *cdr.borrow())?;
-                        let dv = get_define_data(arena, &rest)?;
-                        defines.push(dv);
-                    }
-                    Symbol::Begin => {
-                        let expressions = vec_from_list(arena, *cdr.borrow())?;
-                        let (d, rest) = collect_internal_defines(arena, vms, env, &expressions)?;
-                        if !rest.is_empty() {
-                            return Err(
-                                "Inner begin in define section may only contain definitions."
-                                    .into(),
-                            );
+            Value::Pair(car, cdr) => {
+                let (res_env, res_car) = resolve_syntactic_closure(arena, env, *car.borrow())?;
+                match arena.get(res_car) {
+                    Value::Symbol(s) => match match_symbol(&res_env, s) {
+                        Symbol::Define => {
+                            let rest = vec_from_list(arena, *cdr.borrow())?;
+                            let dv = get_define_data(arena, &rest)?;
+                            defines.push(dv);
                         }
-                        defines.extend(d.into_iter());
-                    }
-                    Symbol::Macro(_) => panic!("Macro in fully expanded statement."),
+                        Symbol::Begin => {
+                            let expressions = vec_from_list(arena, *cdr.borrow())?;
+                            let (d, rest) =
+                                collect_internal_defines(arena, vms, env, &expressions)?;
+                            if !rest.is_empty() {
+                                return Err(
+                                    "Inner begin in define section may only contain definitions."
+                                        .into(),
+                                );
+                            }
+                            defines.extend(d.into_iter());
+                        }
+                        Symbol::Macro(_) => panic!("Macro in fully expanded statement."),
+                        _ => break,
+                    },
                     _ => break,
-                },
-                _ => break,
-            },
+                }
+            }
             _ => break,
         }
         i += 1;
