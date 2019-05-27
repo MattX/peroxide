@@ -369,8 +369,8 @@ fn parse_define(
     }
     let define_data = get_define_data(arena, rest)?;
 
-    // TODO: don't do this and instead
-    let symbol = define_data.target.coerce_symbol(arena);
+    // TODO: don't do this and instead allow defining syncloses at top level?
+    let symbol = define_data.target.coerce_symbol();
     let index = env.borrow_mut().define_if_absent(&symbol, af_info, false);
     let value = define_data.value.parse(arena, vms, env, af_info)?;
     Ok(SyntaxElement::Set(Box::new(Set {
@@ -388,7 +388,7 @@ enum DefineTarget {
 }
 
 impl DefineTarget {
-    fn coerce_symbol(&self, arena: &Arena) -> String {
+    fn coerce_symbol(&self) -> String {
         match self {
             DefineTarget::Bare(s) => s.clone(),
             _ => panic!("Coercing syntactic closure into symbol."),

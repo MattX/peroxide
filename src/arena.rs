@@ -12,17 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 use environment::{ActivationFrame, RcEnv};
 use gc::Gc;
-use value::{Value, SyntacticClosure};
+use value::{SyntacticClosure, Value};
 
 pub struct Arena {
     values: Gc<Value>,
     symbol_map: RefCell<HashMap<String, usize>>,
-    gensym_counter: Cell<usize>,
     pub undefined: usize,
     pub unspecific: usize,
     pub empty_list: usize,
@@ -53,19 +52,6 @@ impl Arena {
             }
             _ => self.values.insert(v),
         }
-    }
-
-    /// Generates a new symbol that's unique unless the programmer decides to name their own
-    /// identifiers `__gensym_xyz` for some reason.
-    /// TODO either remove this or make it check if the symbol is actually unique
-    pub fn gensym(&self, name: Option<&str>) -> usize {
-        let underscore_name = name.map(|n| format!("_{}", n)).unwrap_or_else(|| "".into());
-        self.gensym_counter.set(self.gensym_counter.get() + 1);
-        self.insert(Value::Symbol(format!(
-            "__gensym{}_{}",
-            underscore_name,
-            self.gensym_counter.get()
-        )))
     }
 
     /// Given a position in the arena, returns a reference to the value at that location.
@@ -153,7 +139,6 @@ impl Default for Arena {
         Arena {
             values,
             symbol_map: RefCell::new(HashMap::new()),
-            gensym_counter: Cell::new(0),
             undefined,
             unspecific,
             empty_list,

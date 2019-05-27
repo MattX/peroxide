@@ -25,10 +25,10 @@
 use arena::Arena;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt::{Debug, Error, Formatter};
 use std::option::Option;
 use std::rc::Rc;
 use value::Value;
-use std::fmt::{Debug, Formatter, Error};
 
 pub struct Environment {
     parent: Option<Rc<RefCell<Environment>>>,

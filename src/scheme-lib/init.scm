@@ -384,23 +384,6 @@
             (error "bad let syntax" expr)))
       (if (identifier? (cadr expr)) (car (cddr expr)) (cadr expr))))))
 
-(define-syntax let*
-  (er-macro-transformer
-   (lambda (expr rename compare)
-     (if (null? (cdr expr)) (error "empty let*" expr))
-     (if (null? (cddr expr)) (error "no let* body" expr))
-     (if (null? (cadr expr))
-         `(,(rename 'let) () ,@(cddr expr))
-         (if (if (list? (cadr expr))
-                 (every
-                  (lambda (x)
-                    (if (pair? x) (if (pair? (cdr x)) (null? (cddr x)) #f) #f))
-                  (cadr expr))
-                 #f)
-             `(,(rename 'let) (,(caar (cdr expr)))
-               (,(rename 'let*) ,(cdar (cdr expr)) ,@(cddr expr)))
-             (error "bad let* syntax"))))))
-
 (define-syntax case
   (er-macro-transformer
    (lambda (expr rename compare)
