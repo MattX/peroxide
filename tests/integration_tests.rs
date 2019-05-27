@@ -363,7 +363,6 @@ fn cond2() {
     );
 }
 
-
 #[test]
 fn cond3() {
     let arena = Arena::default();
@@ -377,10 +376,9 @@ fn cond3() {
             "(cond ((assv 'b '((a 1) (b 2))) => cadr)\
              (else #f))"
         )
-            .unwrap()
+        .unwrap()
     );
 }
-
 
 #[test]
 fn cond4() {
@@ -394,6 +392,6 @@ fn cond4() {
             &mut vm_state,
             "((lambda (x) (cond ((= x 1) 'one) (else 'not-one))) 2)"
         )
-            .unwrap()
+        .unwrap()
     );
 }

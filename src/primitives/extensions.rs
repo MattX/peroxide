@@ -82,7 +82,7 @@ pub fn identifier_equal_p(arena: &Arena, args: &[usize]) -> Result<usize, String
         )
     })?;
 
-    if !identifier_p(arena, args[1]) || !identifier_p(arena, args[3]) {
+    if !is_identifier(arena, args[1]) || !is_identifier(arena, args[3]) {
         return Ok(arena.f);
     }
 
@@ -103,10 +103,15 @@ pub fn identifier_equal_p(arena: &Arena, args: &[usize]) -> Result<usize, String
     Ok(arena.insert(Value::Boolean(res)))
 }
 
-fn identifier_p(arena: &Arena, value: usize) -> bool {
+fn is_identifier(arena: &Arena, value: usize) -> bool {
     match arena.get(value) {
         Value::Symbol(_) => true,
-        Value::SyntacticClosure(SyntacticClosure { expr, .. }) => identifier_p(arena, *expr),
+        Value::SyntacticClosure(SyntacticClosure { expr, .. }) => is_identifier(arena, *expr),
         _ => false,
     }
+}
+
+pub fn identifier_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    Ok(arena.insert(Value::Boolean(is_identifier(arena, args[0]))))
 }

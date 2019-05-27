@@ -305,7 +305,7 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), String> {
             PrimitiveImplementation::Simple(i) => {
                 let af = arena.get_activation_frame(vm.value);
                 let values = &af.borrow().values;
-                vm.value = i(arena, &values)?;
+                vm.value = i(arena, &values).map_err(|e| format!("In {:?}: {}", p, e))?;
             }
             PrimitiveImplementation::Apply => apply(arena, vm, tail)?,
             _ => return Err(format!("Unimplemented: {}", p.name)),

@@ -159,7 +159,10 @@ fn construct_reference(env: &RcEnv, afi: &RcAfi, name: &str) -> Result<Reference
         )),
         None => {
             // TODO: remove this, or find a better way to surface it.
-            println!("Warning: reference to undefined variable {} in {:?}.", name, env);
+            println!(
+                "Warning: reference to undefined variable {} in {:?}.",
+                name, env
+            );
             let index = env.define_toplevel(name, afi);
             Ok(Reference {
                 altitude: 0,
@@ -286,8 +289,12 @@ fn parse_split_lambda(
     let defines = unparsed_defines
         .iter()
         .map(|define_data| {
-            let value = define_data.value.parse(arena, vms, &inner_env, &inner_afi)?;
-            if let Some(EnvironmentValue::Variable(v)) = get_in_env(arena, &inner_env, &define_data.target) {
+            let value = define_data
+                .value
+                .parse(arena, vms, &inner_env, &inner_afi)?;
+            if let Some(EnvironmentValue::Variable(v)) =
+                get_in_env(arena, &inner_env, &define_data.target)
+            {
                 Ok(SyntaxElement::Set(Box::new(Set {
                     altitude: v.altitude,
                     depth: inner_afi.borrow().altitude - v.altitude,
@@ -443,7 +450,7 @@ fn get_lambda_define_value(arena: &Arena, rest: &[usize]) -> Result<DefineData, 
                 value: DefineValue::Lambda {
                     formals: *cdr.borrow(),
                     body: rest[1..rest.len()].to_vec(),
-                }
+                },
             })
         } else {
             Err(format!(
@@ -486,7 +493,7 @@ fn parse_formals(arena: &Arena, formals: usize) -> Result<Formals, String> {
             return Ok(Formals {
                 values,
                 rest: Some(dt),
-            })
+            });
         } else {
             match arena.get(formal) {
                 Value::EmptyList => return Ok(Formals { values, rest: None }),
@@ -494,12 +501,12 @@ fn parse_formals(arena: &Arena, formals: usize) -> Result<Formals, String> {
                     if let Some(dt) = get_define_target(arena, *car.borrow()) {
                         values.push(dt);
                         formal = *cdr.borrow();
-                    } else  {
-                            return Err(format!(
-                                "Malformed formals: {}.",
-                                arena.get(formals).pretty_print(arena)
-                            ))
-                        }
+                    } else {
+                        return Err(format!(
+                            "Malformed formals: {}.",
+                            arena.get(formals).pretty_print(arena)
+                        ));
+                    }
                 }
                 _ => {
                     return Err(format!(
@@ -606,12 +613,13 @@ fn expand_macro_full(
     mac: Macro,
     expr: usize,
 ) -> Result<usize, String> {
-    println!("Expanding in env: {:?}", env);
+    println!("Expanding: {}", pretty_print(arena, expr));
     let mut expanded = expand_macro(arena, vms, env, mac, expr)?;
     while let Some(m) = get_macro(arena, env, expanded) {
+        println!("Expanded: {}", pretty_print(arena, expanded));
         expanded = expand_macro(arena, vms, env, m, expanded)?;
     }
-    println!("Expanded: {} in env: {:?}", pretty_print(arena, expanded), env);
+    println!("Expanded: {}", pretty_print(arena, expanded));
     Ok(expanded)
 }
 
@@ -766,17 +774,23 @@ fn get_define_target(arena: &Arena, value: usize) -> Option<DefineTarget> {
         Value::SyntacticClosure(sc) => match arena.get(sc.expr) {
             Value::Symbol(_) => Some(DefineTarget::SyntacticClosure(value)),
             Value::SyntacticClosure(_) => get_define_target(arena, sc.expr),
-            _ => None
-        }
-        _ => None
+            _ => None,
+        },
+        _ => None,
     }
 }
 
-fn define_in_env(arena: &Arena, env: &RcEnv, afi: &RcAfi, target: &DefineTarget, initialized: bool) {
+fn define_in_env(
+    arena: &Arena,
+    env: &RcEnv,
+    afi: &RcAfi,
+    target: &DefineTarget,
+    initialized: bool,
+) {
     match target {
         DefineTarget::Bare(s) => {
             env.borrow_mut().define(s, afi, initialized);
-        },
+        }
         DefineTarget::SyntacticClosure(val) => {
             let sc = arena.try_get_syntactic_closure(*val).unwrap();
             let name = arena.try_get_symbol(sc.expr).unwrap();
@@ -800,8 +814,8 @@ fn get_in_env(arena: &Arena, env: &RcEnv, target: &DefineTarget) -> Option<Envir
 fn pop_envs(arena: &Arena, targets: &[DefineTarget]) {
     for target in targets {
         if let DefineTarget::SyntacticClosure(val) = target {
-                let sc = arena.try_get_syntactic_closure(*val).unwrap();
-                sc.pop_env(arena);
+            let sc = arena.try_get_syntactic_closure(*val).unwrap();
+            sc.pop_env(arena);
         }
     }
 }
