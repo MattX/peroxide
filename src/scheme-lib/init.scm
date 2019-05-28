@@ -102,6 +102,14 @@
         (length* (cdr ls) (+ 1 acc))))
   (length* ls 0))
 
+(define (acc-reverse l acc)
+  (if (null? l)
+      acc
+      (acc-reverse (cdr l) (cons (car l) acc))))
+
+(define (reverse l)
+  (acc-reverse l '()))
+
 (define (append2 l res)
   (if (null? l)
       res
@@ -118,14 +126,6 @@
       ((lambda (lol)
          (append-helper (cdr lol) (car lol)))
        (reverse o))))
-
-(define (acc-reverse l acc)
-  (if (null? l)
-      acc
-      (acc-reverse (cdr l) (cons (car l) acc))))
-
-(define (reverse l)
-  (acc-reverse l '()))
 
 (define (list-tail l k)
   (if (zero? k)
@@ -486,9 +486,6 @@
 (define-auxiliary-syntax unquote-splicing)
 
 
-;; Syntax-rules
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; syntax-rules
 
@@ -716,3 +713,14 @@
                            (list (rename 'strip-syntactic-closures) _expr))
 #f)))))))))
 
+
+(define-syntax syntax-rules/aux
+  (er-macro-transformer syntax-rules-transformer))
+
+(define-syntax syntax-rules
+  (er-macro-transformer
+   (lambda (expr rename compare)
+     (if (identifier? (cadr expr))
+         (list (rename 'let) (list (list (cadr expr) #t))
+               (cons (rename 'syntax-rules/aux) (cdr expr)))
+(syntax-rules-transformer expr rename compare)))))

@@ -643,13 +643,13 @@ fn expand_macro_full(
     mac: Macro,
     expr: usize,
 ) -> Result<usize, String> {
-    println!("Expanding: {}", pretty_print(arena, expr));
+    //println!("Expanding: {}", pretty_print(arena, expr));
     let mut expanded = expand_macro(arena, vms, env, mac, expr)?;
     while let Some(m) = get_macro(arena, env, expanded) {
-        println!("Expanded: {}", pretty_print(arena, expanded));
+        //println!("Expanded: {}", pretty_print(arena, expanded));
         expanded = expand_macro(arena, vms, env, m, expanded)?;
     }
-    println!("Expanded: {}", pretty_print(arena, expanded));
+    //println!("Expanded: {}", pretty_print(arena, expanded));
     Ok(expanded)
 }
 
@@ -746,35 +746,34 @@ fn collect_internal_defines(
         } else {
             *statement
         };
-        match arena.get(expanded_statement) {
-            Value::Pair(car, cdr) => {
-                let (res_env, res_car) = resolve_syntactic_closure(arena, env, *car.borrow())?;
-                match arena.get(res_car) {
-                    Value::Symbol(s) => match match_symbol(&res_env, s) {
-                        Symbol::Define => {
-                            let rest = vec_from_list(arena, *cdr.borrow())?;
-                            let dv = get_define_data(arena, &rest)?;
-                            defines.push(dv);
+        if let Value::Pair(car, cdr) = arena.get(expanded_statement) {
+            let (res_env, res_car) = resolve_syntactic_closure(arena, env, *car.borrow())?;
+            if let Value::Symbol(s) = arena.get(res_car) {
+                match match_symbol(&res_env, s) {
+                    Symbol::Define => {
+                        let rest = vec_from_list(arena, *cdr.borrow())?;
+                        let dv = get_define_data(arena, &rest)?;
+                        defines.push(dv);
+                    }
+                    Symbol::Begin => {
+                        let expressions = vec_from_list(arena, *cdr.borrow())?;
+                        let (d, rest) = collect_internal_defines(arena, vms, env, &expressions)?;
+                        if !rest.is_empty() {
+                            return Err(
+                                "Inner begin in define section may only contain definitions."
+                                    .into(),
+                            );
                         }
-                        Symbol::Begin => {
-                            let expressions = vec_from_list(arena, *cdr.borrow())?;
-                            let (d, rest) =
-                                collect_internal_defines(arena, vms, env, &expressions)?;
-                            if !rest.is_empty() {
-                                return Err(
-                                    "Inner begin in define section may only contain definitions."
-                                        .into(),
-                                );
-                            }
-                            defines.extend(d.into_iter());
-                        }
-                        Symbol::Macro(_) => panic!("Macro in fully expanded statement."),
-                        _ => break,
-                    },
+                        defines.extend(d.into_iter());
+                    }
+                    Symbol::Macro(_) => panic!("Macro in fully expanded statement."),
                     _ => break,
                 }
+            } else {
+                break;
             }
-            _ => break,
+        } else {
+            break;
         }
         i += 1;
     }
@@ -789,19 +788,19 @@ fn resolve_syntactic_closure(
     env: &RcEnv,
     value: usize,
 ) -> Result<(RcEnv, usize), String> {
-    match arena.get(value) {
-        Value::SyntacticClosure(SyntacticClosure {
-            closed_env,
-            free_variables,
-            expr,
-        }) => {
-            let closed_env = arena
-                .try_get_environment(*closed_env.borrow())
-                .expect("Syntactic closure created with non-environment argument.");
-            let inner_env = environment::filter(closed_env, env, free_variables)?;
-            resolve_syntactic_closure(arena, &inner_env, *expr)
-        }
-        _ => Ok((env.clone(), value)),
+    if let Value::SyntacticClosure(SyntacticClosure {
+        closed_env,
+        free_variables,
+        expr,
+    }) = arena.get(value)
+    {
+        let closed_env = arena
+            .try_get_environment(*closed_env.borrow())
+            .expect("Syntactic closure created with non-environment argument.");
+        let inner_env = environment::filter(closed_env, env, free_variables)?;
+        resolve_syntactic_closure(arena, &inner_env, *expr)
+    } else {
+        Ok((env.clone(), value))
     }
 }
 
