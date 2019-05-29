@@ -19,48 +19,15 @@ use std::ops::Deref;
 use arena::Arena;
 use environment::{ActivationFrame, Environment, RcEnv};
 use gc;
-use primitives::Primitive;
-use std::rc::Rc;
+use primitives::{Port, Primitive, SyntacticClosure};
 use util::char_vec_to_str;
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct SyntacticClosure {
-    pub closed_env: RefCell<usize>,
-    pub free_variables: Vec<String>,
-    pub expr: usize,
-}
-
-impl SyntacticClosure {
-    pub fn push_env(&self, arena: &Arena) -> RcEnv {
-        let env = arena
-            .try_get_environment(*self.closed_env.borrow())
-            .expect("Syntactic closure created with non-env");
-        let inner_env = Rc::new(RefCell::new(Environment::new(Some(env.clone()))));
-        let inner_env_val = Value::Environment(inner_env.clone());
-        RefCell::replace(&self.closed_env, arena.insert(inner_env_val));
-        inner_env
-    }
-
-    pub fn pop_env(&self, arena: &Arena) {
-        let env = arena
-            .try_get_environment(*self.closed_env.borrow())
-            .expect("Syntactic closure created with non-env");
-        let parent_env = env
-            .borrow()
-            .parent()
-            .expect("Popping from syntactic closure with no parent env.")
-            .clone();
-        RefCell::replace(
-            &self.closed_env,
-            arena.insert(Value::Environment(parent_env)),
-        );
-    }
-}
-
+// TODO box some of these, values are currently 56 bytes long oh no
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {
     Undefined,
     Unspecific,
+    EofObject,
     Real(f64),
     Integer(i64),
     Boolean(bool),
@@ -71,6 +38,7 @@ pub enum Value {
     Pair(RefCell<usize>, RefCell<usize>),
     Vector(RefCell<Vec<usize>>),
     Lambda { code: usize, environment: usize },
+    Port(Box<Port>),
     Primitive(&'static Primitive),
     ActivationFrame(RefCell<ActivationFrame>),
     Environment(RcEnv),
@@ -82,6 +50,7 @@ impl fmt::Display for Value {
         match self {
             Value::Undefined => write!(f, "#undefined"),
             Value::Unspecific => write!(f, "#unspecific"),
+            Value::EofObject => write!(f, "#eof-object"),
             Value::Real(r) => write!(f, "{}", r),
             Value::Integer(i) => write!(f, "{}", i),
             Value::Boolean(true) => write!(f, "#t"),
@@ -131,6 +100,10 @@ impl gc::Inventory for Value {
                 for val in f.values.iter() {
                     v.push(*val)
                 }
+            }
+            Value::SyntacticClosure(sc) => {
+                v.push(sc.expr);
+                v.push(*sc.closed_env.borrow());
             }
             _ => (),
         }

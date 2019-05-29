@@ -14,10 +14,45 @@
 
 use arena::Arena;
 use environment;
-use environment::{EnvironmentValue, RcEnv};
+use environment::{Environment, EnvironmentValue, RcEnv};
 use std::cell::RefCell;
+use std::rc::Rc;
 use util::check_len;
-use value::{pretty_print, vec_from_list, SyntacticClosure, Value};
+use value::{pretty_print, vec_from_list, Value};
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct SyntacticClosure {
+    pub closed_env: RefCell<usize>,
+    pub free_variables: Vec<String>,
+    pub expr: usize,
+}
+
+impl SyntacticClosure {
+    pub fn push_env(&self, arena: &Arena) -> RcEnv {
+        let env = arena
+            .try_get_environment(*self.closed_env.borrow())
+            .expect("Syntactic closure created with non-env");
+        let inner_env = Rc::new(RefCell::new(Environment::new(Some(env.clone()))));
+        let inner_env_val = Value::Environment(inner_env.clone());
+        RefCell::replace(&self.closed_env, arena.insert(inner_env_val));
+        inner_env
+    }
+
+    pub fn pop_env(&self, arena: &Arena) {
+        let env = arena
+            .try_get_environment(*self.closed_env.borrow())
+            .expect("Syntactic closure created with non-env");
+        let parent_env = env
+            .borrow()
+            .parent()
+            .expect("Popping from syntactic closure with no parent env.")
+            .clone();
+        RefCell::replace(
+            &self.closed_env,
+            arena.insert(Value::Environment(parent_env)),
+        );
+    }
+}
 
 pub fn make_syntactic_closure(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(3), Some(3))?;

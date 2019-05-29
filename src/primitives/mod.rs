@@ -71,10 +71,13 @@ use std::fmt::{Debug, Error, Formatter};
 use arena::Arena;
 use environment::{ActivationFrameInfo, RcEnv};
 use primitives::char::*;
+pub use primitives::extensions::SyntacticClosure;
 use primitives::extensions::*;
 use primitives::numeric::*;
 use primitives::object::*;
 use primitives::pair::*;
+pub use primitives::port::Port;
+use primitives::port::*;
 use primitives::string::*;
 use primitives::symbol::*;
 use primitives::vector::*;
@@ -87,6 +90,7 @@ mod extensions;
 mod numeric;
 mod object;
 mod pair;
+mod port;
 mod string;
 mod symbol;
 mod vector;
@@ -100,7 +104,7 @@ macro_rules! simple_primitive {
     };
 }
 
-static PRIMITIVES: [Primitive; 52] = [
+static PRIMITIVES: [Primitive; 57] = [
     simple_primitive!("make-syntactic-closure", make_syntactic_closure),
     simple_primitive!("identifier=?", identifier_equal_p),
     simple_primitive!("identifier?", identifier_p),
@@ -152,6 +156,11 @@ static PRIMITIVES: [Primitive; 52] = [
     simple_primitive!("vector-ref", vector_ref),
     simple_primitive!("procedure?", procedure_p),
     simple_primitive!("error", error),
+    simple_primitive!("port?", port_p),
+    simple_primitive!("input-port?", input_port_p),
+    simple_primitive!("output-port?", output_port_p),
+    simple_primitive!("textual-port?", textual_port_p),
+    simple_primitive!("binary-port?", binary_port_p),
     Primitive {
         name: "apply",
         implementation: PrimitiveImplementation::Apply,

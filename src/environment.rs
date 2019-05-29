@@ -40,10 +40,9 @@ pub struct Environment {
     variable_names: HashMap<(usize, usize), String>,
 }
 
-// Gruik
 impl PartialEq for Environment {
     fn eq(&self, _other: &Self) -> bool {
-        false
+        panic!("Comparing environments")
     }
 }
 

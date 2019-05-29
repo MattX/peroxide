@@ -211,7 +211,7 @@
         v
         (begin
           (vector-set! v k (car l))
-          (list->vector (cdr l) v (- k 1)))))
+          (list->vector (cdr l) v (+ k 1)))))
   ((lambda (v)
      (list->vector l v 0))
    (make-vector (length l))))
@@ -504,7 +504,7 @@
         (_quote (rename 'syntax-quote)) (_apply (rename 'apply))
         (_append (rename 'append))      (_map (rename 'map))
         (_vector? (rename 'vector?))    (_list? (rename 'list?))
-        (_len (rename 'len))            (_length (rename 'length*))
+        (_len (rename 'len))            (_length (rename 'length))
         (_- (rename '-))   (_>= (rename '>=))   (_error (rename 'error))
         (_ls (rename 'ls)) (_res (rename 'res)) (_i (rename 'i))
         (_reverse (rename 'reverse))
@@ -711,7 +711,7 @@
                (list _cons
                      (list _error "no expansion for"
                            (list (rename 'strip-syntactic-closures) _expr))
-#f)))))))))
+                     #f)))))))))
 
 
 (define-syntax syntax-rules/aux
@@ -723,4 +723,4 @@
      (if (identifier? (cadr expr))
          (list (rename 'let) (list (list (cadr expr) #t))
                (cons (rename 'syntax-rules/aux) (cdr expr)))
-(syntax-rules-transformer expr rename compare)))))
+         (syntax-rules-transformer expr rename compare)))))

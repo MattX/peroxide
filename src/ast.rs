@@ -29,11 +29,12 @@
 
 use arena::Arena;
 use environment::{Environment, EnvironmentValue, Macro, RcAfi, RcEnv};
+use primitives::SyntacticClosure;
 use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 use util::check_len;
-use value::{list_from_vec, pretty_print, vec_from_list, SyntacticClosure, Value};
+use value::{list_from_vec, pretty_print, vec_from_list, Value};
 use {compile_run, environment};
 use {parse_compile_run, VmState};
 

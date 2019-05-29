@@ -17,13 +17,16 @@ use std::collections::HashMap;
 
 use environment::{ActivationFrame, RcEnv};
 use gc::Gc;
-use value::{SyntacticClosure, Value};
+use primitives::{Port, SyntacticClosure};
+use std::ops::Deref;
+use value::Value;
 
 pub struct Arena {
     values: Gc<Value>,
     symbol_map: RefCell<HashMap<String, usize>>,
     pub undefined: usize,
     pub unspecific: usize,
+    pub eof: usize,
     pub empty_list: usize,
     pub t: usize,
     pub f: usize,
@@ -35,6 +38,7 @@ impl Arena {
         match v {
             Value::Undefined => self.undefined,
             Value::Unspecific => self.unspecific,
+            Value::EofObject => self.eof,
             Value::EmptyList => self.empty_list,
             Value::Boolean(true) => self.t,
             Value::Boolean(false) => self.f,
@@ -123,6 +127,13 @@ impl Arena {
         }
     }
 
+    pub fn try_get_port(&self, at: usize) -> Option<&Port> {
+        match self.get(at) {
+            Value::Port(p) => Some(p.deref()),
+            _ => None,
+        }
+    }
+
     pub fn collect(&mut self, roots: &[usize]) {
         self.values.collect(roots);
     }
@@ -133,6 +144,7 @@ impl Default for Arena {
         let values = Gc::default();
         let undefined = values.insert(Value::Undefined);
         let unspecific = values.insert(Value::Unspecific);
+        let eof = values.insert(Value::EofObject);
         let empty_list = values.insert(Value::EmptyList);
         let f = values.insert(Value::Boolean(false));
         let t = values.insert(Value::Boolean(true));
@@ -141,6 +153,7 @@ impl Default for Arena {
             symbol_map: RefCell::new(HashMap::new()),
             undefined,
             unspecific,
+            eof,
             empty_list,
             f,
             t,
@@ -154,7 +167,7 @@ mod tests {
 
     use super::*;
 
-    const BASE_ENTRY: usize = 5;
+    const BASE_ENTRY: usize = 6;
 
     #[test]
     fn add_empty() {

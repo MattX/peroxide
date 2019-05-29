@@ -395,3 +395,53 @@ fn cond4() {
         .unwrap()
     );
 }
+
+#[test]
+fn and() {
+    let arena = Arena::default();
+    let mut vm_state = VmState::new(&arena);
+    initialize(&arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
+    assert_eq!(
+        vec![
+            Value::Boolean(true),
+            Value::Boolean(false),
+            Value::Integer(4),
+            Value::Boolean(true)
+        ],
+        execute_to_vec(
+            &arena,
+            &mut vm_state,
+            "(list\
+             (and (= 2 2) (> 2 1))\
+             (and (= 2 2) (< 2 1))\
+             (and 1 2 3 4)\
+             (and))"
+        )
+        .unwrap()
+    );
+}
+
+#[test]
+fn or() {
+    let arena = Arena::default();
+    let mut vm_state = VmState::new(&arena);
+    initialize(&arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
+    assert_eq!(
+        vec![
+            Value::Boolean(true),
+            Value::Boolean(false),
+            Value::Integer(1),
+            Value::Boolean(false)
+        ],
+        execute_to_vec(
+            &arena,
+            &mut vm_state,
+            "(list\
+             (or (= 2 2) (< 2 1))\
+             (or (= 3 2) (< 2 1))\
+             (or 1 2 3 4)\
+             (or))"
+        )
+        .unwrap()
+    );
+}
