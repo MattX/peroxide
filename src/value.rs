@@ -17,7 +17,7 @@ use std::fmt;
 use std::ops::Deref;
 
 use arena::Arena;
-use environment::{ActivationFrame, Environment, RcEnv};
+use environment::{ActivationFrame, RcEnv};
 use gc;
 use primitives::{Port, Primitive, SyntacticClosure};
 use util::char_vec_to_str;

@@ -15,13 +15,61 @@
 use arena::Arena;
 use std::cell::RefCell;
 use std::fmt;
+use std::io::ErrorKind;
 use util::check_len;
 use value::{pretty_print, Value};
 
-// All ports are ReadWrite to get around the fact that Rust can't convert a ReadWrite to a Read,
+// All ports are Read+Write to get around the fact that Rust can't convert a Read+Write to a Read,
 // which makes a lot of stuff annoying. This is generally fine as Files are also ReadWrite
-// regardless of how they are opened.
-trait ReadWrite: std::io::Read + std::io::Write {}
+// regardless of how they are opened. Other streams can just throw an error when read if they are
+// Write or vice versa.
+trait Stream: std::io::Read + std::io::Write {
+    fn close(&mut self) -> std::io::Result<()>;
+
+    fn u8_ready(&mut self) -> std::io::Result<bool>;
+    fn char_ready(&mut self) -> std::io::Result<bool>;
+
+    fn peek_u8(&mut self) -> std::io::Result<u8>;
+    fn peek_char(&mut self) -> std::io::Result<char>;
+
+    fn read_u8(&mut self) -> std::io::Result<u8> {
+        let mut buf = [0 as u8; 1];
+        let len = self.read(&mut buf)?;
+        if len == 0 {
+            Err(std::io::Error::from(ErrorKind::UnexpectedEof))
+        } else {
+            Ok(buf[0])
+        }
+    }
+
+    fn read_char(&mut self) -> std::io::Result<char> {
+        let mut buf = [0 as u8; 4];
+        for i in 0..4 {
+            let maybe_u8 = self.read_u8();
+            match maybe_u8 {
+                Err(e) => {
+                    if i != 0 && e.kind() == ErrorKind::UnexpectedEof {
+                        return Err(std::io::Error::new(
+                            ErrorKind::InvalidData,
+                            "stream does not contain valid UTF-8",
+                        ));
+                    } else {
+                        return Err(e);
+                    }
+                }
+                Ok(b) => buf[i] = b,
+            }
+            let uchar = std::char::from_u32(u32::from_le_bytes(buf.into()));
+            if let Some(c) = uchar {
+                return Ok(c);
+            }
+        }
+        return Err(std::io::Error::new(
+            ErrorKind::InvalidData,
+            "stream does not contain valid UTF-8",
+        ));
+    }
+}
 
 #[derive(Debug)]
 enum PortMode {
@@ -70,7 +118,7 @@ impl PortType {
 }
 
 pub struct Port {
-    stream: RefCell<Option<Box<dyn ReadWrite>>>,
+    stream: RefCell<Option<Box<dyn Stream>>>,
     mode: PortMode,
     binary: PortType,
 }
