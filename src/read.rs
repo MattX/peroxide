@@ -77,7 +77,7 @@ where
             Token::Symbol(s) => Ok(Value::Symbol(s.to_string())),
             Token::Ellipsis => Ok(Value::Symbol("...".to_string())),
             Token::OpenParen => read_list(arena, it),
-            Token::OpenByteVector => read_bytevec(arena, it),
+            Token::OpenByteVector => read_bytevec(it),
             Token::OpenVector => read_vec(arena, it),
             Token::Quote => read_quote(arena, it, "quote"),
             Token::QuasiQuote => read_quote(arena, it, "quasiquote"),
@@ -135,7 +135,7 @@ where
     }
 }
 
-fn read_bytevec<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
+fn read_bytevec<'a, 'b, I>(it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
 where
     I: Iterator<Item = &'b Token>,
 {
@@ -155,7 +155,7 @@ where
             }
             Token::Integer(i) => {
                 it.next();
-                let b = u8::try_from(*i).map_err(|e| {
+                let b = u8::try_from(*i).map_err(|_e| {
                     ParseResult::ParseError(format!("Invalid byte literal: {}.", i))
                 })?;
                 result.push(b);

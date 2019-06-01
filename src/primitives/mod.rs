@@ -104,7 +104,7 @@ macro_rules! simple_primitive {
     };
 }
 
-static PRIMITIVES: [Primitive; 57] = [
+static PRIMITIVES: [Primitive; 58] = [
     simple_primitive!("make-syntactic-closure", make_syntactic_closure),
     simple_primitive!("identifier=?", identifier_equal_p),
     simple_primitive!("identifier?", identifier_p),
@@ -164,6 +164,10 @@ static PRIMITIVES: [Primitive; 57] = [
     Primitive {
         name: "apply",
         implementation: PrimitiveImplementation::Apply,
+    },
+    Primitive {
+        name: "call/cc",
+        implementation: PrimitiveImplementation::CallCC,
     },
 ];
 

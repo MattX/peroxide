@@ -91,7 +91,7 @@ pub fn string_set_b(arena: &Arena, args: &[usize]) -> Result<usize, String> {
         )
     })?;
     let char_idx =
-        usize::try_from(idx).map_err(|e| format!("string-ref: Invalid index: {}.", idx))?;
+        usize::try_from(idx).map_err(|_e| format!("string-ref: Invalid index: {}.", idx))?;
     let (byte_idx, _) = borrowed_string
         .char_indices()
         .nth(char_idx)
@@ -117,7 +117,7 @@ pub fn string_ref(arena: &Arena, args: &[usize]) -> Result<usize, String> {
             pretty_print(arena, args[1])
         )
     })?;
-    let idx = usize::try_from(idx).map_err(|e| format!("string-ref: Invalid index: {}.", idx))?;
+    let idx = usize::try_from(idx).map_err(|_e| format!("string-ref: Invalid index: {}.", idx))?;
     let chr = borrowed_string
         .chars()
         .nth(idx)

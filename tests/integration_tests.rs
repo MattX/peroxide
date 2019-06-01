@@ -445,3 +445,14 @@ fn or() {
         .unwrap()
     );
 }
+
+#[test]
+fn call_cc() {
+    let arena = Arena::default();
+    let mut vm_state = VmState::new(&arena);
+    initialize(&arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
+    assert_eq!(
+        Value::Integer(-4),
+        execute(&arena, &mut vm_state, "(call/cc (lambda (exit) (for-each (lambda (x) (if (< x 0) (exit x))) '(1 2 3 -4 5 6))))").unwrap()
+    );
+}

@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use arena::Arena;
-use std::cell::{Ref, RefCell};
+use std::cell::RefCell;
 use std::collections::vec_deque::VecDeque;
 use std::fmt;
-use std::io::{BufReader, ErrorKind, Read};
+use std::io::{ErrorKind, Read};
 use std::rc::Rc;
 use util::check_len;
 use value::{pretty_print, Value};

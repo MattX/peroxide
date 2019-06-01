@@ -15,7 +15,7 @@
 use arena::Arena;
 use std::cell::RefCell;
 use std::convert::TryFrom;
-use util::{check_len, str_to_char_vec};
+use util::check_len;
 use value::{pretty_print, Value};
 
 fn get_char_arg(arena: &Arena, args: &[usize], prim_name: &str) -> Result<char, String> {

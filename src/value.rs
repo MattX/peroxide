@@ -20,9 +20,13 @@ use arena::Arena;
 use environment::{ActivationFrame, RcEnv};
 use gc;
 use primitives::{Port, Primitive, SyntacticClosure};
+use vm::Continuation;
 
 // TODO box some of these, values are currently 56 bytes long oh no
-#[derive(Debug, PartialEq, Clone)]
+// TODO remove PartialEq and Clone. Clone should only be used in the numeric primitives library.
+//      PartialEq is used in a number of unit / integ tests, but could be replaced with equal_p
+//      from this file.
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Undefined,
     Unspecific,
@@ -43,6 +47,7 @@ pub enum Value {
     ActivationFrame(RefCell<ActivationFrame>),
     Environment(RcEnv),
     SyntacticClosure(SyntacticClosure),
+    Continuation(Continuation),
 }
 
 impl fmt::Display for Value {

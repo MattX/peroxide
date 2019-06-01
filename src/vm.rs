@@ -16,6 +16,7 @@
 
 use arena::Arena;
 use environment::{ActivationFrame, RcEnv};
+use gc;
 use primitives::PrimitiveImplementation;
 use std::cell::RefCell;
 use std::fmt::Write;
@@ -282,11 +283,13 @@ pub fn run(arena: &Arena, code: &mut Code, pc: usize, env: usize) -> Result<usiz
                     .pop()
                     .expect("Popping function with no values on stack.");
                 match arena.get(fun_r) {
-                    Value::Lambda { .. } | Value::Primitive(_) => vm.fun = fun_r,
+                    Value::Lambda { .. } | Value::Primitive(_) | Value::Continuation(_) => {
+                        vm.fun = fun_r
+                    }
                     _ => {
                         return Err(error_stack(
                             &vm,
-                            format!("Cannot apply non-function: {}", pretty_print(arena, fun_r)),
+                            format!("Cannot pop non-function: {}", pretty_print(arena, fun_r)),
                         ))
                     }
                 }
@@ -339,8 +342,22 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), String> {
                 vm.value = i(arena, &values).map_err(|e| format!("In {:?}: {}", p, e))?;
             }
             PrimitiveImplementation::Apply => apply(arena, vm, tail)?,
+            PrimitiveImplementation::CallCC => call_cc(arena, vm)?,
             _ => return Err(format!("Unimplemented: {}", p.name)),
         },
+        Value::Continuation(c) => {
+            let af = arena.get_activation_frame(vm.value).borrow();
+            if af.values.len() != 1 {
+                return Err("Invoking continuation with more than one argument".into());
+            }
+            vm.stack = c.stack.clone();
+            vm.return_stack = c.return_stack.clone();
+            vm.pc = vm
+                .return_stack
+                .pop()
+                .expect("Popping continuation with no return address");
+            vm.value = af.values[0];
+        }
         _ => {
             return Err(format!(
                 "Cannot invoke non-function: {}",
@@ -368,6 +385,27 @@ fn apply(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), String> {
     invoke(arena, vm, tail)
 }
 
+fn call_cc(arena: &Arena, vm: &mut Vm) -> Result<(), String> {
+    vm.return_stack.push(vm.pc);
+    let cont = Continuation {
+        stack: vm.stack.clone(),
+        return_stack: vm.return_stack.clone(),
+    };
+    let cont_r = arena.insert(Value::Continuation(cont));
+    let af = arena.get_activation_frame(vm.value).borrow();
+    let n_args = af.values.len();
+    if n_args != 1 {
+        return Err("call/cc: expected a single argument".into());
+    }
+    let new_af = ActivationFrame {
+        parent: None,
+        values: vec![cont_r],
+    };
+    vm.value = arena.insert(Value::ActivationFrame(RefCell::new(new_af)));
+    vm.fun = af.values[0];
+    invoke(arena, vm, true)
+}
+
 fn resolve_variable(code: &Code, pc: usize, altitude: usize, index: usize) -> String {
     let env = code.find_env(pc).borrow();
     env.get_name(altitude, index)
@@ -375,19 +413,28 @@ fn resolve_variable(code: &Code, pc: usize, altitude: usize, index: usize) -> St
 
 fn error_stack(vm: &Vm, message: String) -> String {
     let mut message = message;
-    let name = vm
-        .code
-        .find_lambda(vm.pc)
-        .clone()
-        .unwrap_or_else(|| "[toplevel]".into());
-    write!(message, "\n\tat {}", name).unwrap();
-    for ret in vm.return_stack.iter().rev() {
+    let positions = std::iter::once(&vm.pc).chain(vm.return_stack.iter().rev());
+    for ret in positions {
         let name = vm
             .code
             .find_lambda(*ret)
             .clone()
-            .unwrap_or_else(|| "[toplevel]".into());
+            .unwrap_or_else(|| "<toplevel>".into());
         write!(message, "\n\tat {}", name).unwrap();
     }
     message
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Continuation {
+    stack: Vec<usize>,
+    return_stack: Vec<usize>,
+}
+
+impl gc::Inventory for Continuation {
+    fn inventory(&self, v: &mut gc::PushOnlyVec<usize>) {
+        for obj in self.stack.iter() {
+            v.push(*obj);
+        }
+    }
 }
