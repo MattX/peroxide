@@ -30,6 +30,7 @@ pub enum Token {
     Symbol(String),
     String(String),
     OpenVector,
+    OpenByteVector,
     OpenParen,
     ClosingParen,
     Dot,
@@ -110,6 +111,10 @@ where
     }
 }
 
+/// Reads a delimited token from the given iterator.
+///
+/// The token will have a minimum of `min` characters; after that, it ends whenever whitespace or
+/// an opening or closing parenthesis is encountered.
 fn take_delimited_token<I>(it: &mut Peekable<I>, min: usize) -> Vec<char>
 where
     I: Iterator<Item = char>,
@@ -176,6 +181,10 @@ where
             't' => Ok(Token::Boolean(true)),
             'f' => Ok(Token::Boolean(false)),
             '(' => Ok(Token::OpenVector),
+            'u' => match (it.next(), it.next()) {
+                (Some('8'), Some('(')) => Ok(Token::OpenByteVector),
+                (a, b) => Err(format!("Unknown token form: `#u{:?}{:?}...", a, b)),
+            },
             _ => Err(format!("Unknown token form: `#{}...`.", c)),
         }
     } else {
@@ -251,6 +260,7 @@ pub fn segment(toks: Vec<Token>) -> Result<SegmentationResult, String> {
         let bracket_type = match tok {
             Token::OpenParen => Some(BracketType::List),
             Token::OpenVector => Some(BracketType::Vector),
+            Token::OpenByteVector => Some(BracketType::Vector),
             Token::Quote | Token::QuasiQuote | Token::Unquote | Token::UnquoteSplicing => {
                 Some(BracketType::Quote)
             }

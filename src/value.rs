@@ -20,7 +20,6 @@ use arena::Arena;
 use environment::{ActivationFrame, RcEnv};
 use gc;
 use primitives::{Port, Primitive, SyntacticClosure};
-use util::char_vec_to_str;
 
 // TODO box some of these, values are currently 56 bytes long oh no
 #[derive(Debug, PartialEq, Clone)]
@@ -36,6 +35,7 @@ pub enum Value {
     String(RefCell<String>),
     EmptyList,
     Pair(RefCell<usize>, RefCell<usize>),
+    ByteVector(RefCell<Vec<u8>>),
     Vector(RefCell<Vec<usize>>),
     Lambda { code: usize, environment: usize },
     Port(Box<Port>),
@@ -63,6 +63,15 @@ impl fmt::Display for Value {
             }
             Value::EmptyList => write!(f, "()"),
             Value::Pair(a, b) => write!(f, "(=>{} . =>{})", a.borrow(), b.borrow()),
+            Value::ByteVector(bv) => {
+                let contents = bv
+                    .borrow()
+                    .iter()
+                    .map(|v| format!("{}", v))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                write!(f, "#u8({})", contents)
+            }
             Value::Vector(values) => {
                 let contents = values
                     .borrow()

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use arena::Arena;
-use read::ParseResult::ParseError;
 use std::cell::{Ref, RefCell};
 use std::collections::vec_deque::VecDeque;
 use std::fmt;

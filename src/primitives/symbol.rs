@@ -14,7 +14,7 @@
 
 use arena::Arena;
 use std::cell::RefCell;
-use util::{char_vec_to_str, check_len, str_to_char_vec};
+use util::check_len;
 use value::{pretty_print, Value};
 
 pub fn symbol_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {

@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use std::cell::RefCell;
+use std::convert::TryFrom;
 use std::iter::Peekable;
 
 use arena::Arena;
 use lex;
 use lex::Token;
-use util::str_to_char_vec;
 use value::Value;
 
 #[derive(Debug)]
@@ -77,6 +77,7 @@ where
             Token::Symbol(s) => Ok(Value::Symbol(s.to_string())),
             Token::Ellipsis => Ok(Value::Symbol("...".to_string())),
             Token::OpenParen => read_list(arena, it),
+            Token::OpenByteVector => read_bytevec(arena, it),
             Token::OpenVector => read_vec(arena, it),
             Token::Quote => read_quote(arena, it, "quote"),
             Token::QuasiQuote => read_quote(arena, it, "quasiquote"),
@@ -132,6 +133,43 @@ where
             "Unexpected end of list.".to_string(),
         ))
     }
+}
+
+fn read_bytevec<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
+where
+    I: Iterator<Item = &'b Token>,
+{
+    let mut result: Vec<u8> = Vec::new();
+
+    if None == it.peek() {
+        return Err(ParseResult::ParseError(
+            "Unexpected end of vector.".to_string(),
+        ));
+    }
+
+    while let Some(&t) = it.peek() {
+        match t {
+            Token::ClosingParen => {
+                it.next();
+                break;
+            }
+            Token::Integer(i) => {
+                it.next();
+                let b = u8::try_from(*i).map_err(|e| {
+                    ParseResult::ParseError(format!("Invalid byte literal: {}.", i))
+                })?;
+                result.push(b);
+            }
+            v => {
+                return Err(ParseResult::ParseError(format!(
+                    "Non-byte in bytevector literal: {:?}",
+                    v
+                )));
+            }
+        }
+    }
+
+    Ok(Value::ByteVector(RefCell::new(result)))
 }
 
 fn read_vec<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
