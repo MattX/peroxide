@@ -73,7 +73,7 @@ where
             Token::Integer(i) => Ok(Value::Integer(*i)),
             Token::Boolean(b) => Ok(Value::Boolean(*b)),
             Token::Character(c) => Ok(Value::Character(*c)),
-            Token::String(s) => Ok(Value::String(RefCell::new(str_to_char_vec(s)))),
+            Token::String(s) => Ok(Value::String(RefCell::new(s.to_string()))),
             Token::Symbol(s) => Ok(Value::Symbol(s.to_string())),
             Token::Ellipsis => Ok(Value::Symbol("...".to_string())),
             Token::OpenParen => read_list(arena, it),

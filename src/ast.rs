@@ -736,6 +736,7 @@ fn collect_internal_defines(
 ) -> Result<(Vec<DefineData>, Vec<usize>), String> {
     // TODO figure out a nice way to push macro expanded, non-define values. Right know
     //      we'll perform macro expansion both here and at the actual parse site.
+    // TODO support internal macro definitions
 
     let mut defines = Vec::new();
     let mut rest = Vec::new();

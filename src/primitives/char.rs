@@ -103,14 +103,10 @@ pub fn char_downcase(arena: &Arena, args: &[usize]) -> Result<usize, String> {
 
 pub fn char_upcase_unicode(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     let arg = get_char_arg(arena, args, "char-upcase-unicode")?;
-    Ok(arena.insert(Value::String(RefCell::new(str_to_char_vec(
-        &arg.to_uppercase().to_string(),
-    )))))
+    Ok(arena.insert(Value::String(RefCell::new(arg.to_uppercase().to_string()))))
 }
 
 pub fn char_downcase_unicode(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     let arg = get_char_arg(arena, args, "char-downcase-unicode")?;
-    Ok(arena.insert(Value::String(RefCell::new(str_to_char_vec(
-        &arg.to_lowercase().to_string(),
-    )))))
+    Ok(arena.insert(Value::String(RefCell::new(arg.to_lowercase().to_string()))))
 }

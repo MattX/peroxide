@@ -85,7 +85,7 @@ impl Arena {
         }
     }
 
-    pub fn try_get_string(&self, at: usize) -> Option<&RefCell<Vec<char>>> {
+    pub fn try_get_string(&self, at: usize) -> Option<&RefCell<String>> {
         match self.get(at) {
             Value::String(s) => Some(s),
             _ => None,

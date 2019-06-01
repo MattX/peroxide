@@ -28,10 +28,7 @@ pub fn symbol_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
 pub fn symbol_to_string(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(1), Some(1))?;
     match arena.get(args[0]) {
-        Value::Symbol(s) => {
-            let string = str_to_char_vec(s);
-            Ok(arena.insert(Value::String(RefCell::new(string))))
-        }
+        Value::Symbol(s) => Ok(arena.insert(Value::String(RefCell::new(s.clone())))),
         _ => Err(format!(
             "symbol->string: not a symbol: {}",
             pretty_print(arena, args[0])
@@ -42,10 +39,7 @@ pub fn symbol_to_string(arena: &Arena, args: &[usize]) -> Result<usize, String> 
 pub fn string_to_symbol(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(1), Some(1))?;
     match arena.get(args[0]) {
-        Value::String(s) => {
-            let symbol = char_vec_to_str(&s.borrow());
-            Ok(arena.insert(Value::Symbol(symbol)))
-        }
+        Value::String(s) => Ok(arena.insert(Value::Symbol(s.borrow().clone()))),
         _ => Err(format!(
             "string->symbol: not a string: {}",
             pretty_print(arena, args[0])

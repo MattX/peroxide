@@ -14,15 +14,13 @@
 
 use arena::Arena;
 use std::cell::RefCell;
+use std::convert::TryFrom;
 use util::check_len;
 use value::{pretty_print, Value};
 
 pub fn string_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(1), Some(1))?;
-    Ok(match arena.get(args[0]) {
-        Value::String(_) => arena.t,
-        _ => arena.f,
-    })
+    Ok(arena.insert(Value::Boolean(arena.try_get_string(args[0]).is_some())))
 }
 
 pub fn make_string(arena: &Arena, args: &[usize]) -> Result<usize, String> {
@@ -49,7 +47,7 @@ pub fn make_string(arena: &Arena, args: &[usize]) -> Result<usize, String> {
             l
         ));
     }
-    let s: Vec<char> = std::iter::repeat(c).take(l as usize).collect();
+    let s: String = std::iter::repeat(c).take(l as usize).collect();
     Ok(arena.insert(Value::String(RefCell::new(s))))
 }
 
@@ -64,7 +62,8 @@ pub fn string_length(arena: &Arena, args: &[usize]) -> Result<usize, String> {
             )
         })?
         .borrow()
-        .len();
+        .chars()
+        .count();
     Ok(arena.insert(Value::Integer(l as i64)))
 }
 
@@ -91,10 +90,13 @@ pub fn string_set_b(arena: &Arena, args: &[usize]) -> Result<usize, String> {
             pretty_print(arena, args[2])
         )
     })?;
-    if idx < 0 || idx >= borrowed_string.len() as i64 {
-        return Err(format!("string-set!: Invalid index: {}.", idx));
-    }
-    borrowed_string[idx as usize] = chr;
+    let char_idx =
+        usize::try_from(idx).map_err(|e| format!("string-ref: Invalid index: {}.", idx))?;
+    let (byte_idx, _) = borrowed_string
+        .char_indices()
+        .nth(char_idx)
+        .ok_or_else(|| format!("string-ref: Invalid index: {}.", idx))?;
+    borrowed_string.replace_range(byte_idx..=byte_idx, &chr.to_string());
     Ok(arena.unspecific)
 }
 
@@ -115,8 +117,10 @@ pub fn string_ref(arena: &Arena, args: &[usize]) -> Result<usize, String> {
             pretty_print(arena, args[1])
         )
     })?;
-    if idx < 0 || idx >= borrowed_string.len() as i64 {
-        return Err(format!("string-ref: Invalid index: {}.", idx));
-    }
-    Ok(arena.insert(Value::Character(borrowed_string[idx as usize])))
+    let idx = usize::try_from(idx).map_err(|e| format!("string-ref: Invalid index: {}.", idx))?;
+    let chr = borrowed_string
+        .chars()
+        .nth(idx)
+        .ok_or_else(|| format!("string-ref: Invalid index: {}.", idx))?;
+    Ok(arena.insert(Value::Character(chr)))
 }

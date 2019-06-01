@@ -22,6 +22,8 @@ use std::rc::Rc;
 use util::check_len;
 use value::{pretty_print, Value};
 
+// TODO this whole file is a 1/4-finished mess.
+
 // All ports are Read+Write to get around the fact that Rust can't convert a Read+Write to a Read,
 // which makes a lot of stuff annoying. This is generally fine as Files are also ReadWrite
 // regardless of how they are opened. Other streams can just throw an error when read if they are

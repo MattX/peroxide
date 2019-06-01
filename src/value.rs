@@ -33,7 +33,7 @@ pub enum Value {
     Boolean(bool),
     Character(char),
     Symbol(String),
-    String(RefCell<Vec<char>>),
+    String(RefCell<String>),
     EmptyList,
     Pair(RefCell<usize>, RefCell<usize>),
     Vector(RefCell<Vec<usize>>),
@@ -59,7 +59,7 @@ impl fmt::Display for Value {
             Value::Character(c) => write!(f, "#\\{}", c),
             Value::Symbol(s) => write!(f, "{}", s),
             Value::String(s) => {
-                write!(f, "\"{}\"", char_vec_to_str(&s.borrow())) // TODO escape string
+                write!(f, "\"{}\"", s.borrow()) // TODO escape string
             }
             Value::EmptyList => write!(f, "()"),
             Value::Pair(a, b) => write!(f, "(=>{} . =>{})", a.borrow(), b.borrow()),
@@ -279,7 +279,7 @@ mod tests {
         assert_eq!("abc", &format!("{}", Value::Symbol("abc".to_string())));
         assert_eq!(
             "\"abc\"",
-            &format!("{}", Value::String(RefCell::new(vec!['a', 'b', 'c'])))
+            &format!("{}", Value::String(RefCell::new("abc".to_string())))
         );
     }
 
