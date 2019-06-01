@@ -13,9 +13,12 @@
 // limitations under the License.
 
 use arena::Arena;
-use std::cell::RefCell;
+use read::ParseResult::ParseError;
+use std::cell::{Ref, RefCell};
+use std::collections::vec_deque::VecDeque;
 use std::fmt;
-use std::io::ErrorKind;
+use std::io::{BufReader, ErrorKind, Read};
+use std::rc::Rc;
 use util::check_len;
 use value::{pretty_print, Value};
 
@@ -31,43 +34,152 @@ trait Stream: std::io::Read + std::io::Write {
 
     fn peek_u8(&mut self) -> std::io::Result<u8>;
     fn peek_char(&mut self) -> std::io::Result<char>;
+}
 
-    fn read_u8(&mut self) -> std::io::Result<u8> {
-        let mut buf = [0 as u8; 1];
-        let len = self.read(&mut buf)?;
-        if len == 0 {
-            Err(std::io::Error::from(ErrorKind::UnexpectedEof))
+fn read_u8(reader: &mut impl Read) -> std::io::Result<u8> {
+    let mut byte_buf = [0 as u8];
+    let num_read = reader.read(&mut byte_buf)?;
+    if num_read == 0 {
+        Err(std::io::Error::from(ErrorKind::UnexpectedEof))
+    } else {
+        Ok(byte_buf[0])
+    }
+}
+
+fn read_char(reader: &mut impl Read) -> std::io::Result<char> {
+    let mut buf = [0 as u8; 4];
+    for i in 0..4 {
+        let maybe_u8 = read_u8(reader);
+        match maybe_u8 {
+            Err(e) => {
+                if i != 0 && e.kind() == ErrorKind::UnexpectedEof {
+                    return Err(std::io::Error::new(
+                        ErrorKind::InvalidData,
+                        "stream does not contain valid UTF-8",
+                    ));
+                } else {
+                    return Err(e);
+                }
+            }
+            Ok(b) => buf[i] = b,
+        }
+        let uchar = std::char::from_u32(u32::from_le_bytes(buf.into()));
+        if let Some(c) = uchar {
+            return Ok(c);
+        }
+    }
+    return Err(std::io::Error::new(
+        ErrorKind::InvalidData,
+        "stream does not contain valid UTF-8",
+    ));
+}
+
+#[derive(Debug)]
+struct RcFile {
+    file: Rc<RefCell<std::fs::File>>,
+}
+
+impl RcFile {
+    fn new(f: std::fs::File) -> Self {
+        Self {
+            file: Rc::new(RefCell::new(f)),
+        }
+    }
+}
+
+impl std::io::Read for RcFile {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.file.borrow_mut().read(buf)
+    }
+}
+
+impl std::io::Write for RcFile {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.file.borrow_mut().write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.file.borrow_mut().flush()
+    }
+}
+
+impl Clone for RcFile {
+    fn clone(&self) -> Self {
+        Self {
+            file: self.file.clone(),
+        }
+    }
+}
+
+struct PeroxideFile {
+    file: RcFile,
+    reader: std::io::BufReader<RcFile>,
+    writer: std::io::BufWriter<RcFile>,
+    peek: RefCell<VecDeque<u8>>,
+}
+
+impl PeroxideFile {
+    fn new(file: std::fs::File) -> Self {
+        let rc_file = RcFile::new(file);
+        Self {
+            file: rc_file.clone(),
+            reader: std::io::BufReader::new(rc_file.clone()),
+            writer: std::io::BufWriter::new(rc_file.clone()),
+            peek: RefCell::new(VecDeque::new()),
+        }
+    }
+}
+
+impl std::io::Read for PeroxideFile {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let mut idx = 0;
+        while idx < buf.len() {
+            if let Some(b) = self.peek.borrow_mut().pop_front() {
+                buf[idx] = b;
+            } else {
+                break;
+            }
+            idx += 1;
+        }
+        self.reader.read(&mut buf[idx..]).map(|n_read| n_read + idx)
+    }
+}
+
+impl std::io::Write for PeroxideFile {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.writer.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.writer.flush()
+    }
+}
+
+impl Stream for PeroxideFile {
+    fn close(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn u8_ready(&mut self) -> std::io::Result<bool> {
+        Ok(true) // TODO fix
+    }
+
+    fn char_ready(&mut self) -> std::io::Result<bool> {
+        Ok(true) // TODO fix
+    }
+
+    fn peek_u8(&mut self) -> std::io::Result<u8> {
+        if let Some(c) = self.peek.borrow_mut().pop_front() {
+            return Ok(c);
         } else {
-            Ok(buf[0])
+            let c = read_u8(&mut self.reader)?;
+            self.peek.borrow_mut().push_back(c);
+            Ok(c)
         }
     }
 
-    fn read_char(&mut self) -> std::io::Result<char> {
-        let mut buf = [0 as u8; 4];
-        for i in 0..4 {
-            let maybe_u8 = self.read_u8();
-            match maybe_u8 {
-                Err(e) => {
-                    if i != 0 && e.kind() == ErrorKind::UnexpectedEof {
-                        return Err(std::io::Error::new(
-                            ErrorKind::InvalidData,
-                            "stream does not contain valid UTF-8",
-                        ));
-                    } else {
-                        return Err(e);
-                    }
-                }
-                Ok(b) => buf[i] = b,
-            }
-            let uchar = std::char::from_u32(u32::from_le_bytes(buf.into()));
-            if let Some(c) = uchar {
-                return Ok(c);
-            }
-        }
-        return Err(std::io::Error::new(
-            ErrorKind::InvalidData,
-            "stream does not contain valid UTF-8",
-        ));
+    fn peek_char(&mut self) -> std::io::Result<char> {
+        unimplemented!()
     }
 }
 
@@ -131,7 +243,7 @@ impl fmt::Debug for Port {
 
 impl Clone for Port {
     fn clone(&self) -> Self {
-        panic!("Trying to clone Ports.");
+        panic!("Trying to clone a Port.");
     }
 }
 
