@@ -134,8 +134,8 @@ impl Value {
                 free_variables,
                 expr,
             }) => format!(
-                "#syntactic-closure[{} {:?} {}]",
-                closed_env.borrow(),
+                "#sc[{} {:?} {}]",
+                pretty_print(arena, *closed_env.borrow()),
                 free_variables,
                 arena.get(*expr).pretty_print(arena)
             ),

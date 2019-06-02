@@ -104,10 +104,11 @@ macro_rules! simple_primitive {
     };
 }
 
-static PRIMITIVES: [Primitive; 62] = [
+static PRIMITIVES: [Primitive; 63] = [
     simple_primitive!("make-syntactic-closure", make_syntactic_closure),
     simple_primitive!("identifier=?", identifier_equal_p),
     simple_primitive!("identifier?", identifier_p),
+    simple_primitive!("syntactic-closure?", syntactic_closure_p),
     simple_primitive!(
         "syntactic-closure-environment",
         syntactic_closure_environment

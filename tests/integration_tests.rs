@@ -462,3 +462,21 @@ fn call_cc() {
         .unwrap()
     );
 }
+
+#[test]
+fn do_macro() {
+    let arena = Arena::default();
+    let mut vm_state = VmState::new(&arena);
+    initialize(&arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
+    assert_eq!(
+        Value::Integer(5),
+        execute(
+            &arena,
+            &mut vm_state,
+            "(do ((i 0 (+ i 1)))
+       ((= i 5) i)
+     (display i))"
+        )
+        .unwrap()
+    );
+}

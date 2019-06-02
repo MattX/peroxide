@@ -317,7 +317,12 @@ fn parse_split_lambda(
                     value,
                 })))
             } else {
-                panic!("wat");
+                panic!(
+                    "Expected {} in {:?} to be a variable, was {:?}.",
+                    define_data.target.show(arena),
+                    inner_env,
+                    get_in_env(arena, &inner_env, &define_data.target)
+                );
             }
         })
         .collect::<Result<Vec<SyntaxElement>, String>>()?;
@@ -349,17 +354,23 @@ fn parse_set(
     rest: &[usize],
 ) -> Result<SyntaxElement, String> {
     check_len(rest, Some(2), Some(2))?;
-    if let Value::Symbol(name) = arena.get(rest[0]) {
+    if let Some(dt) = get_define_target(arena, rest[0]) {
         let value = parse(arena, vms, env, af_info, rest[1])?;
-        match env.borrow().get(name) {
+        match get_in_env(arena, env, &dt) {
             Some(EnvironmentValue::Variable(v)) => Ok(SyntaxElement::Set(Box::new(Set {
                 altitude: v.altitude,
                 depth: af_info.borrow().altitude - v.altitude,
                 index: v.index,
                 value,
             }))),
-            Some(_) => Err(format!("Trying to set non-variable `{}`", name)),
-            None => Err(format!("Trying to set undefined value `{}`", name)),
+            Some(_) => Err(format!(
+                "Trying to set non-variable `{}`",
+                dt.get_name(arena)
+            )),
+            None => Err(format!(
+                "Trying to set undefined value `{}`",
+                dt.get_name(arena)
+            )),
         }
     } else {
         Err(format!(
@@ -422,6 +433,13 @@ impl DefineTarget {
                 let symbol = arena.try_get_symbol(sc.expr).unwrap();
                 symbol.into()
             }
+        }
+    }
+
+    fn show(&self, arena: &Arena) -> String {
+        match self {
+            DefineTarget::Bare(s) => format!("Bare({})", s),
+            DefineTarget::SyntacticClosure(v) => format!("Sc({})", pretty_print(arena, *v)),
         }
     }
 }
@@ -844,7 +862,8 @@ fn get_in_env(arena: &Arena, env: &RcEnv, target: &DefineTarget) -> Option<Envir
         DefineTarget::SyntacticClosure(val) => {
             let sc = arena.try_get_syntactic_closure(*val).unwrap();
             let name = arena.try_get_symbol(sc.expr).unwrap();
-            env.borrow().get(name)
+            let closed_env = arena.try_get_environment(*sc.closed_env.borrow()).unwrap();
+            closed_env.borrow().get(name)
         }
     }
 }

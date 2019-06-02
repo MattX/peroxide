@@ -500,6 +500,18 @@
 (define (find pred ls)
   (cond ((find-tail pred ls) => car) (else #f)))
 
+(define (strip-syntactic-closures expr)
+  (if (syntactic-closure? expr)
+      (strip-syntactic-closures (syntactic-closure-expression expr))
+      expr))
+
+(define (identifier->symbol id)
+  (let ((stripped (strip-syntactic-closures id)))
+     (if (symbol? id)
+         id
+         (error "Not an identifier" id))))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; syntax-rules
 
@@ -514,7 +526,7 @@
         (_cons (rename 'cons))          (_pair? (rename 'pair?))
         (_null? (rename 'null?))        (_expr (rename 'expr))
         (_rename (rename 'rename))      (_compare (rename 'compare))
-        (_quote (rename 'syntax-quote)) (_apply (rename 'apply))
+        (_quote (rename 'quote))        (_apply (rename 'apply))
         (_append (rename 'append))      (_map (rename 'map))
         (_vector? (rename 'vector?))    (_list? (rename 'list?))
         (_len (rename 'len))            (_length (rename 'length))
@@ -581,10 +593,8 @@
                       (new-vars (all-vars (car p) (+ dim 1)))
                       (ls-vars (map (lambda (x)
                                       (gensym
-                                       (string-append
                                         (symbol->string
-                                         (identifier->symbol (car x)))
-                                        "-ls")))
+                                         (identifier->symbol (car x)))))
                                     new-vars))
                       (once
                        (lp (car p) (list _car w) (+ dim 1) '()
