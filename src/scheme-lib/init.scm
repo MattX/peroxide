@@ -205,6 +205,13 @@
           (every proc (cdr l))
           #f)))
 
+(define (any proc l)
+  (if (null? l)
+      #f
+      (if (proc (car (l)))
+          #t
+          (any proc (cdr l)))))
+
 (define (list->vector l)
   (define (list->vector l v k)
     (if (null? l)
@@ -485,13 +492,19 @@
 (define-auxiliary-syntax unquote)
 (define-auxiliary-syntax unquote-splicing)
 
+;;;
+
+(define (find-tail pred ls)
+  (and (pair? ls) (if (pred (car ls)) ls (find-tail pred (cdr ls)))))
+
+(define (find pred ls)
+  (cond ((find-tail pred ls) => car) (else #f)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; syntax-rules
 
 (define (syntax-rules-transformer expr rename compare)
   (let ((ellipsis-specified? (identifier? (cadr expr)))
-        (count 0)
         (_er-macro-transformer (rename 'er-macro-transformer))
         (_lambda (rename 'lambda))      (_let (rename 'let))
         (_begin (rename 'begin))        (_if (rename 'if))
@@ -509,14 +522,10 @@
         (_ls (rename 'ls)) (_res (rename 'res)) (_i (rename 'i))
         (_reverse (rename 'reverse))
         (_vector->list (rename 'vector->list))
-        (_list->vector (rename 'list->vector))
-        (_cons3 (rename 'cons-source)))
+        (_list->vector (rename 'list->vector)))
     (define ellipsis (if ellipsis-specified? (cadr expr) (rename '...)))
     (define lits (if ellipsis-specified? (car (cddr expr)) (cadr expr)))
     (define forms (if ellipsis-specified? (cdr (cddr expr)) (cddr expr)))
-    (define (next-symbol s)
-      (set! count (+ count 1))
-      (rename (string->symbol (string-append s (%number->string count)))))
     (define (expand-pattern pat tmpl)
       (let lp ((p (cdr pat))
                (x (list _cdr _expr))
@@ -524,7 +533,7 @@
                (vars '())
                (k (lambda (vars)
                     (list _cons (expand-template tmpl vars) #f))))
-        (let ((v (next-symbol "v.")))
+        (let ((v (gensym "v.")))
           (list
            _let (list (list v x))
            (cond
@@ -542,8 +551,8 @@
                       (cddr p))
                  (error "multiple ellipses" p))
                 (else
-                 (let ((len (length* (cdr (cdr p))))
-                       (_lp (next-symbol "lp.")))
+                 (let ((len (length (cdr (cdr p))))
+                       (_lp (gensym "lp.")))
                    `(,_let ((,_len (,_length ,v)))
                       (,_and (,_>= ,_len ,len)
                              (,_let ,_lp ((,_ls ,v)
@@ -560,19 +569,18 @@
                                              k)
                                         (,_lp (,_cdr ,_ls)
                                               (,_- ,_i 1)
-                                              (,_cons3 (,_car ,_ls)
-                                                       ,_res
-                                                       ,_ls))))))))))
+                                              (,_cons (,_car ,_ls)
+                                                       ,_res))))))))))
               ((identifier? (car p))
                (list _and (list _list? v)
                      (list _let (list (list (car p) v))
                            (k (cons (cons (car p) (+ 1 dim)) vars)))))
               (else
-               (let* ((w (next-symbol "w."))
-                      (_lp (next-symbol "lp."))
+               (let* ((w (gensym "w."))
+                      (_lp (gensym "lp."))
                       (new-vars (all-vars (car p) (+ dim 1)))
                       (ls-vars (map (lambda (x)
-                                      (next-symbol
+                                      (gensym
                                        (string-append
                                         (symbol->string
                                          (identifier->symbol (car x)))
@@ -692,7 +700,7 @@
                   (if (null? (ellipsis-tail t))
                       many ;; shortcut
                       (list _append many (lp (ellipsis-tail t) dim))))))))
-           (else (list _cons3 (lp (car t) dim) (lp (cdr t) dim) (list _quote t)))))
+           (else (list _cons (lp (car t) dim) (lp (cdr t) dim)))))
          ((vector? t) (list _list->vector (lp (vector->list t) dim)))
          ((null? t) (list _quote '()))
          (else t))))

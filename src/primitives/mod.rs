@@ -71,8 +71,6 @@ use std::fmt::{Debug, Error, Formatter};
 use arena::Arena;
 use environment::{ActivationFrameInfo, RcEnv};
 use primitives::char::*;
-pub use primitives::extensions::SyntacticClosure;
-use primitives::extensions::*;
 use primitives::numeric::*;
 use primitives::object::*;
 use primitives::pair::*;
@@ -80,19 +78,21 @@ pub use primitives::port::Port;
 use primitives::port::*;
 use primitives::string::*;
 use primitives::symbol::*;
+pub use primitives::syntactic_closure::SyntacticClosure;
+use primitives::syntactic_closure::*;
 use primitives::vector::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 use value::Value;
 
 mod char;
-mod extensions;
 mod numeric;
 mod object;
 mod pair;
 mod port;
 mod string;
 mod symbol;
+mod syntactic_closure;
 mod vector;
 
 macro_rules! simple_primitive {
@@ -104,10 +104,20 @@ macro_rules! simple_primitive {
     };
 }
 
-static PRIMITIVES: [Primitive; 58] = [
+static PRIMITIVES: [Primitive; 62] = [
     simple_primitive!("make-syntactic-closure", make_syntactic_closure),
     simple_primitive!("identifier=?", identifier_equal_p),
     simple_primitive!("identifier?", identifier_p),
+    simple_primitive!(
+        "syntactic-closure-environment",
+        syntactic_closure_environment
+    ),
+    simple_primitive!(
+        "syntactic-closure-free-variables",
+        syntactic_closure_free_variables
+    ),
+    simple_primitive!("syntactic-closure-expression", syntactic_closure_expression),
+    simple_primitive!("gensym", gensym),
     simple_primitive!("eq?", eq_p),
     simple_primitive!("eqv?", eqv_p),
     simple_primitive!("equal?", equal_p),

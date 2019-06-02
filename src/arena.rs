@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
 use environment::{ActivationFrame, RcEnv};
@@ -24,6 +24,7 @@ use value::Value;
 pub struct Arena {
     values: Gc<Value>,
     symbol_map: RefCell<HashMap<String, usize>>,
+    gensym_counter: Cell<usize>,
     pub undefined: usize,
     pub unspecific: usize,
     pub eof: usize,
@@ -68,6 +69,17 @@ impl Arena {
             af
         } else {
             panic!("Value is not an activation frame.");
+        }
+    }
+
+    pub fn gensym(&self, base: Option<&str>) -> usize {
+        let base_str = base.map(|s| format!("{}-", s)).unwrap_or_else(|| "".into());
+        loop {
+            let candidate = format!("--gs-{}{}", base_str, self.gensym_counter.get());
+            self.gensym_counter.set(self.gensym_counter.get() + 1);
+            if !self.symbol_map.borrow().contains_key(&candidate) {
+                return self.insert(Value::Symbol(candidate));
+            }
         }
     }
 
@@ -151,6 +163,7 @@ impl Default for Arena {
         Arena {
             values,
             symbol_map: RefCell::new(HashMap::new()),
+            gensym_counter: Cell::new(0),
             undefined,
             unspecific,
             eof,

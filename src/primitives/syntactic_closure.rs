@@ -18,7 +18,7 @@ use environment::{Environment, EnvironmentValue, RcEnv};
 use std::cell::RefCell;
 use std::rc::Rc;
 use util::check_len;
-use value::{pretty_print, vec_from_list, Value};
+use value::{list_from_vec, pretty_print, vec_from_list, Value};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SyntacticClosure {
@@ -160,4 +160,55 @@ fn is_identifier(arena: &Arena, value: usize) -> bool {
 pub fn identifier_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(1), Some(1))?;
     Ok(arena.insert(Value::Boolean(is_identifier(arena, args[0]))))
+}
+
+pub fn syntactic_closure_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    Ok(arena.insert(Value::Boolean(
+        arena.try_get_syntactic_closure(args[0]).is_some(),
+    )))
+}
+
+pub fn syntactic_closure_environment(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    let synclos = arena
+        .try_get_syntactic_closure(args[0])
+        .ok_or_else(|| format!("not a syntactic closure: {}", pretty_print(arena, args[0])))?;
+    Ok(synclos.closed_env.borrow().clone())
+}
+
+pub fn syntactic_closure_free_variables(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    let synclos = arena
+        .try_get_syntactic_closure(args[0])
+        .ok_or_else(|| format!("not a syntactic closure: {}", pretty_print(arena, args[0])))?;
+    let symbols = synclos
+        .free_variables
+        .iter()
+        .map(|s| arena.insert(Value::Symbol(s.clone())));
+    let sv: Vec<usize> = symbols.collect();
+    Ok(list_from_vec(arena, &sv))
+}
+
+pub fn syntactic_closure_expression(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    let synclos = arena
+        .try_get_syntactic_closure(args[0])
+        .ok_or_else(|| format!("not a syntactic closure: {}", pretty_print(arena, args[0])))?;
+    Ok(synclos.expr)
+}
+
+pub fn gensym(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(0), Some(1))?;
+    let base_name = if let Some(v) = args.get(0) {
+        Some(
+            arena
+                .try_get_string(*v)
+                .map(|s| s.borrow().clone())
+                .ok_or_else(|| format!("not a string: {}", pretty_print(arena, *v)))?,
+        )
+    } else {
+        None
+    };
+    Ok(arena.gensym(base_name.as_ref().map(|x| &**x)))
 }
