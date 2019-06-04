@@ -63,6 +63,47 @@ pub fn char_vec_to_str(v: &[char]) -> String {
     v.iter().collect()
 }
 
+pub fn escape_char(c: char) -> String {
+    match c {
+        '\x07' => "#\\alarm".into(),
+        '\x08' => "#\\backspace".into(),
+        '\x7F' => "#\\delete".into(),
+        '\x1B' => "#\\escape".into(),
+        '\n' => "#\\newline".into(),
+        '\0' => "#\\null".into(),
+        '\r' => "#\\return".into(),
+        ' ' => "#\\space".into(),
+        '\t' => "#\\tab".into(),
+        c => c.to_string(),
+    }
+}
+
+pub fn escape_string(s: &str) -> String {
+    let mut output = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\x07' => output.push_str("\\a"),
+            '\x08' => output.push_str("\\b"),
+            '\t' => output.push_str("\\t"),
+            '\n' => output.push_str("\\n"),
+            '\r' => output.push_str("\\r"),
+            '\"' => output.push_str("\\\""),
+            '\\' => output.push_str("\\\\"),
+            '|' => output.push_str("\\|"),
+            _ => output.push(c),
+        }
+    }
+    output
+}
+
+pub fn escape_symbol(s: &str) -> String {
+    if s.is_ascii() {
+        s.into()
+    } else {
+        format!("|{}|", s)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -104,7 +104,7 @@ macro_rules! simple_primitive {
     };
 }
 
-static PRIMITIVES: [Primitive; 63] = [
+static PRIMITIVES: [Primitive; 68] = [
     simple_primitive!("make-syntactic-closure", make_syntactic_closure),
     simple_primitive!("identifier=?", identifier_equal_p),
     simple_primitive!("identifier?", identifier_p),
@@ -172,6 +172,11 @@ static PRIMITIVES: [Primitive; 63] = [
     simple_primitive!("output-port?", output_port_p),
     simple_primitive!("textual-port?", textual_port_p),
     simple_primitive!("binary-port?", binary_port_p),
+    simple_primitive!("close-port", close_port),
+    simple_primitive!("port-open?", port_open_p),
+    simple_primitive!("open-input-file", open_input_file),
+    simple_primitive!("eof-object", eof_object),
+    simple_primitive!("read-char", read_char),
     Primitive {
         name: "apply",
         implementation: PrimitiveImplementation::Apply,

@@ -13,31 +13,37 @@
 // limitations under the License.
 
 use arena::Arena;
-use std::cell::RefCell;
-use std::collections::vec_deque::VecDeque;
+use primitives::port::Port::TextInput;
+use std::cell::{RefCell, RefMut};
 use std::fmt;
 use std::io::{ErrorKind, Read};
-use std::rc::Rc;
 use util::check_len;
 use value::{pretty_print, Value};
 
-// TODO this whole file is a 1/4-finished mess.
-
-// All ports are Read+Write to get around the fact that Rust can't convert a Read+Write to a Read,
-// which makes a lot of stuff annoying. This is generally fine as Files are also ReadWrite
-// regardless of how they are opened. Other streams can just throw an error when read if they are
-// Write or vice versa.
-trait Stream: std::io::Read + std::io::Write {
+pub trait TextInputPort {
+    fn ready(&mut self) -> std::io::Result<bool>;
+    fn peek(&mut self) -> std::io::Result<char>;
+    fn read_one(&mut self) -> std::io::Result<char>;
+    fn read_to_string(&mut self, n: usize) -> std::io::Result<String>;
     fn close(&mut self) -> std::io::Result<()>;
-
-    fn u8_ready(&mut self) -> std::io::Result<bool>;
-    fn char_ready(&mut self) -> std::io::Result<bool>;
-
-    fn peek_u8(&mut self) -> std::io::Result<u8>;
-    fn peek_char(&mut self) -> std::io::Result<char>;
+    fn is_closed(&self) -> bool;
 }
 
-fn read_u8(reader: &mut impl Read) -> std::io::Result<u8> {
+pub trait BinaryInputPort {
+    fn ready(&mut self) -> std::io::Result<bool>;
+    fn peek(&mut self) -> std::io::Result<u8>;
+    fn read_one(&mut self) -> std::io::Result<u8>;
+    fn read_buf(&mut self, buf: &mut [u8]) -> std::io::Result<usize>;
+    fn close(&mut self) -> std::io::Result<()>;
+    fn is_closed(&self) -> bool;
+}
+
+pub trait OutputPort: std::io::Write {
+    fn close(&mut self) -> std::io::Result<()>;
+    fn is_closed(&self) -> bool;
+}
+
+fn read_u8_helper(reader: &mut impl Read) -> std::io::Result<u8> {
     let mut byte_buf = [0 as u8];
     let num_read = reader.read(&mut byte_buf)?;
     if num_read == 0 {
@@ -47,10 +53,10 @@ fn read_u8(reader: &mut impl Read) -> std::io::Result<u8> {
     }
 }
 
-fn read_char(reader: &mut impl Read) -> std::io::Result<char> {
+fn read_char_helper(reader: &mut impl Read) -> std::io::Result<char> {
     let mut buf = [0 as u8; 4];
     for i in 0..4 {
-        let maybe_u8 = read_u8(reader);
+        let maybe_u8 = read_u8_helper(reader);
         match maybe_u8 {
             Err(e) => {
                 if i != 0 && e.kind() == ErrorKind::UnexpectedEof {
@@ -75,170 +81,85 @@ fn read_char(reader: &mut impl Read) -> std::io::Result<char> {
     ));
 }
 
-#[derive(Debug)]
-struct RcFile {
-    file: Rc<RefCell<std::fs::File>>,
+struct FileTextInputPort {
+    reader: Option<std::io::BufReader<std::fs::File>>,
+    peek_buffer: Option<char>,
 }
 
-impl RcFile {
-    fn new(f: std::fs::File) -> Self {
-        Self {
-            file: Rc::new(RefCell::new(f)),
-        }
-    }
-}
-
-impl std::io::Read for RcFile {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        self.file.borrow_mut().read(buf)
+impl FileTextInputPort {
+    fn new(name: &std::path::Path) -> std::io::Result<Self> {
+        let file = std::fs::File::open(name)?;
+        Ok(Self {
+            reader: Some(std::io::BufReader::new(file)),
+            peek_buffer: None,
+        })
     }
 }
 
-impl std::io::Write for RcFile {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.file.borrow_mut().write(buf)
+impl TextInputPort for FileTextInputPort {
+    fn ready(&mut self) -> std::io::Result<bool> {
+        Ok(true)
     }
 
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.file.borrow_mut().flush()
-    }
-}
-
-impl Clone for RcFile {
-    fn clone(&self) -> Self {
-        Self {
-            file: self.file.clone(),
-        }
-    }
-}
-
-struct PeroxideFile {
-    file: RcFile,
-    reader: std::io::BufReader<RcFile>,
-    writer: std::io::BufWriter<RcFile>,
-    peek: RefCell<VecDeque<u8>>,
-}
-
-impl PeroxideFile {
-    fn new(file: std::fs::File) -> Self {
-        let rc_file = RcFile::new(file);
-        Self {
-            file: rc_file.clone(),
-            reader: std::io::BufReader::new(rc_file.clone()),
-            writer: std::io::BufWriter::new(rc_file.clone()),
-            peek: RefCell::new(VecDeque::new()),
-        }
-    }
-}
-
-impl std::io::Read for PeroxideFile {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let mut idx = 0;
-        while idx < buf.len() {
-            if let Some(b) = self.peek.borrow_mut().pop_front() {
-                buf[idx] = b;
-            } else {
-                break;
-            }
-            idx += 1;
-        }
-        self.reader.read(&mut buf[idx..]).map(|n_read| n_read + idx)
-    }
-}
-
-impl std::io::Write for PeroxideFile {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.writer.write(buf)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.writer.flush()
-    }
-}
-
-impl Stream for PeroxideFile {
-    fn close(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-
-    fn u8_ready(&mut self) -> std::io::Result<bool> {
-        Ok(true) // TODO fix
-    }
-
-    fn char_ready(&mut self) -> std::io::Result<bool> {
-        Ok(true) // TODO fix
-    }
-
-    fn peek_u8(&mut self) -> std::io::Result<u8> {
-        if let Some(c) = self.peek.borrow_mut().pop_front() {
-            return Ok(c);
+    fn peek(&mut self) -> std::io::Result<char> {
+        if let Some(c) = self.peek_buffer {
+            Ok(c)
         } else {
-            let c = read_u8(&mut self.reader)?;
-            self.peek.borrow_mut().push_back(c);
+            let c = read_char_helper(self.reader.as_mut().unwrap())?;
+            self.peek_buffer = Some(c);
             Ok(c)
         }
     }
 
-    fn peek_char(&mut self) -> std::io::Result<char> {
-        unimplemented!()
-    }
-}
-
-#[derive(Debug)]
-enum PortMode {
-    Read,
-    Write,
-    ReadWrite,
-}
-
-impl PortMode {
-    fn can_read(&self) -> bool {
-        match self {
-            PortMode::Read | PortMode::ReadWrite => true,
-            PortMode::Write => false,
+    fn read_one(&mut self) -> std::io::Result<char> {
+        if let Some(c) = self.peek_buffer {
+            self.peek_buffer = None;
+            Ok(c)
+        } else {
+            read_char_helper(self.reader.as_mut().unwrap())
         }
     }
 
-    fn can_write(&self) -> bool {
-        match self {
-            PortMode::Write | PortMode::ReadWrite => true,
-            PortMode::Read => false,
+    fn read_to_string(&mut self, n: usize) -> std::io::Result<String> {
+        let mut result = String::with_capacity(n); // We will need at least n, maybe more.
+        let mut n = n;
+        if let Some(c) = self.peek_buffer {
+            self.peek_buffer = None;
+            n -= 1;
+            result.push(c);
         }
+        for _ in 0..n {
+            match read_char_helper(self.reader.as_mut().unwrap()) {
+                Err(e) => {
+                    if e.kind() == ErrorKind::UnexpectedEof {
+                        break;
+                    }
+                }
+                Ok(c) => result.push(c),
+            }
+        }
+        Ok(result)
+    }
+
+    fn close(&mut self) -> std::io::Result<()> {
+        self.reader = None;
+        Ok(())
+    }
+
+    fn is_closed(&self) -> bool {
+        self.reader.is_none()
     }
 }
 
-#[derive(Debug)]
-enum PortType {
-    Text,
-    Binary,
-    TextBinary,
-}
-
-impl PortType {
-    fn is_text(&self) -> bool {
-        match self {
-            PortType::Text | PortType::TextBinary => true,
-            PortType::Binary => false,
-        }
-    }
-
-    fn is_binary(&self) -> bool {
-        match self {
-            PortType::Binary | PortType::TextBinary => true,
-            PortType::Text => false,
-        }
-    }
-}
-
-pub struct Port {
-    stream: RefCell<Option<Box<dyn Stream>>>,
-    mode: PortMode,
-    binary: PortType,
+pub enum Port {
+    BinaryInput(RefCell<Box<dyn BinaryInputPort>>),
+    TextInput(RefCell<Box<dyn TextInputPort>>),
+    Output(RefCell<Box<dyn OutputPort>>),
 }
 
 impl fmt::Debug for Port {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "#<{:?} {:?} port>", self.mode, self.binary)
+        write!(f, "#<port>")
     }
 }
 
@@ -259,35 +180,31 @@ fn is_port(arena: &Arena, arg: usize) -> bool {
 }
 
 fn is_input_port(arena: &Arena, arg: usize) -> bool {
-    arena
-        .try_get_port(arg)
-        .expect("Not a port.")
-        .mode
-        .can_read()
+    match arena.try_get_port(arg).expect("Not a port.") {
+        Port::BinaryInput(_) | Port::TextInput(_) => true,
+        _ => false,
+    }
 }
 
 fn is_output_port(arena: &Arena, arg: usize) -> bool {
-    arena
-        .try_get_port(arg)
-        .expect("Not a port.")
-        .mode
-        .can_write()
+    match arena.try_get_port(arg).expect("Not a port.") {
+        Port::Output(_) => true,
+        _ => false,
+    }
 }
 
 fn is_binary_port(arena: &Arena, arg: usize) -> bool {
-    arena
-        .try_get_port(arg)
-        .expect("Not a port.")
-        .binary
-        .is_binary()
+    match arena.try_get_port(arg).expect("Not a port.") {
+        Port::BinaryInput(_) | Port::Output(_) => true,
+        _ => false,
+    }
 }
 
 fn is_textual_port(arena: &Arena, arg: usize) -> bool {
-    arena
-        .try_get_port(arg)
-        .expect("Not a port.")
-        .binary
-        .is_text()
+    match arena.try_get_port(arg).expect("Not a port.") {
+        Port::TextInput(_) | Port::Output(_) => true,
+        _ => false,
+    }
 }
 
 pub fn port_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
@@ -325,6 +242,85 @@ pub fn close_port(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     let port = arena
         .try_get_port(args[0])
         .ok_or_else(|| format!("Not a port: {}", pretty_print(arena, args[0])))?;
-    port.stream.replace(None);
+    match port {
+        Port::BinaryInput(s) => s.borrow_mut().close(),
+        Port::TextInput(s) => s.borrow_mut().close(),
+        Port::Output(s) => s.borrow_mut().close(),
+    }
+    .map_err(|e| e.to_string())?;
     Ok(arena.unspecific)
+}
+
+pub fn port_open_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    let port = arena
+        .try_get_port(args[0])
+        .ok_or_else(|| format!("Not a port: {}", pretty_print(arena, args[0])))?;
+    let v = match port {
+        Port::BinaryInput(s) => s.borrow().is_closed(),
+        Port::TextInput(s) => s.borrow().is_closed(),
+        Port::Output(s) => s.borrow().is_closed(),
+    };
+    Ok(arena.insert(Value::Boolean(v)))
+}
+
+// TODO: paths don't have to be strings on most OSes. We should let the user specify arbitrary
+//       bytes. The issue is that I don't think Rust really provides a way to convert arbitrary
+//       bytes to a path?
+fn get_path(arena: &Arena, val: usize) -> Option<std::path::PathBuf> {
+    match arena.get(val) {
+        Value::String(s) => Some(std::path::PathBuf::from(s.borrow().clone())),
+        _ => None,
+    }
+}
+
+pub fn open_input_file(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    let path = get_path(arena, args[0])
+        .ok_or_else(|| format!("Not a valid path: {}", pretty_print(arena, args[0])))?;
+    let raw_port = FileTextInputPort::new(&path).map_err(|e| e.to_string())?;
+    let port = Port::TextInput(RefCell::new(Box::new(raw_port)));
+    Ok(arena.insert(Value::Port(Box::new(port))))
+}
+
+pub fn eof_object(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(0), Some(0))?;
+    Ok(arena.eof)
+}
+
+fn get_open_text_input_port(
+    arena: &Arena,
+    val: usize,
+) -> Result<RefMut<Box<(dyn TextInputPort + 'static)>>, String> {
+    if let Port::TextInput(op) = arena
+        .try_get_port(val)
+        .ok_or_else(|| format!("Not a port: {}", pretty_print(arena, val)))?
+    {
+        let mut port = op.borrow_mut();
+        if port.is_closed() {
+            Err(format!("Port is closed: {}", pretty_print(arena, val)))
+        } else {
+            Ok(port)
+        }
+    } else {
+        Err(format!(
+            "Not a text input port: {}",
+            pretty_print(arena, val)
+        ))
+    }
+}
+
+pub fn read_char(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    let mut port = get_open_text_input_port(arena, args[0])?;
+    match port.read_one() {
+        Ok(c) => Ok(arena.insert(Value::Character(c))),
+        Err(e) => {
+            if e.kind() == ErrorKind::UnexpectedEof {
+                Ok(arena.eof)
+            } else {
+                Err(e.to_string())
+            }
+        }
+    }
 }
