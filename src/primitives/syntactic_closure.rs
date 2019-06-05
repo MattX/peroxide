@@ -174,7 +174,7 @@ pub fn syntactic_closure_environment(arena: &Arena, args: &[usize]) -> Result<us
     let synclos = arena
         .try_get_syntactic_closure(args[0])
         .ok_or_else(|| format!("not a syntactic closure: {}", pretty_print(arena, args[0])))?;
-    Ok(synclos.closed_env.borrow().clone())
+    Ok(*synclos.closed_env.borrow())
 }
 
 pub fn syntactic_closure_free_variables(arena: &Arena, args: &[usize]) -> Result<usize, String> {

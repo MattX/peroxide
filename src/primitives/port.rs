@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use arena::Arena;
-use primitives::port::Port::TextInput;
 use std::cell::{RefCell, RefMut};
+use std::convert::TryFrom;
 use std::fmt;
 use std::io::{ErrorKind, Read};
+
+use arena::Arena;
+use gc;
 use util::check_len;
 use value::{pretty_print, Value};
 
@@ -24,7 +26,7 @@ pub trait TextInputPort {
     fn ready(&mut self) -> std::io::Result<bool>;
     fn peek(&mut self) -> std::io::Result<char>;
     fn read_one(&mut self) -> std::io::Result<char>;
-    fn read_to_string(&mut self, n: usize) -> std::io::Result<String>;
+    fn read_string(&mut self, n: usize) -> std::io::Result<String>;
     fn close(&mut self) -> std::io::Result<()>;
     fn is_closed(&self) -> bool;
 }
@@ -70,15 +72,15 @@ fn read_char_helper(reader: &mut impl Read) -> std::io::Result<char> {
             }
             Ok(b) => buf[i] = b,
         }
-        let uchar = std::char::from_u32(u32::from_le_bytes(buf.into()));
+        let uchar = std::char::from_u32(u32::from_le_bytes(buf));
         if let Some(c) = uchar {
             return Ok(c);
         }
     }
-    return Err(std::io::Error::new(
+    Err(std::io::Error::new(
         ErrorKind::InvalidData,
         "stream does not contain valid UTF-8",
-    ));
+    ))
 }
 
 struct FileTextInputPort {
@@ -120,7 +122,7 @@ impl TextInputPort for FileTextInputPort {
         }
     }
 
-    fn read_to_string(&mut self, n: usize) -> std::io::Result<String> {
+    fn read_string(&mut self, n: usize) -> std::io::Result<String> {
         let mut result = String::with_capacity(n); // We will need at least n, maybe more.
         let mut n = n;
         if let Some(c) = self.peek_buffer {
@@ -138,7 +140,11 @@ impl TextInputPort for FileTextInputPort {
                 Ok(c) => result.push(c),
             }
         }
-        Ok(result)
+        if n != 0 && result.is_empty() {
+            Err(std::io::Error::from(ErrorKind::UnexpectedEof))
+        } else {
+            Ok(result)
+        }
     }
 
     fn close(&mut self) -> std::io::Result<()> {
@@ -173,6 +179,10 @@ impl PartialEq for Port {
     fn eq(&self, _other: &Self) -> bool {
         panic!("Trying to compare Ports.");
     }
+}
+
+impl gc::Inventory for Port {
+    fn inventory(&self, _v: &mut gc::PushOnlyVec<usize>) {}
 }
 
 fn is_port(arena: &Arena, arg: usize) -> bool {
@@ -288,6 +298,11 @@ pub fn eof_object(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     Ok(arena.eof)
 }
 
+pub fn eof_object_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    Ok(arena.insert(Value::Boolean(args[0] == arena.eof)))
+}
+
 fn get_open_text_input_port(
     arena: &Arena,
     val: usize,
@@ -315,6 +330,84 @@ pub fn read_char(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     let mut port = get_open_text_input_port(arena, args[0])?;
     match port.read_one() {
         Ok(c) => Ok(arena.insert(Value::Character(c))),
+        Err(e) => {
+            if e.kind() == ErrorKind::UnexpectedEof {
+                Ok(arena.eof)
+            } else {
+                Err(e.to_string())
+            }
+        }
+    }
+}
+
+pub fn peek_char(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    let mut port = get_open_text_input_port(arena, args[0])?;
+    match port.peek() {
+        Ok(c) => Ok(arena.insert(Value::Character(c))),
+        Err(e) => {
+            if e.kind() == ErrorKind::UnexpectedEof {
+                Ok(arena.eof)
+            } else {
+                Err(e.to_string())
+            }
+        }
+    }
+}
+
+pub fn read_line(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    let mut port = get_open_text_input_port(arena, args[0])?;
+    let mut result = String::new();
+    loop {
+        match port.read_one() {
+            Ok('\n') => return Ok(arena.insert(Value::String(RefCell::new(result)))),
+            Ok('\r') => {
+                if let Ok('\n') = port.peek() {
+                    port.read_one().unwrap();
+                }
+                return Ok(arena.insert(Value::String(RefCell::new(result))));
+            }
+            Ok(c) => result.push(c),
+            Err(e) => {
+                if e.kind() == ErrorKind::UnexpectedEof {
+                    if result.is_empty() {
+                        return Ok(arena.eof);
+                    } else {
+                        return Ok(arena.insert(Value::String(RefCell::new(result))));
+                    }
+                } else {
+                    return Err(e.to_string());
+                }
+            }
+        }
+    }
+}
+
+pub fn char_ready_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    let mut port = get_open_text_input_port(arena, args[0])?;
+    match port.ready() {
+        Ok(ready) => Ok(arena.insert(Value::Boolean(ready))),
+        Err(e) => {
+            if e.kind() == ErrorKind::UnexpectedEof {
+                Ok(arena.t)
+            } else {
+                Err(e.to_string())
+            }
+        }
+    }
+}
+
+pub fn read_string(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(2), Some(2))?;
+    let len = arena
+        .try_get_integer(args[0])
+        .ok_or_else(|| format!("Not an integer: {}", pretty_print(arena, args[0])))?;
+    let len = usize::try_from(len).map_err(|e| format!("Not a valid index: {}: {}", len, e))?;
+    let mut port = get_open_text_input_port(arena, args[1])?;
+    match port.read_string(len) {
+        Ok(s) => Ok(arena.insert(Value::String(RefCell::new(s)))),
         Err(e) => {
             if e.kind() == ErrorKind::UnexpectedEof {
                 Ok(arena.eof)

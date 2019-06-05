@@ -119,6 +119,9 @@ impl gc::Inventory for Value {
                 v.push(sc.expr);
                 v.push(*sc.closed_env.borrow());
             }
+            Value::Port(p) => {
+                p.inventory(v);
+            }
             _ => (),
         }
     }
