@@ -149,6 +149,25 @@ enum Error {
     Abort(usize),
 }
 
+impl Error {
+    fn map_error<F>(&self, f: F) -> Error
+    where
+        F: FnOnce(usize) -> usize,
+    {
+        match self {
+            Error::Raise(v) => Error::Raise(f(*v)),
+            Error::Abort(v) => Error::Abort(f(*v)),
+        }
+    }
+
+    fn get_value(&self) -> usize {
+        match self {
+            Error::Raise(v) => *v,
+            Error::Abort(v) => *v,
+        }
+    }
+}
+
 fn raise_string(arena: &Arena, error: String) -> Error {
     Error::Raise(arena.insert(Value::String(RefCell::new(error))))
 }
@@ -171,8 +190,34 @@ pub fn run(arena: &Arena, code: &mut Code, pc: usize, env: usize) -> Result<usiz
                     break;
                 }
             }
-            Err(Error::Abort(v)) => return Err(v),
-            Err(Error::Raise(v)) => return Err(v),
+            Err(e) => {
+                let annotated_e = error_stack(arena, &vm, e);
+                match annotated_e {
+                    Error::Abort(v) => return Err(v),
+                    Error::Raise(v) => {
+                        let handler = arena.get_activation_frame(vm.global_env).borrow().values[0];
+                        println!("Error handler: {}", pretty_print(arena, handler));
+                        match arena.get(handler) {
+                            Value::Boolean(false) => return Err(v),
+                            Value::Lambda { .. } => {
+                                let mut frame = ActivationFrame {
+                                    parent: None,
+                                    values: vec![v],
+                                };
+                                vm.fun = handler;
+                                vm.value =
+                                    arena.insert(Value::ActivationFrame(RefCell::new(frame)));
+                                invoke(arena, &mut vm, false).map_err(|e| e.get_value())?;
+                                vm.pc += 1;
+                            }
+                            _ => {
+                                return Err(arena
+                                    .insert(Value::String(RefCell::new("Invalid handler".into()))))
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
     Ok(vm.value)
@@ -206,12 +251,9 @@ fn run_one(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
             if vm.value == arena.undefined {
                 return Err(raise_string(
                     arena,
-                    error_stack(
-                        vm,
-                        format!(
-                            "Variable used before definition: {}",
-                            resolve_variable(vm.code, vm.pc, 0, index)
-                        ),
+                    format!(
+                        "Variable used before definition: {}",
+                        resolve_variable(vm.code, vm.pc, 0, index)
                     ),
                 ));
             }
@@ -234,12 +276,9 @@ fn run_one(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                 let current_depth = frame.depth(arena);
                 return Err(raise_string(
                     arena,
-                    error_stack(
-                        vm,
-                        format!(
-                            "Variable used before definition: {}",
-                            resolve_variable(vm.code, vm.pc, current_depth - depth, index)
-                        ),
+                    format!(
+                        "Variable used before definition: {}",
+                        resolve_variable(vm.code, vm.pc, current_depth - depth, index)
                     ),
                 ));
             }
@@ -249,21 +288,15 @@ fn run_one(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
             if dotted && actual_arity < arity {
                 return Err(raise_string(
                     arena,
-                    error_stack(
-                        vm,
-                        format!(
-                            "Expected at least {} arguments, got {}.",
-                            arity, actual_arity
-                        ),
+                    format!(
+                        "Expected at least {} arguments, got {}.",
+                        arity, actual_arity
                     ),
                 ));
             } else if !dotted && actual_arity != arity {
                 return Err(raise_string(
                     arena,
-                    error_stack(
-                        vm,
-                        format!("Expected {} arguments, got {}.", arity, actual_arity),
-                    ),
+                    format!("Expected {} arguments, got {}.", arity, actual_arity),
                 ));
             }
         }
@@ -324,16 +357,13 @@ fn run_one(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                 _ => {
                     return Err(raise_string(
                         arena,
-                        error_stack(
-                            vm,
-                            format!("Cannot pop non-function: {}", pretty_print(arena, fun_r)),
-                        ),
+                        format!("Cannot pop non-function: {}", pretty_print(arena, fun_r)),
                     ));
                 }
             }
         }
         Instruction::FunctionInvoke { tail } => {
-            invoke(arena, vm, tail).map_err(|e| raise_string(arena, error_stack(&vm, e)))?;
+            invoke(arena, vm, tail)?;
         }
         Instruction::CreateFrame(size) => {
             let mut frame = ActivationFrame {
@@ -357,7 +387,7 @@ fn get_activation_frame(arena: &Arena, env: usize) -> &RefCell<ActivationFrame> 
     arena.get_activation_frame(env)
 }
 
-fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), String> {
+fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
     let fun = arena.get(vm.fun);
     match fun {
         Value::Lambda {
@@ -365,7 +395,9 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), String> {
         } => {
             if !tail {
                 if vm.return_stack.len() > MAX_RECURSION_DEPTH {
-                    return Err("Maximum recursion depth exceeded".into());
+                    return Err(Error::Abort(arena.insert(Value::String(RefCell::new(
+                        "Maximum recursion depth exceeded".into(),
+                    )))));
                 }
                 vm.return_stack.push(vm.pc);
             }
@@ -376,16 +408,22 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), String> {
             PrimitiveImplementation::Simple(i) => {
                 let af = arena.get_activation_frame(vm.value);
                 let values = &af.borrow().values;
-                vm.value = i(arena, &values).map_err(|e| format!("In {:?}: {}", p, e))?;
+                vm.value = i(arena, &values)
+                    .map_err(|e| raise_string(arena, format!("In {:?}: {}", p, e)))?;
             }
             PrimitiveImplementation::Apply => apply(arena, vm, tail)?,
             PrimitiveImplementation::CallCC => call_cc(arena, vm)?,
-            _ => return Err(format!("Unimplemented: {}", p.name)),
+            PrimitiveImplementation::Abort => return Err(raise(arena, vm, true)),
+            PrimitiveImplementation::Raise => return Err(raise(arena, vm, false)),
+            _ => return Err(raise_string(arena, format!("Unimplemented: {}", p.name))),
         },
         Value::Continuation(c) => {
             let af = arena.get_activation_frame(vm.value).borrow();
             if af.values.len() != 1 {
-                return Err("Invoking continuation with more than one argument".into());
+                return Err(raise_string(
+                    arena,
+                    "Invoking continuation with more than one argument".into(),
+                ));
             }
             vm.stack = c.stack.clone();
             vm.return_stack = c.return_stack.clone();
@@ -396,23 +434,24 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), String> {
             vm.value = af.values[0];
         }
         _ => {
-            return Err(format!(
-                "Cannot invoke non-function: {}",
-                fun.pretty_print(arena)
+            return Err(raise_string(
+                arena,
+                format!("Cannot invoke non-function: {}", fun.pretty_print(arena)),
             ));
         }
     }
     Ok(())
 }
 
-fn apply(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), String> {
+fn apply(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
     let af = arena.get_activation_frame(vm.value).borrow();
     let n_args = af.values.len();
     if n_args < 2 {
-        return Err("apply: too few arguments.".into());
+        return Err(raise_string(arena, "apply: too few arguments.".into()));
     }
     let mut values = af.values[1..n_args - 1].to_vec();
-    values.extend(vec_from_list(arena, af.values[n_args - 1])?.into_iter());
+    let vec = vec_from_list(arena, af.values[n_args - 1]).map_err(|e| raise_string(arena, e))?;
+    values.extend(vec.into_iter());
     let new_af = ActivationFrame {
         parent: None,
         values,
@@ -422,7 +461,7 @@ fn apply(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), String> {
     invoke(arena, vm, tail)
 }
 
-fn call_cc(arena: &Arena, vm: &mut Vm) -> Result<(), String> {
+fn call_cc(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
     vm.return_stack.push(vm.pc);
     let cont = Continuation {
         stack: vm.stack.clone(),
@@ -432,7 +471,10 @@ fn call_cc(arena: &Arena, vm: &mut Vm) -> Result<(), String> {
     let af = arena.get_activation_frame(vm.value).borrow();
     let n_args = af.values.len();
     if n_args != 1 {
-        return Err("%call/cc: expected a single argument".into());
+        return Err(raise_string(
+            arena,
+            "%call/cc: expected a single argument".into(),
+        ));
     }
     let new_af = ActivationFrame {
         parent: None,
@@ -448,8 +490,20 @@ fn resolve_variable(code: &Code, pc: usize, altitude: usize, index: usize) -> St
     env.get_name(altitude, index)
 }
 
-fn error_stack(vm: &Vm, message: String) -> String {
-    let mut message = message;
+fn raise(arena: &Arena, vm: &Vm, abort: bool) -> Error {
+    let af = arena.get_activation_frame(vm.value).borrow();
+    let n_args = af.values.len();
+    if n_args != 1 {
+        raise_string(arena, "raise: expected a single argument".into())
+    } else if abort {
+        Error::Abort(af.values[0])
+    } else {
+        Error::Raise(af.values[0])
+    }
+}
+
+fn error_stack(arena: &Arena, vm: &Vm, error: Error) -> Error {
+    let mut message = String::new();
     let positions = std::iter::once(&vm.pc).chain(vm.return_stack.iter().rev());
     for ret in positions {
         let name = vm
@@ -459,7 +513,8 @@ fn error_stack(vm: &Vm, message: String) -> String {
             .unwrap_or_else(|| "<toplevel>".into());
         write!(message, "\n\tat {}", name).unwrap();
     }
-    message
+    let msg_r = arena.insert(Value::String(RefCell::new(message)));
+    error.map_error(|e| arena.insert(Value::Pair(RefCell::new(e), RefCell::new(msg_r))))
 }
 
 #[derive(Debug, Clone, PartialEq)]

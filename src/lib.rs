@@ -39,6 +39,8 @@ pub mod util;
 pub mod value;
 pub mod vm;
 
+pub const ERROR_HANDLER_INDEX: usize = 0;
+
 /// Structure holding the global state of the interpreter.
 pub struct VmState {
     pub global_environment: RcEnv,
@@ -51,9 +53,20 @@ impl VmState {
         let global_environment = Rc::new(RefCell::new(Environment::new(None)));
         let global_frame = arena.insert(Value::ActivationFrame(RefCell::new(ActivationFrame {
             parent: None,
-            values: vec![],
+            values: vec![arena.f],
         })));
-        primitives::register_primitives(&arena, &global_environment, global_frame);
+        let afi = Rc::new(RefCell::new(ActivationFrameInfo {
+            parent: None,
+            altitude: 0,
+            entries: 0,
+        }));
+        assert_eq!(
+            global_environment
+                .borrow_mut()
+                .define("%error-handler", &afi, true),
+            ERROR_HANDLER_INDEX
+        );
+        primitives::register_primitives(&arena, &global_environment, &afi, global_frame);
 
         VmState {
             global_environment: global_environment.clone(),
