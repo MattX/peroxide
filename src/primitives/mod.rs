@@ -104,7 +104,7 @@ macro_rules! simple_primitive {
     };
 }
 
-static PRIMITIVES: [Primitive; 73] = [
+static PRIMITIVES: [Primitive; 75] = [
     simple_primitive!("make-syntactic-closure", make_syntactic_closure),
     simple_primitive!("identifier=?", identifier_equal_p),
     simple_primitive!("identifier?", identifier_p),
@@ -187,8 +187,16 @@ static PRIMITIVES: [Primitive; 73] = [
         implementation: PrimitiveImplementation::Apply,
     },
     Primitive {
-        name: "call/cc",
+        name: "%call/cc", // The actual call/cc handles dynamic-winds, and is written in Scheme.
         implementation: PrimitiveImplementation::CallCC,
+    },
+    Primitive {
+        name: "raise",
+        implementation: PrimitiveImplementation::Raise,
+    },
+    Primitive {
+        name: "abort",
+        implementation: PrimitiveImplementation::Abort,
     },
 ];
 
@@ -202,6 +210,8 @@ pub enum PrimitiveImplementation {
     Eval,
     Apply,
     CallCC,
+    Raise,
+    Abort,
 }
 
 impl Debug for Primitive {

@@ -456,7 +456,7 @@ fn call_cc() {
         execute(
             &arena,
             &mut vm_state,
-            "(call/cc (lambda (exit)\
+            "(%call/cc (lambda (exit)\
              (for-each (lambda (x) (if (< x 0) (exit x))) '(1 2 3 -4 5 6))))"
         )
         .unwrap()

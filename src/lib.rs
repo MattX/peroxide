@@ -113,5 +113,5 @@ pub fn compile_run(
     state.code.push(Instruction::Finish);
     // println!(" => {:?}", &state.code[start_pc..state.code.len()]);
     vm::run(arena, &mut state.code, start_pc, state.global_frame)
-        .map_err(|e| format!("Runtime error: {}", e))
+        .map_err(|e| format!("Runtime error: {}", pretty_print(arena, e)))
 }

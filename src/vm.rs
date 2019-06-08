@@ -144,7 +144,16 @@ struct Vm<'a> {
     fun: usize,
 }
 
-pub fn run(arena: &Arena, code: &mut Code, pc: usize, env: usize) -> Result<usize, String> {
+enum Error {
+    Raise(usize),
+    Abort(usize),
+}
+
+fn raise_string(arena: &Arena, error: String) -> Error {
+    Error::Raise(arena.insert(Value::String(RefCell::new(error))))
+}
+
+pub fn run(arena: &Arena, code: &mut Code, pc: usize, env: usize) -> Result<usize, usize> {
     let mut vm = Vm {
         value: arena.unspecific,
         code,
@@ -156,163 +165,191 @@ pub fn run(arena: &Arena, code: &mut Code, pc: usize, env: usize) -> Result<usiz
         fun: 0,
     };
     loop {
-        match vm.code.instructions[vm.pc] {
-            Instruction::Constant(v) => vm.value = v,
-            Instruction::JumpFalse(offset) => {
-                if !arena.get(vm.value).truthy() {
-                    vm.pc += offset;
+        match run_one(arena, &mut vm) {
+            Ok(brk) => {
+                if brk {
+                    break;
                 }
             }
-            Instruction::Jump(offset) => vm.pc += offset,
-            Instruction::GlobalArgumentSet { index } => {
-                get_activation_frame(arena, vm.global_env)
-                    .borrow_mut()
-                    .set(arena, 0, index, vm.value);
-                vm.value = arena.unspecific;
+            Err(Error::Abort(v)) => return Err(v),
+            Err(Error::Raise(v)) => return Err(v),
+        }
+    }
+    Ok(vm.value)
+}
+
+fn run_one(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
+    match vm.code.instructions[vm.pc] {
+        Instruction::Constant(v) => vm.value = v,
+        Instruction::JumpFalse(offset) => {
+            if !arena.get(vm.value).truthy() {
+                vm.pc += offset;
             }
-            Instruction::GlobalArgumentGet { index } => {
-                vm.value = get_activation_frame(arena, vm.global_env)
-                    .borrow()
-                    .get(arena, 0, index);
-            }
-            Instruction::CheckedGlobalArgumentGet { index } => {
-                vm.value = arena
-                    .get_activation_frame(vm.global_env)
-                    .borrow()
-                    .get(arena, 0, index);
-                if vm.value == arena.undefined {
-                    return Err(error_stack(
-                        &vm,
+        }
+        Instruction::Jump(offset) => vm.pc += offset,
+        Instruction::GlobalArgumentSet { index } => {
+            get_activation_frame(arena, vm.global_env)
+                .borrow_mut()
+                .set(arena, 0, index, vm.value);
+            vm.value = arena.unspecific;
+        }
+        Instruction::GlobalArgumentGet { index } => {
+            vm.value = get_activation_frame(arena, vm.global_env)
+                .borrow()
+                .get(arena, 0, index);
+        }
+        Instruction::CheckedGlobalArgumentGet { index } => {
+            vm.value = arena
+                .get_activation_frame(vm.global_env)
+                .borrow()
+                .get(arena, 0, index);
+            if vm.value == arena.undefined {
+                return Err(raise_string(
+                    arena,
+                    error_stack(
+                        vm,
                         format!(
                             "Variable used before definition: {}",
                             resolve_variable(vm.code, vm.pc, 0, index)
                         ),
-                    ));
-                }
+                    ),
+                ));
             }
-            Instruction::DeepArgumentSet { depth, index } => {
-                get_activation_frame(arena, vm.env)
-                    .borrow_mut()
-                    .set(arena, depth, index, vm.value);
-                vm.value = arena.unspecific;
-            }
-            Instruction::LocalArgumentGet { depth, index } => {
-                vm.value = get_activation_frame(arena, vm.env)
-                    .borrow()
-                    .get(arena, depth, index);
-            }
-            Instruction::CheckedLocalArgumentGet { depth, index } => {
-                let frame = arena.get_activation_frame(vm.env).borrow();
-                vm.value = frame.get(arena, depth, index);
-                if vm.value == arena.undefined {
-                    let current_depth = frame.depth(arena);
-                    return Err(error_stack(
-                        &vm,
+        }
+        Instruction::DeepArgumentSet { depth, index } => {
+            get_activation_frame(arena, vm.env)
+                .borrow_mut()
+                .set(arena, depth, index, vm.value);
+            vm.value = arena.unspecific;
+        }
+        Instruction::LocalArgumentGet { depth, index } => {
+            vm.value = get_activation_frame(arena, vm.env)
+                .borrow()
+                .get(arena, depth, index);
+        }
+        Instruction::CheckedLocalArgumentGet { depth, index } => {
+            let frame = arena.get_activation_frame(vm.env).borrow();
+            vm.value = frame.get(arena, depth, index);
+            if vm.value == arena.undefined {
+                let current_depth = frame.depth(arena);
+                return Err(raise_string(
+                    arena,
+                    error_stack(
+                        vm,
                         format!(
                             "Variable used before definition: {}",
                             resolve_variable(vm.code, vm.pc, current_depth - depth, index)
                         ),
-                    ));
-                }
+                    ),
+                ));
             }
-            Instruction::CheckArity { arity, dotted } => {
-                let actual_arity = get_activation_frame(arena, vm.value).borrow().values.len();
-                if dotted && actual_arity < arity {
-                    return Err(error_stack(
-                        &vm,
+        }
+        Instruction::CheckArity { arity, dotted } => {
+            let actual_arity = get_activation_frame(arena, vm.value).borrow().values.len();
+            if dotted && actual_arity < arity {
+                return Err(raise_string(
+                    arena,
+                    error_stack(
+                        vm,
                         format!(
                             "Expected at least {} arguments, got {}.",
                             arity, actual_arity
                         ),
-                    ));
-                } else if !dotted && actual_arity != arity {
-                    return Err(error_stack(
-                        &vm,
+                    ),
+                ));
+            } else if !dotted && actual_arity != arity {
+                return Err(raise_string(
+                    arena,
+                    error_stack(
+                        vm,
                         format!("Expected {} arguments, got {}.", arity, actual_arity),
+                    ),
+                ));
+            }
+        }
+        Instruction::ExtendEnv => {
+            get_activation_frame(arena, vm.value).borrow_mut().parent = Some(vm.env);
+            vm.env = vm.value;
+        }
+        Instruction::Return => {
+            vm.pc = vm
+                .return_stack
+                .pop()
+                .expect("Returning with no values on return stack.");
+        }
+        Instruction::CreateClosure(offset) => {
+            vm.value = arena.insert(Value::Lambda {
+                code: vm.pc + offset,
+                environment: vm.env,
+            })
+        }
+        Instruction::PackFrame(arity) => {
+            let mut borrowed_frame = get_activation_frame(arena, vm.value).borrow_mut();
+            let frame_len = std::cmp::max(arity, borrowed_frame.values.len());
+            let listified = list_from_vec(arena, &borrowed_frame.values[arity..frame_len]);
+            borrowed_frame.values.resize(arity + 1, arena.undefined);
+            borrowed_frame.values[arity] = listified;
+        }
+        Instruction::ExtendFrame(by) => {
+            let mut frame = arena.get_activation_frame(vm.value).borrow_mut();
+            let len = frame.values.len();
+            frame.values.resize(len + by, arena.undefined);
+        }
+        Instruction::PreserveEnv => {
+            vm.stack.push(vm.env);
+        }
+        Instruction::RestoreEnv => {
+            let env_r = vm
+                .stack
+                .pop()
+                .expect("Restoring env with no values on stack.");
+            if let Value::ActivationFrame(_) = arena.get(env_r) {
+                vm.env = env_r;
+            } else {
+                panic!("Restoring non-activation frame.");
+            }
+        }
+        Instruction::PushValue => {
+            vm.stack.push(vm.value);
+        }
+        Instruction::PopFunction => {
+            let fun_r = vm
+                .stack
+                .pop()
+                .expect("Popping function with no values on stack.");
+            match arena.get(fun_r) {
+                Value::Lambda { .. } | Value::Primitive(_) | Value::Continuation(_) => {
+                    vm.fun = fun_r
+                }
+                _ => {
+                    return Err(raise_string(
+                        arena,
+                        error_stack(
+                            vm,
+                            format!("Cannot pop non-function: {}", pretty_print(arena, fun_r)),
+                        ),
                     ));
                 }
             }
-            Instruction::ExtendEnv => {
-                get_activation_frame(arena, vm.value).borrow_mut().parent = Some(vm.env);
-                vm.env = vm.value;
-            }
-            Instruction::Return => {
-                vm.pc = vm
-                    .return_stack
-                    .pop()
-                    .expect("Returning with no values on return stack.");
-            }
-            Instruction::CreateClosure(offset) => {
-                vm.value = arena.insert(Value::Lambda {
-                    code: vm.pc + offset,
-                    environment: vm.env,
-                })
-            }
-            Instruction::PackFrame(arity) => {
-                let mut borrowed_frame = get_activation_frame(arena, vm.value).borrow_mut();
-                let frame_len = std::cmp::max(arity, borrowed_frame.values.len());
-                let listified = list_from_vec(arena, &borrowed_frame.values[arity..frame_len]);
-                borrowed_frame.values.resize(arity + 1, arena.undefined);
-                borrowed_frame.values[arity] = listified;
-            }
-            Instruction::ExtendFrame(by) => {
-                let mut frame = arena.get_activation_frame(vm.value).borrow_mut();
-                let len = frame.values.len();
-                frame.values.resize(len + by, arena.undefined);
-            }
-            Instruction::PreserveEnv => {
-                vm.stack.push(vm.env);
-            }
-            Instruction::RestoreEnv => {
-                let env_r = vm
-                    .stack
-                    .pop()
-                    .expect("Restoring env with no values on stack.");
-                if let Value::ActivationFrame(_) = arena.get(env_r) {
-                    vm.env = env_r;
-                } else {
-                    panic!("Restoring non-activation frame.");
-                }
-            }
-            Instruction::PushValue => {
-                vm.stack.push(vm.value);
-            }
-            Instruction::PopFunction => {
-                let fun_r = vm
-                    .stack
-                    .pop()
-                    .expect("Popping function with no values on stack.");
-                match arena.get(fun_r) {
-                    Value::Lambda { .. } | Value::Primitive(_) | Value::Continuation(_) => {
-                        vm.fun = fun_r
-                    }
-                    _ => {
-                        return Err(error_stack(
-                            &vm,
-                            format!("Cannot pop non-function: {}", pretty_print(arena, fun_r)),
-                        ))
-                    }
-                }
-            }
-            Instruction::FunctionInvoke { tail } => {
-                invoke(arena, &mut vm, tail).map_err(|e| error_stack(&vm, e))?;
-            }
-            Instruction::CreateFrame(size) => {
-                let mut frame = ActivationFrame {
-                    parent: None,
-                    values: vec![0; size],
-                };
-                for i in (0..size).rev() {
-                    frame.values[i] = vm.stack.pop().expect("Too few values on stack.");
-                }
-                vm.value = arena.insert(Value::ActivationFrame(RefCell::new(frame)));
-            }
-            Instruction::NoOp => panic!("NoOp encountered."),
-            Instruction::Finish => break,
         }
-        vm.pc += 1;
+        Instruction::FunctionInvoke { tail } => {
+            invoke(arena, vm, tail).map_err(|e| raise_string(arena, error_stack(&vm, e)))?;
+        }
+        Instruction::CreateFrame(size) => {
+            let mut frame = ActivationFrame {
+                parent: None,
+                values: vec![0; size],
+            };
+            for i in (0..size).rev() {
+                frame.values[i] = vm.stack.pop().expect("Too few values on stack.");
+            }
+            vm.value = arena.insert(Value::ActivationFrame(RefCell::new(frame)));
+        }
+        Instruction::NoOp => panic!("NoOp encountered."),
+        Instruction::Finish => return Ok(true),
     }
-    Ok(vm.value)
+    vm.pc += 1;
+    Ok(false)
 }
 
 // TODO remove this
@@ -395,7 +432,7 @@ fn call_cc(arena: &Arena, vm: &mut Vm) -> Result<(), String> {
     let af = arena.get_activation_frame(vm.value).borrow();
     let n_args = af.values.len();
     if n_args != 1 {
-        return Err("call/cc: expected a single argument".into());
+        return Err("%call/cc: expected a single argument".into());
     }
     let new_af = ActivationFrame {
         parent: None,

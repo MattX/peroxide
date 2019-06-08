@@ -16,10 +16,13 @@ on the interpreter described in _Lisp in Small Pieces_.
 * Implement error handling
   * It can be handled mostly in userspace, but that creates
     extra trickiness around throwing errors from primitives.
-* Figure out the `syntax-quote` vs `quote` thing
+* ~~Figure out the `syntax-quote` vs `quote` thing~~
+  * I think this is mostly a chibi-scheme thing.
 * Fix the checked vs unchecked references
-* Write syntax-rules → mostly lifted from Chibi
+* Write syntax-rules → done by lifting it from Chibi
 * Implement the rest of the stdlib, esp. ports and bytevecs
+* Implement libraries
+* Allow define-syntax in internal defines
 * Implement let (application of lambda) optimization
 * Inline primitives
 * ~~Implement name lookup on error~~

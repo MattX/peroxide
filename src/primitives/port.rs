@@ -306,7 +306,7 @@ pub fn eof_object_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
 fn get_open_text_input_port(
     arena: &Arena,
     val: usize,
-) -> Result<RefMut<Box<(dyn TextInputPort + 'static)>>, String> {
+) -> Result<RefMut<Box<dyn TextInputPort>>, String> {
     if let Port::TextInput(op) = arena
         .try_get_port(val)
         .ok_or_else(|| format!("Not a port: {}", pretty_print(arena, val)))?
