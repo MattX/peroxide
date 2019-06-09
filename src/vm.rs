@@ -190,37 +190,35 @@ pub fn run(arena: &Arena, code: &mut Code, pc: usize, env: usize) -> Result<usiz
                     break;
                 }
             }
-            Err(e) => {
-                let annotated_e = error_stack(arena, &vm, e);
-                match annotated_e {
-                    Error::Abort(v) => return Err(v),
-                    Error::Raise(v) => {
-                        let handler = arena.get_activation_frame(vm.global_env).borrow().values[0];
-                        println!("Error handler: {}", pretty_print(arena, handler));
-                        match arena.get(handler) {
-                            Value::Boolean(false) => return Err(v),
-                            Value::Lambda { .. } => {
-                                let mut frame = ActivationFrame {
-                                    parent: None,
-                                    values: vec![v],
-                                };
-                                vm.fun = handler;
-                                vm.value =
-                                    arena.insert(Value::ActivationFrame(RefCell::new(frame)));
-                                invoke(arena, &mut vm, false).map_err(|e| e.get_value())?;
-                                vm.pc += 1;
-                            }
-                            _ => {
-                                return Err(arena
-                                    .insert(Value::String(RefCell::new("Invalid handler".into()))))
-                            }
-                        }
-                    }
-                }
-            }
+            Err(e) => handle_error(arena, &mut vm, e)?,
         }
     }
     Ok(vm.value)
+}
+
+fn handle_error(arena: &Arena, vm: &mut Vm, e: Error) -> Result<(), usize> {
+    let annotated_e = error_stack(arena, &vm, e);
+    match annotated_e {
+        Error::Abort(v) => Err(v),
+        Error::Raise(v) => {
+            let handler = arena.get_activation_frame(vm.global_env).borrow().values[0];
+            match arena.get(handler) {
+                Value::Boolean(false) => Err(v),
+                Value::Lambda { .. } => {
+                    let mut frame = ActivationFrame {
+                        parent: None,
+                        values: vec![v],
+                    };
+                    vm.fun = handler;
+                    vm.value = arena.insert(Value::ActivationFrame(RefCell::new(frame)));
+                    invoke(arena, vm, false).map_err(|e| e.get_value())?;
+                    vm.pc += 1;
+                    Ok(())
+                }
+                _ => Err(arena.insert(Value::String(RefCell::new("Invalid handler".into())))),
+            }
+        }
+    }
 }
 
 fn run_one(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {

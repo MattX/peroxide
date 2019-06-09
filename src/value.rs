@@ -18,9 +18,9 @@ use std::ops::Deref;
 
 use arena::Arena;
 use environment::{ActivationFrame, RcEnv};
-use gc;
 use primitives::{Port, Primitive, SyntacticClosure};
 use vm::Continuation;
+use {gc, util};
 
 // TODO box some of these, values are currently 56 bytes long oh no
 // TODO remove PartialEq and Clone. Clone should only be used in the numeric primitives library.
@@ -132,6 +132,9 @@ impl Value {
         match self {
             Value::Pair(_, _) => self.print_pair(arena),
             Value::Vector(_) => self.print_vector(arena),
+            Value::String(s) => util::escape_string(&s.borrow()),
+            Value::Character(c) => util::escape_char(*c),
+            Value::Symbol(s) => util::escape_symbol(s),
             Value::SyntacticClosure(SyntacticClosure {
                 closed_env,
                 free_variables,

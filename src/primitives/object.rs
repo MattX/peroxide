@@ -16,7 +16,7 @@ use arena::Arena;
 use std::fmt::Write;
 use util::check_len;
 use value;
-use value::Value;
+use value::{pretty_print, Value};
 
 pub fn eq_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(2), Some(2))?;
@@ -52,8 +52,24 @@ pub fn display_to_string(arena: &Arena, args: &[usize]) -> String {
 }
 
 // TODO rename this to write and create an actual display method.
-pub fn display(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn write(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     println!("{}", display_to_string(arena, args));
+    Ok(arena.unspecific)
+}
+
+pub fn display(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    for arg in args {
+        match arena.get(*arg) {
+            Value::String(s) => print!("{}", &s.borrow()),
+            Value::Character(c) => print!("{}", c),
+            _ => print!("{}", pretty_print(arena, *arg)),
+        }
+    }
+    Ok(arena.unspecific)
+}
+
+pub fn newline(arena: &Arena, _args: &[usize]) -> Result<usize, String> {
+    println!();
     Ok(arena.unspecific)
 }
 

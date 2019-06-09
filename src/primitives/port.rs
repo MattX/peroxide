@@ -19,6 +19,7 @@ use std::io::{ErrorKind, Read};
 
 use arena::Arena;
 use gc;
+use std::fs::File;
 use util::check_len;
 use value::{pretty_print, Value};
 
@@ -83,7 +84,7 @@ fn read_char_helper(reader: &mut impl Read) -> std::io::Result<char> {
     ))
 }
 
-struct FileTextInputPort {
+pub struct FileTextInputPort {
     reader: Option<std::io::BufReader<std::fs::File>>,
     peek_buffer: Option<char>,
 }
@@ -158,9 +159,9 @@ impl TextInputPort for FileTextInputPort {
 }
 
 pub enum Port {
-    BinaryInput(RefCell<Box<dyn BinaryInputPort>>),
-    TextInput(RefCell<Box<dyn TextInputPort>>),
-    Output(RefCell<Box<dyn OutputPort>>),
+    BinaryInputFile(RefCell<Box<dyn BinaryInputPort>>),
+    TextInputFile(RefCell<Box<FileTextInputPort>>),
+    OutputFile(RefCell<Box<dyn OutputPort>>),
 }
 
 impl fmt::Debug for Port {
@@ -191,28 +192,28 @@ fn is_port(arena: &Arena, arg: usize) -> bool {
 
 fn is_input_port(arena: &Arena, arg: usize) -> bool {
     match arena.try_get_port(arg).expect("Not a port.") {
-        Port::BinaryInput(_) | Port::TextInput(_) => true,
+        Port::BinaryInputFile(_) | Port::TextInputFile(_) => true,
         _ => false,
     }
 }
 
 fn is_output_port(arena: &Arena, arg: usize) -> bool {
     match arena.try_get_port(arg).expect("Not a port.") {
-        Port::Output(_) => true,
+        Port::OutputFile(_) => true,
         _ => false,
     }
 }
 
 fn is_binary_port(arena: &Arena, arg: usize) -> bool {
     match arena.try_get_port(arg).expect("Not a port.") {
-        Port::BinaryInput(_) | Port::Output(_) => true,
+        Port::BinaryInputFile(_) | Port::OutputFile(_) => true,
         _ => false,
     }
 }
 
 fn is_textual_port(arena: &Arena, arg: usize) -> bool {
     match arena.try_get_port(arg).expect("Not a port.") {
-        Port::TextInput(_) | Port::Output(_) => true,
+        Port::TextInputFile(_) | Port::OutputFile(_) => true,
         _ => false,
     }
 }
@@ -253,9 +254,9 @@ pub fn close_port(arena: &Arena, args: &[usize]) -> Result<usize, String> {
         .try_get_port(args[0])
         .ok_or_else(|| format!("Not a port: {}", pretty_print(arena, args[0])))?;
     match port {
-        Port::BinaryInput(s) => s.borrow_mut().close(),
-        Port::TextInput(s) => s.borrow_mut().close(),
-        Port::Output(s) => s.borrow_mut().close(),
+        Port::BinaryInputFile(s) => s.borrow_mut().close(),
+        Port::TextInputFile(s) => s.borrow_mut().close(),
+        Port::OutputFile(s) => s.borrow_mut().close(),
     }
     .map_err(|e| e.to_string())?;
     Ok(arena.unspecific)
@@ -267,9 +268,9 @@ pub fn port_open_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
         .try_get_port(args[0])
         .ok_or_else(|| format!("Not a port: {}", pretty_print(arena, args[0])))?;
     let v = match port {
-        Port::BinaryInput(s) => s.borrow().is_closed(),
-        Port::TextInput(s) => s.borrow().is_closed(),
-        Port::Output(s) => s.borrow().is_closed(),
+        Port::BinaryInputFile(s) => s.borrow().is_closed(),
+        Port::TextInputFile(s) => s.borrow().is_closed(),
+        Port::OutputFile(s) => s.borrow().is_closed(),
     };
     Ok(arena.insert(Value::Boolean(v)))
 }
@@ -289,7 +290,7 @@ pub fn open_input_file(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     let path = get_path(arena, args[0])
         .ok_or_else(|| format!("Not a valid path: {}", pretty_print(arena, args[0])))?;
     let raw_port = FileTextInputPort::new(&path).map_err(|e| e.to_string())?;
-    let port = Port::TextInput(RefCell::new(Box::new(raw_port)));
+    let port = Port::TextInputFile(RefCell::new(Box::new(raw_port)));
     Ok(arena.insert(Value::Port(Box::new(port))))
 }
 
@@ -306,8 +307,8 @@ pub fn eof_object_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
 fn get_open_text_input_port(
     arena: &Arena,
     val: usize,
-) -> Result<RefMut<Box<dyn TextInputPort>>, String> {
-    if let Port::TextInput(op) = arena
+) -> Result<RefMut<Box<FileTextInputPort>>, String> {
+    if let Port::TextInputFile(op) = arena
         .try_get_port(val)
         .ok_or_else(|| format!("Not a port: {}", pretty_print(arena, val)))?
     {

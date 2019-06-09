@@ -91,7 +91,11 @@
 (define (cddddr x) (cdr (cdr (cdr (cdr x)))))
 
 (define (null? x) (eq? x '()))
-(define (list? x) (if (pair? x) #t (null? x)))
+
+(define (list? x)
+  (if (pair? x)
+      (list? (cdr x))
+      (null? x)))
 
 (define (list . args) args)
 
@@ -742,3 +746,63 @@
          (list (rename 'let) (list (list (cadr expr) #t))
                (cons (rename 'syntax-rules/aux) (cdr expr)))
          (syntax-rules-transformer expr rename compare)))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; dynamic-wind
+
+(define (vector . v)
+  (list->vector v))
+
+(define %make-point vector)
+(define (%point-depth point) (vector-ref point 0))
+(define (%point-in point) (vector-ref point 1))
+(define (%point-out point) (vector-ref point 2))
+(define (%point-parent point) (vector-ref point 3))
+
+(define root-point			; Shared among all state spaces
+  (%make-point 0
+	      (lambda () (error "winding in to root!"))
+	      (lambda () (error "winding out of root!"))
+	      #f))
+
+(define %dk
+  (let ((dk root-point))
+    (lambda o (if (pair? o) (set! dk (car o)) dk))))
+
+(%dk root-point)
+
+(define (dynamic-wind in body out)
+  (in)
+  (let ((here (%dk)))
+    (%dk (%make-point (+ (%point-depth here) 1)
+                     in
+                     out
+                     here))
+    (let ((res (body)))
+      (%dk here)
+      (out)
+      res)))
+
+(define (travel-to-point! here target)
+  (cond
+   ((eq? here target)
+    'done)
+   ((< (%point-depth here) (%point-depth target))
+    (travel-to-point! here (%point-parent target))
+    ((%point-in target)))
+   (else
+    ((%point-out here))
+    (travel-to-point! (%point-parent here) target))))
+
+(define (continuation->procedure cont point)
+  (lambda res
+    (travel-to-point! (%dk) point)
+    (%dk point)
+    (cont (%values res))))
+
+(define (call-with-current-continuation proc)
+  (%call/cc
+   (lambda (cont)
+     (proc (continuation->procedure cont (%dk))))))
