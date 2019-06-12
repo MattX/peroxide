@@ -75,7 +75,6 @@ where
             Token::Character(c) => Ok(Value::Character(*c)),
             Token::String(s) => Ok(Value::String(RefCell::new(s.to_string()))),
             Token::Symbol(s) => Ok(Value::Symbol(s.to_string())),
-            Token::Ellipsis => Ok(Value::Symbol("...".to_string())),
             Token::OpenParen => read_list(arena, it),
             Token::OpenByteVector => read_bytevec(it),
             Token::OpenVector => read_vec(arena, it),
