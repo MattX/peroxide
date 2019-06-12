@@ -18,7 +18,7 @@ use std::iter::Peekable;
 
 use arena::Arena;
 use lex;
-use lex::Token;
+use lex::{NumToken, Token};
 use value::Value;
 
 #[derive(Debug)]
@@ -69,8 +69,8 @@ where
 {
     if let Some(t) = it.next() {
         match t {
-            Token::Real(r) => Ok(Value::Real(*r)),
-            Token::Integer(i) => Ok(Value::Integer(*i)),
+            Token::Num(NumToken::Real(r)) => Ok(Value::Real(*r)),
+            Token::Num(NumToken::Integer(i)) => Ok(Value::Integer(*i)),
             Token::Boolean(b) => Ok(Value::Boolean(*b)),
             Token::Character(c) => Ok(Value::Character(*c)),
             Token::String(s) => Ok(Value::String(RefCell::new(s.to_string()))),
@@ -153,7 +153,7 @@ where
                 it.next();
                 break;
             }
-            Token::Integer(i) => {
+            Token::Num(NumToken::Integer(i)) => {
                 it.next();
                 let b = u8::try_from(*i).map_err(|_e| {
                     ParseResult::ParseError(format!("Invalid byte literal: {}.", i))

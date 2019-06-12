@@ -65,15 +65,15 @@ pub fn char_vec_to_str(v: &[char]) -> String {
 
 pub fn escape_char(c: char) -> String {
     match c {
-        '\x07' => "#\\alarm".into(),
-        '\x08' => "#\\backspace".into(),
-        '\x7F' => "#\\delete".into(),
-        '\x1B' => "#\\escape".into(),
-        '\n' => "#\\newline".into(),
-        '\0' => "#\\null".into(),
-        '\r' => "#\\return".into(),
-        ' ' => "#\\space".into(),
-        '\t' => "#\\tab".into(),
+        '\x07' => "alarm".into(),
+        '\x08' => "backspace".into(),
+        '\x7F' => "delete".into(),
+        '\x1B' => "escape".into(),
+        '\n' => "newline".into(),
+        '\0' => "null".into(),
+        '\r' => "return".into(),
+        ' ' => "space".into(),
+        '\t' => "tab".into(),
         c => c.to_string(),
     }
 }

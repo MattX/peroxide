@@ -23,8 +23,7 @@ use std::iter::Peekable;
 /// expression.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
-    Real(f64),
-    Integer(i64),
+    Num(NumToken),
     Boolean(bool),
     Character(char),
     Symbol(String),
@@ -39,6 +38,12 @@ pub enum Token {
     QuasiQuote,
     Unquote,
     UnquoteSplicing,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum NumToken {
+    Real(f64),
+    Integer(i64),
 }
 
 /// Turns an str slice into a vector of tokens, or fails with an error message.
@@ -144,12 +149,15 @@ where
     } else if token == "..." {
         Ok(Token::Ellipsis)
     } else {
-        token.parse::<i64>().map(Token::Integer).or_else(|_| {
-            token
-                .parse::<f64>()
-                .map(Token::Real)
-                .map_err(|e| e.description().to_string())
-        })
+        token
+            .parse::<i64>()
+            .map(|x| Token::Num(NumToken::Integer(x)))
+            .or_else(|_| {
+                token
+                    .parse::<f64>()
+                    .map(|x| Token::Num(NumToken::Real(x)))
+                    .map_err(|e| e.description().to_string())
+            })
     }
 }
 
@@ -310,20 +318,35 @@ mod tests {
 
     #[test]
     fn lex_int() {
-        assert_eq!(lex("123").unwrap(), vec![Token::Integer(123)]);
-        assert_eq!(lex("0").unwrap(), vec![Token::Integer(0)]);
-        assert_eq!(lex("-123").unwrap(), vec![Token::Integer(-123)]);
-        assert_eq!(lex("+123").unwrap(), vec![Token::Integer(123)]);
+        assert_eq!(
+            lex("123").unwrap(),
+            vec![Token::Num(NumToken::Integer(123))]
+        );
+        assert_eq!(lex("0").unwrap(), vec![Token::Num(NumToken::Integer(0))]);
+        assert_eq!(
+            lex("-123").unwrap(),
+            vec![Token::Num(NumToken::Integer(-123))]
+        );
+        assert_eq!(
+            lex("+123").unwrap(),
+            vec![Token::Num(NumToken::Integer(123))]
+        );
         assert!(lex("12d3").is_err());
         assert!(lex("123d").is_err());
     }
 
     #[test]
     fn lex_float() {
-        assert_eq!(lex("123.4567").unwrap(), vec![Token::Real(123.4567)]);
-        assert_eq!(lex(".4567").unwrap(), vec![Token::Real(0.4567)]);
-        assert_eq!(lex("0.").unwrap(), vec![Token::Real(0.0)]);
-        assert_eq!(lex("-0.").unwrap(), vec![Token::Real(-0.0)]);
+        assert_eq!(
+            lex("123.4567").unwrap(),
+            vec![Token::Num(NumToken::Real(123.4567))]
+        );
+        assert_eq!(
+            lex(".4567").unwrap(),
+            vec![Token::Num(NumToken::Real(0.4567))]
+        );
+        assert_eq!(lex("0.").unwrap(), vec![Token::Num(NumToken::Real(0.0))]);
+        assert_eq!(lex("-0.").unwrap(), vec![Token::Num(NumToken::Real(-0.0))]);
         assert!(lex("-0a.").is_err());
         assert!(lex("-0.123d").is_err());
     }
@@ -358,14 +381,14 @@ mod tests {
         assert!(lex("").unwrap().is_empty());
         assert_eq!(
             lex("  123   #f   ").unwrap(),
-            vec![Token::Integer(123), Token::Boolean(false)]
+            vec![Token::Num(NumToken::Integer(123)), Token::Boolean(false)]
         );
         assert_eq!(
             lex("123)456").unwrap(),
             vec![
-                Token::Integer(123),
+                Token::Num(NumToken::Integer(123)),
                 Token::ClosingParen,
-                Token::Integer(456)
+                Token::Num(NumToken::Integer(456))
             ]
         );
     }
@@ -401,6 +424,9 @@ mod tests {
 
     #[test]
     fn lex_spaces() {
-        assert_eq!(lex("  123  ").unwrap(), vec![Token::Integer(123)]);
+        assert_eq!(
+            lex("  123  ").unwrap(),
+            vec![Token::Num(NumToken::Integer(123))]
+        );
     }
 }

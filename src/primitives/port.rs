@@ -19,7 +19,6 @@ use std::io::{ErrorKind, Read};
 
 use arena::Arena;
 use gc;
-use std::fs::File;
 use util::check_len;
 use value::{pretty_print, Value};
 

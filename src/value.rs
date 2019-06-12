@@ -18,6 +18,9 @@ use std::ops::Deref;
 
 use arena::Arena;
 use environment::{ActivationFrame, RcEnv};
+use num_bigint::BigInt;
+use num_complex::Complex;
+use num_rational::BigRational;
 use primitives::{Port, Primitive, SyntacticClosure};
 use vm::Continuation;
 use {gc, util};
@@ -31,13 +34,17 @@ pub enum Value {
     Undefined,
     Unspecific,
     EofObject,
+    EmptyList,
     Real(f64),
     Integer(i64),
+    Rational(Box<BigRational>),
+    ComplexReal(Complex<f64>),
+    ComplexInteger(Box<Complex<BigInt>>),
+    ComplexRational(Box<Complex<BigRational>>),
     Boolean(bool),
     Character(char),
     Symbol(String),
     String(RefCell<String>),
-    EmptyList,
     Pair(RefCell<usize>, RefCell<usize>),
     ByteVector(RefCell<Vec<u8>>),
     Vector(RefCell<Vec<usize>>),
@@ -56,17 +63,19 @@ impl fmt::Display for Value {
             Value::Undefined => write!(f, "#undefined"),
             Value::Unspecific => write!(f, "#unspecific"),
             Value::EofObject => write!(f, "#eof-object"),
+            Value::EmptyList => write!(f, "()"),
             Value::Real(r) => write!(f, "{}", r),
             Value::Integer(i) => write!(f, "{}", i),
+            Value::Rational(r) => write!(f, "{}", r),
+            Value::ComplexReal(c) => write!(f, "{}", c),
+            Value::ComplexInteger(c) => write!(f, "{}", c),
+            Value::ComplexRational(c) => write!(f, "{}", c),
             Value::Boolean(true) => write!(f, "#t"),
             Value::Boolean(false) => write!(f, "#f"),
             Value::Character('\n') => write!(f, "#\\newline"),
-            Value::Character(c) => write!(f, "#\\{}", c),
-            Value::Symbol(s) => write!(f, "{}", s),
-            Value::String(s) => {
-                write!(f, "\"{}\"", s.borrow()) // TODO escape string
-            }
-            Value::EmptyList => write!(f, "()"),
+            Value::Character(c) => write!(f, "#\\{}", util::escape_char(*c)),
+            Value::Symbol(s) => write!(f, "{}", util::escape_symbol(&s)),
+            Value::String(s) => write!(f, "\"{}\"", util::escape_string(&s.borrow())),
             Value::Pair(a, b) => write!(f, "(=>{} . =>{})", a.borrow(), b.borrow()),
             Value::ByteVector(bv) => {
                 let contents = bv
@@ -132,9 +141,6 @@ impl Value {
         match self {
             Value::Pair(_, _) => self.print_pair(arena),
             Value::Vector(_) => self.print_vector(arena),
-            Value::String(s) => util::escape_string(&s.borrow()),
-            Value::Character(c) => util::escape_char(*c),
-            Value::Symbol(s) => util::escape_symbol(s),
             Value::SyntacticClosure(SyntacticClosure {
                 closed_env,
                 free_variables,
