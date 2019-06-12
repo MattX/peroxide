@@ -92,6 +92,7 @@
 
 (define (null? x) (eq? x '()))
 
+; TODO must handle cyclic lists.
 (define (list? x)
   (if (pair? x)
       (list? (cdr x))
@@ -748,6 +749,23 @@
          (syntax-rules-transformer expr rename compare)))))
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; values
+
+(define *values-tag* (list 'values))
+
+(define (%values ls)
+  (if (and (pair? ls) (null? (cdr ls)))
+      (car ls)
+      (cons *values-tag* ls)))
+
+(define (values . ls) (%values ls))
+
+(define (call-with-values producer consumer)
+  (let ((res (producer)))
+    (if (and (pair? res) (eq? *values-tag* (car res)))
+        (apply consumer (cdr res))
+        (consumer res))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; dynamic-wind
@@ -806,3 +824,5 @@
   (%call/cc
    (lambda (cont)
      (proc (continuation->procedure cont (%dk))))))
+
+(define call/cc call-with-current-continuation)

@@ -482,15 +482,18 @@
                         ((_ . r) 'ok))))
         (s a b c))))
 
-(test 'ok (let ()
-            (let-syntax ()
-              (define internal-def 'ok))
-            internal-def))
 
-(test 'ok (let ()
-            (letrec-syntax ()
-              (define internal-def 'ok))
-            internal-def))
+;; The following two tests seem to be incorrect according to the letter of R5RS (and R7RS, I believe).
+;; See also the last example and comments in http://sisc-scheme.org/r5rs_pitfall.scm
+;(test 'ok (let ()
+;            (let-syntax ()
+;              (define internal-def 'ok))
+;            internal-def))
+
+;(test 'ok (let ()
+;            (letrec-syntax ()
+;              (define internal-def 'ok))
+;            internal-def))
 
 (test '(2 1)
     ((lambda () (let ((x 1)) (let ((y x)) (set! x 2) (list x y))))))
