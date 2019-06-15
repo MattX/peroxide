@@ -271,21 +271,37 @@ fn parse_prefixed_number(s: &[char]) -> Result<NumToken, String> {
 fn parse_number(s: &[char], base: u8) -> Result<NumValue, String> {
     if let Some(pos) = s.iter().position(|x| *x == '@') {
         // Complex in polar notation
-        let (magnitude_s, phase_s) = s.split_at(pos);
-        let phase_s = &phase_s[1..];
         Ok(NumValue::Polar(
-            Box::new(parse_simple_number(magnitude_s, base)?),
-            Box::new(parse_simple_number(phase_s, base)?),
+            Box::new(parse_simple_number(&s[..pos], base)?),
+            Box::new(parse_simple_number(&s[pos + 1..], base)?),
         ))
     } else if let Some('i') = s.last() {
-        // Rectangular complex
-        panic!("Can't read rectangular complexes yet.");
+        // Rectangular complex.
+        // If there is a separator, it must be somewhere after the 2nd char. Otherwise, this is
+        // a pure imaginary number.
+        let sep_pos = s.iter().rposition(|x| *x == '+' || *x == '-').unwrap_or(0);
+        let real_part = if sep_pos > 0 {
+            parse_simple_number(&s[..sep_pos], base)?
+        } else {
+            NumValue::Integer(0.into())
+        };
+        let imag_part = if sep_pos == s.len() - 2 {
+            // expression ends in +i or -i.
+            NumValue::Integer(if s[sep_pos] == '+' { 1 } else { -1 }.into())
+        } else {
+            parse_simple_number(&s[sep_pos..s.len() - 1], base)?
+        };
+        Ok(NumValue::Rectangular(
+            Box::new(real_part),
+            Box::new(imag_part),
+        ))
     } else {
         parse_simple_number(s, base)
     }
 }
 
 /// Parses a simple type: Integer, Ratio, or Real.
+// TODO parse inf nan
 fn parse_simple_number(s: &[char], base: u8) -> Result<NumValue, String> {
     if let Some(pos) = s.iter().position(|x| *x == '/') {
         let numerator =
@@ -307,7 +323,7 @@ fn parse_simple_number(s: &[char], base: u8) -> Result<NumValue, String> {
     } else {
         parse_integer(s, base)
             .map(|x| NumValue::Integer(x))
-            .ok_or_else(|| format!("Invalid integer"))
+            .ok_or_else(|| format!("Invalid integer {}", s.iter().collect::<String>()))
     }
 }
 
@@ -476,6 +492,20 @@ mod tests {
         assert_eq!(lex("-0.").unwrap(), vec![real_tok(-0.0)]);
         assert!(lex("-0a.").is_err());
         assert!(lex("-0.123d").is_err());
+    }
+
+    #[test]
+    fn lex_polar() {
+        assert_eq!(
+            lex("1.2@3/4").unwrap(),
+            vec![Token::Num(NumToken {
+                value: NumValue::Polar(
+                    Box::new(NumValue::Real(1.2)),
+                    Box::new(NumValue::Rational(BigRational::new(3.into(), 4.into())))
+                ),
+                exactness: Exactness::Default,
+            })]
+        );
     }
 
     #[test]
