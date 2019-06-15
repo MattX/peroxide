@@ -167,7 +167,6 @@ where
     }))
 }
 
-// TODO special logic for -i, +i, -inf.0, +inf.0, -nan.0, +nan.0
 fn consume_sign_or_dot<I>(it: &mut Peekable<I>) -> Result<Token, String>
 where
     I: Iterator<Item = char>,
@@ -179,7 +178,14 @@ where
         return Ok(Token::Dot);
     }
     if let Some(c) = token.get(1) {
-        if c.is_ascii_digit() {
+        if c.is_ascii_digit()
+            || token_s == "+i"
+            || token_s == "-i"
+            || token_s.starts_with("+inf.0")
+            || token_s.starts_with("-inf.0")
+            || token_s.starts_with("+nan.0")
+            || token_s.starts_with("-nan.0")
+        {
             let value = parse_number(&token, 10)?;
             return Ok(Token::Num(NumToken {
                 value,
@@ -301,7 +307,6 @@ fn parse_number(s: &[char], base: u8) -> Result<NumValue, String> {
 }
 
 /// Parses a simple type: Integer, Ratio, or Real.
-// TODO parse inf nan
 fn parse_simple_number(s: &[char], base: u8) -> Result<NumValue, String> {
     if let Some(pos) = s.iter().position(|x| *x == '/') {
         let numerator =
@@ -309,6 +314,8 @@ fn parse_simple_number(s: &[char], base: u8) -> Result<NumValue, String> {
         let denominator =
             parse_integer(&s[pos + 1..], base).ok_or_else(|| format!("Invalid rational"))?;
         Ok(NumValue::Rational(BigRational::new(numerator, denominator)))
+    } else if let Some(x) = parse_special_real(s) {
+        Ok(NumValue::Real(x))
     } else if s.iter().find(|x| **x == '.').is_some() {
         let s: String = s.iter().collect();
         if base != 10 {
@@ -342,6 +349,15 @@ fn parse_integer(s: &[char], base: u8) -> Option<BigInt> {
         .map(|x| x.to_digit(base).map(|y| y as u8))
         .collect();
     digits.and_then(|d| BigInt::from_radix_be(sign, &d, base))
+}
+
+fn parse_special_real(s: &[char]) -> Option<f64> {
+    match s.iter().collect::<String>().as_ref() {
+        "+inf.0" => Some(std::f64::INFINITY),
+        "-inf.0" => Some(std::f64::NEG_INFINITY),
+        "+nan.0" | "-nan.0" => Some(std::f64::NAN),
+        _ => None,
+    }
 }
 
 fn consume_string<I>(it: &mut Peekable<I>) -> Result<Token, String>
@@ -490,6 +506,11 @@ mod tests {
         assert_eq!(lex(".4567").unwrap(), vec![real_tok(0.4567)]);
         assert_eq!(lex("0.").unwrap(), vec![real_tok(0.0)]);
         assert_eq!(lex("-0.").unwrap(), vec![real_tok(-0.0)]);
+        assert_eq!(
+            lex("-inf.0").unwrap(),
+            vec![real_tok(std::f64::NEG_INFINITY)]
+        );
+        assert_eq!(lex("+inf.0").unwrap(), vec![real_tok(std::f64::INFINITY)]);
         assert!(lex("-0a.").is_err());
         assert!(lex("-0.123d").is_err());
     }
