@@ -15,6 +15,9 @@
 use std::error::Error;
 use std::iter::Peekable;
 
+use num_bigint::{BigInt, Sign};
+use num_rational::BigRational;
+
 /// Represents a token from the input.
 ///
 /// For atoms, i.e. basic types, this is essentially the same as a Value: it holds a tag and the
@@ -39,10 +42,26 @@ pub enum Token {
     UnquoteSplicing,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum NumToken {
+#[derive(Debug, PartialEq, Clone)]
+pub struct NumToken {
+    pub value: NumValue,
+    pub exactness: Exactness,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Exactness {
+    Exact,
+    Inexact,
+    Default,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum NumValue {
     Real(f64),
-    Integer(i64),
+    Integer(BigInt),
+    Rational(BigRational),
+    Rectangular(Box<NumValue>, Box<NumValue>),
+    Polar(Box<NumValue>, Box<NumValue>),
 }
 
 /// Turns an str slice into a vector of tokens, or fails with an error message.
@@ -141,26 +160,34 @@ fn consume_number<I>(it: &mut Peekable<I>) -> Result<Token, String>
 where
     I: Iterator<Item = char>,
 {
-    let token: String = take_delimited_token(it, 1).into_iter().collect();
-
-    parse_number(&token).map(|x| Token::Num(x))
+    let value = parse_number(&take_delimited_token(it, 1), 10)?;
+    Ok(Token::Num(NumToken {
+        value,
+        exactness: Exactness::Default,
+    }))
 }
 
+// TODO special logic for -i, +i, -inf.0, +inf.0, -nan.0, +nan.0
 fn consume_sign_or_dot<I>(it: &mut Peekable<I>) -> Result<Token, String>
 where
     I: Iterator<Item = char>,
 {
-    let token: String = take_delimited_token(it, 1).into_iter().collect();
+    let token = take_delimited_token(it, 1);
+    let token_s: String = token.iter().collect();
 
-    if token == "." {
+    if token_s == "." {
         return Ok(Token::Dot);
     }
-    if let Some(c) = token.chars().nth(1) {
+    if let Some(c) = token.get(1) {
         if c.is_ascii_digit() {
-            return parse_number(&token).map(|x| Token::Num(x));
+            let value = parse_number(&token, 10)?;
+            return Ok(Token::Num(NumToken {
+                value,
+                exactness: Exactness::Default,
+            }));
         }
     }
-    Ok(Token::Symbol(token))
+    Ok(Token::Symbol(token_s))
 }
 
 fn consume_hash<I>(it: &mut Peekable<I>) -> Result<Token, String>
@@ -195,6 +222,11 @@ where
                 (Some('8'), Some('(')) => Ok(Token::OpenByteVector),
                 (a, b) => Err(format!("Unknown token form: `#u{:?}{:?}...", a, b)),
             },
+            'i' | 'e' | 'b' | 'o' | 'd' | 'x' => {
+                let mut num = take_delimited_token(it, 1);
+                num.insert(0, c);
+                parse_prefixed_number(&num).map(|x| Token::Num(x))
+            }
             _ => Err(format!("Unknown token form: `#{}...`.", c)),
         }
     } else {
@@ -202,12 +234,98 @@ where
     }
 }
 
-fn parse_number(s: &str) -> Result<NumToken, String> {
-    s.parse::<i64>().map(|x| NumToken::Integer(x)).or_else(|_| {
+/// Parses a number with prefixes.
+///
+/// According to the Holy Standard, there can be at most two prefixes, one for the base and one to
+/// specify exactness. This method assumes the first hash has been consumed.
+///
+// TODO the code in here is terrible, doesn't check that there's at most one prefix of each kind.
+fn parse_prefixed_number(s: &[char]) -> Result<NumToken, String> {
+    let mut base = 10;
+    let mut exactness = Exactness::Default;
+    let (prefixes, num_start_index) = if let Some(c) = s.get(2) {
+        if s.get(1) != Some(&'#') {
+            return Err("Invalid numeric prefix".into());
+        }
+        (vec![s[0], *c], 3)
+    } else {
+        (vec![s[0]], 1)
+    };
+
+    for p in prefixes {
+        match p {
+            'i' => exactness = Exactness::Exact,
+            'e' => exactness = Exactness::Inexact,
+            'b' => base = 2,
+            'o' => base = 8,
+            'd' => base = 10,
+            'x' => base = 16,
+            _ => return Err(format!("Invalid numeric prefix: {}", p)),
+        }
+    }
+
+    let value = parse_number(&s[num_start_index..], base)?;
+    Ok(NumToken { value, exactness })
+}
+
+fn parse_number(s: &[char], base: u8) -> Result<NumValue, String> {
+    if let Some(pos) = s.iter().position(|x| *x == '@') {
+        // Complex in polar notation
+        let (magnitude_s, phase_s) = s.split_at(pos);
+        let phase_s = &phase_s[1..];
+        Ok(NumValue::Polar(
+            Box::new(parse_simple_number(magnitude_s, base)?),
+            Box::new(parse_simple_number(phase_s, base)?),
+        ))
+    } else if let Some('i') = s.last() {
+        // Rectangular complex
+        panic!("Can't read rectangular complexes yet.");
+    } else {
+        parse_simple_number(s, base)
+    }
+}
+
+/// Parses a simple type: Integer, Ratio, or Real.
+fn parse_simple_number(s: &[char], base: u8) -> Result<NumValue, String> {
+    if let Some(pos) = s.iter().position(|x| *x == '/') {
+        let numerator =
+            parse_integer(&s[..pos], base).ok_or_else(|| format!("Invalid rational"))?;
+        let denominator =
+            parse_integer(&s[pos + 1..], base).ok_or_else(|| format!("Invalid rational"))?;
+        Ok(NumValue::Rational(BigRational::new(numerator, denominator)))
+    } else if s.iter().find(|x| **x == '.').is_some() {
+        let s: String = s.iter().collect();
+        if base != 10 {
+            return Err(format!(
+                "Real is specified in base {}, but only base 10 is supported.",
+                base
+            ));
+        }
         s.parse::<f64>()
-            .map(|x| NumToken::Real(x))
-            .map_err(|e| e.description().to_string())
-    })
+            .map(|x| NumValue::Real(x))
+            .map_err(|e| format!("Invalid real: {}: {}", s, e.description().to_string()))
+    } else {
+        parse_integer(s, base)
+            .map(|x| NumValue::Integer(x))
+            .ok_or_else(|| format!("Invalid integer"))
+    }
+}
+
+fn parse_integer(s: &[char], base: u8) -> Option<BigInt> {
+    let (sign, trimmed_s) = match s[0] {
+        '-' => (Sign::Minus, &s[1..]),
+        '+' => (Sign::Plus, &s[1..]),
+        _ => (Sign::Plus, s),
+    };
+    // I don't really understand why Rust's char::to_digit uses u32 for radices and digits, but
+    // only supports values under 32, which easily fit in an u8. A mystery for another day, I
+    // guess.
+    let base = base as u32;
+    let digits: Option<Vec<u8>> = trimmed_s
+        .iter()
+        .map(|x| x.to_digit(base).map(|y| y as u8))
+        .collect();
+    digits.and_then(|d| BigInt::from_radix_be(sign, &d, base))
 }
 
 fn consume_string<I>(it: &mut Peekable<I>) -> Result<Token, String>
@@ -315,6 +433,20 @@ pub fn segment(toks: Vec<Token>) -> Result<SegmentationResult, String> {
 mod tests {
     use super::*;
 
+    fn int_tok(i: i64) -> Token {
+        Token::Num(NumToken {
+            value: NumValue::Integer(i.into()),
+            exactness: Exactness::Default,
+        })
+    }
+
+    fn real_tok(r: f64) -> Token {
+        Token::Num(NumToken {
+            value: NumValue::Real(r),
+            exactness: Exactness::Default,
+        })
+    }
+
     #[test]
     fn lex_char() {
         assert_eq!(lex("#\\!").unwrap(), vec![Token::Character('!')]);
@@ -328,35 +460,20 @@ mod tests {
 
     #[test]
     fn lex_int() {
-        assert_eq!(
-            lex("123").unwrap(),
-            vec![Token::Num(NumToken::Integer(123))]
-        );
-        assert_eq!(lex("0").unwrap(), vec![Token::Num(NumToken::Integer(0))]);
-        assert_eq!(
-            lex("-123").unwrap(),
-            vec![Token::Num(NumToken::Integer(-123))]
-        );
-        assert_eq!(
-            lex("+123").unwrap(),
-            vec![Token::Num(NumToken::Integer(123))]
-        );
+        assert_eq!(lex("123").unwrap(), vec![int_tok(123)]);
+        assert_eq!(lex("0").unwrap(), vec![int_tok(0)]);
+        assert_eq!(lex("-123").unwrap(), vec![int_tok(-123)]);
+        assert_eq!(lex("+123").unwrap(), vec![int_tok(123)]);
         assert!(lex("12d3").is_err());
         assert!(lex("123d").is_err());
     }
 
     #[test]
     fn lex_float() {
-        assert_eq!(
-            lex("123.4567").unwrap(),
-            vec![Token::Num(NumToken::Real(123.4567))]
-        );
-        assert_eq!(
-            lex(".4567").unwrap(),
-            vec![Token::Num(NumToken::Real(0.4567))]
-        );
-        assert_eq!(lex("0.").unwrap(), vec![Token::Num(NumToken::Real(0.0))]);
-        assert_eq!(lex("-0.").unwrap(), vec![Token::Num(NumToken::Real(-0.0))]);
+        assert_eq!(lex("123.4567").unwrap(), vec![real_tok(123.4567)]);
+        assert_eq!(lex(".4567").unwrap(), vec![real_tok(0.4567)]);
+        assert_eq!(lex("0.").unwrap(), vec![real_tok(0.0)]);
+        assert_eq!(lex("-0.").unwrap(), vec![real_tok(-0.0)]);
         assert!(lex("-0a.").is_err());
         assert!(lex("-0.123d").is_err());
     }
@@ -391,15 +508,11 @@ mod tests {
         assert!(lex("").unwrap().is_empty());
         assert_eq!(
             lex("  123   #f   ").unwrap(),
-            vec![Token::Num(NumToken::Integer(123)), Token::Boolean(false)]
+            vec![int_tok(123), Token::Boolean(false)]
         );
         assert_eq!(
             lex("123)456").unwrap(),
-            vec![
-                Token::Num(NumToken::Integer(123)),
-                Token::ClosingParen,
-                Token::Num(NumToken::Integer(456))
-            ]
+            vec![int_tok(123), Token::ClosingParen, int_tok(456)]
         );
     }
 
@@ -434,9 +547,6 @@ mod tests {
 
     #[test]
     fn lex_spaces() {
-        assert_eq!(
-            lex("  123  ").unwrap(),
-            vec![Token::Num(NumToken::Integer(123))]
-        );
+        assert_eq!(lex("  123  ").unwrap(), vec![int_tok(123)]);
     }
 }

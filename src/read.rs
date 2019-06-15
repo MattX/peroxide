@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use std::cell::RefCell;
-use std::convert::TryFrom;
 use std::iter::Peekable;
 
 use arena::Arena;
 use lex;
-use lex::{NumToken, Token};
+use lex::{Exactness, NumToken, NumValue, Token};
+use num_traits::cast::ToPrimitive;
 use value::Value;
 
 #[derive(Debug)]
@@ -69,8 +69,7 @@ where
 {
     if let Some(t) = it.next() {
         match t {
-            Token::Num(NumToken::Real(r)) => Ok(Value::Real(*r)),
-            Token::Num(NumToken::Integer(i)) => Ok(Value::Integer(*i)),
+            Token::Num(x) => read_num_token(x),
             Token::Boolean(b) => Ok(Value::Boolean(*b)),
             Token::Character(c) => Ok(Value::Character(*c)),
             Token::String(s) => Ok(Value::String(RefCell::new(s.to_string()))),
@@ -89,6 +88,14 @@ where
         }
     } else {
         panic!("do_parse called with no tokens.");
+    }
+}
+
+fn read_num_token(t: &NumToken) -> Result<Value, ParseResult> {
+    match &t.value {
+        NumValue::Real(r) => Ok(Value::Real(*r)),
+        NumValue::Integer(i) => Ok(Value::Integer(i.to_i64().unwrap())),
+        _ => Err(ParseResult::ParseError(format!("Unimplemented: {:?}", t))),
     }
 }
 
@@ -152,12 +159,28 @@ where
                 it.next();
                 break;
             }
-            Token::Num(NumToken::Integer(i)) => {
+            Token::Num(t) => {
                 it.next();
-                let b = u8::try_from(*i).map_err(|_e| {
-                    ParseResult::ParseError(format!("Invalid byte literal: {}.", i))
-                })?;
-                result.push(b);
+                if t.exactness != Exactness::Default {
+                    return Err(ParseResult::ParseError(format!(
+                        "Bytes must not have specified exactness: {:?}.",
+                        t
+                    )));
+                }
+                match &t.value {
+                    NumValue::Integer(i) => {
+                        let b = i.to_u8().ok_or_else(|| {
+                            ParseResult::ParseError(format!("Invalid byte value: {}.", i))
+                        })?;
+                        result.push(b);
+                    }
+                    x => {
+                        return Err(ParseResult::ParseError(format!(
+                            "Non-byte in bytevector literal: {:?}.",
+                            x
+                        )))
+                    }
+                }
             }
             v => {
                 return Err(ParseResult::ParseError(format!(

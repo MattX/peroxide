@@ -38,6 +38,8 @@ use value::{list_from_vec, pretty_print, vec_from_list, Value};
 use {compile_run, environment};
 use {parse_compile_run, VmState};
 
+const MAX_MACRO_EXPANSION: usize = 1000;
+
 #[derive(Debug)]
 pub enum SyntaxElement {
     Reference(Box<Reference>),
@@ -662,13 +664,15 @@ fn expand_macro_full(
     mac: Macro,
     expr: usize,
 ) -> Result<usize, String> {
-    //println!("Expanding: {}", pretty_print(arena, expr));
     let mut expanded = expand_macro(arena, vms, env, mac, expr)?;
+    let mut macro_count = 0;
     while let Some(m) = get_macro(arena, env, expanded) {
-        //println!("Expanded: {}", pretty_print(arena, expanded));
+        macro_count += 1;
+        if macro_count > MAX_MACRO_EXPANSION {
+            return Err(format!("Maximum macro expansion depth reached."));
+        }
         expanded = expand_macro(arena, vms, env, m, expanded)?;
     }
-    //println!("Expanded: {}", pretty_print(arena, expanded));
     Ok(expanded)
 }
 
