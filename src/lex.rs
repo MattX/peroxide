@@ -249,19 +249,19 @@ where
 fn parse_prefixed_number(s: &[char]) -> Result<NumToken, String> {
     let mut base = 10;
     let mut exactness = Exactness::Default;
-    let (prefixes, num_start_index) = if let Some(c) = s.get(2) {
-        if s.get(1) != Some(&'#') {
+    let (prefixes, num_start_index) = if let Some('#') = s.get(1) {
+        if s.len() < 4 {
             return Err("Invalid numeric prefix".into());
         }
-        (vec![s[0], *c], 3)
+        (vec![s[0], s[2]], 3)
     } else {
         (vec![s[0]], 1)
     };
 
     for p in prefixes {
         match p {
-            'i' => exactness = Exactness::Exact,
-            'e' => exactness = Exactness::Inexact,
+            'i' => exactness = Exactness::Inexact,
+            'e' => exactness = Exactness::Exact,
             'b' => base = 2,
             'o' => base = 8,
             'd' => base = 10,
