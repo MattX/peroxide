@@ -18,6 +18,7 @@ use std::iter::Peekable;
 use arena::Arena;
 use lex;
 use lex::{NumValue, Token};
+use num_complex::Complex;
 use num_traits::cast::ToPrimitive;
 use value::Value;
 
@@ -91,11 +92,33 @@ where
     }
 }
 
+// TODO we can avoid clones by consuming the NumValue here
 fn read_num_token(t: &NumValue) -> Result<Value, ParseResult> {
     match t {
         NumValue::Real(r) => Ok(Value::Real(*r)),
         NumValue::Integer(i) => Ok(Value::Integer(i.to_i64().unwrap())),
-        _ => Err(ParseResult::ParseError(format!("Unimplemented: {:?}", t))),
+        NumValue::Rational(br) => Ok(Value::Rational(Box::new(br.clone()))),
+        NumValue::Polar(magnitude, phase) => {
+            // TODO if phase or magnitude are exact zeros we can do better things
+            let magnitude = magnitude.coerce_real();
+            let phase = phase.coerce_real();
+            Ok(Value::ComplexReal(Complex::new(
+                magnitude * phase.sin(),
+                magnitude * phase.cos(),
+            )))
+        }
+        NumValue::Rectangular(real, imag) => match (real.as_ref(), imag.as_ref()) {
+            (NumValue::Real(_), _) | (_, NumValue::Real(_)) => Ok(Value::ComplexReal(
+                Complex::new(real.coerce_real(), imag.coerce_real()),
+            )),
+            (NumValue::Rational(_), _) | (_, NumValue::Rational(_)) => Ok(Value::ComplexRational(
+                Box::new(Complex::new(real.coerce_rational(), imag.coerce_rational())),
+            )),
+            (NumValue::Integer(real), NumValue::Integer(imag)) => Ok(Value::ComplexInteger(
+                Box::new(Complex::new(real.clone(), imag.clone())),
+            )),
+            _ => panic!("Complex numbers in rectangular NumValue"),
+        },
     }
 }
 

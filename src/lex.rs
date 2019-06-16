@@ -14,8 +14,10 @@
 
 use std::iter::Peekable;
 
+use lex::Token::Num;
 use num_bigint::{BigInt, Sign};
-use num_rational::BigRational;
+use num_rational::{BigRational, Rational};
+use num_traits::identities::Zero;
 use num_traits::Pow;
 use util;
 
@@ -50,6 +52,55 @@ pub enum NumValue {
     Rational(BigRational),
     Rectangular(Box<NumValue>, Box<NumValue>),
     Polar(Box<NumValue>, Box<NumValue>),
+}
+
+impl NumValue {
+    /*
+    fn is_exact_zero(&self) -> bool {
+        match self {
+            NumValue::Real(x) => x.abs() < std::f64::EPSILON,
+            NumValue::Integer(x) => x.is_zero(),
+            NumValue::Rational(x) => x.is_zero(),
+            NumValue::Rectangular(real, imag) => real.is_exact_zero() && imag.is_exact_zero(),
+            NumValue::Polar(magnitude, angle) => magnitude.is_exact_zero(),
+        }
+    }
+
+    fn is_exact(&self) -> bool {
+        match self {
+            NumValue::Real(_) => false,
+            NumValue::Integer(_) => true,
+            NumValue::Rational(_) => true,
+            NumValue::Rectangular(real, imag) => real.is_exact() && imag.is_exact(),
+            NumValue::Polar(magnitude, angle) => magnitude.is_exact_zero() || (magnitude.is_exact() && angle.is_exact_zero()),
+        }
+    }
+
+    fn is_real(&self) -> bool {
+        match self {
+            NumValue::Real(_) | NumValue::Integer(_) | NumValue::Rational(_) => true,
+            NumValue::Rectangular(_, imag) => imag.is_exact_zero(),
+            NumValue::Polar(magnitude, angle) => magnitude.is_exact_zero() || angle.is_exact_zero(),
+        }
+    }
+    */
+
+    pub fn coerce_real(&self) -> f64 {
+        match self {
+            NumValue::Real(x) => *x,
+            NumValue::Integer(x) => util::integer_to_float(x),
+            NumValue::Rational(x) => util::rational_to_float(x),
+            _ => panic!("Can't convert complex to real"),
+        }
+    }
+
+    pub fn coerce_rational(&self) -> BigRational {
+        match self {
+            NumValue::Integer(x) => BigRational::new(x.clone(), 1.into()),
+            NumValue::Rational(x) => x.clone(),
+            _ => panic!("Only ints and rationals can be converted to rational"),
+        }
+    }
 }
 
 /// Turns an str slice into a vector of tokens, or fails with an error message.
