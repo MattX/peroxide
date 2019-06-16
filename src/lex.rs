@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::error::Error;
 use std::iter::Peekable;
 
 use num_bigint::{BigInt, Sign};
 use num_rational::BigRational;
+use num_traits::Pow;
+use util;
 
 /// Represents a token from the input.
 ///
@@ -26,7 +27,7 @@ use num_rational::BigRational;
 /// expression.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
-    Num(NumToken),
+    Num(NumValue),
     Boolean(bool),
     Character(char),
     Symbol(String),
@@ -40,19 +41,6 @@ pub enum Token {
     QuasiQuote,
     Unquote,
     UnquoteSplicing,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct NumToken {
-    pub value: NumValue,
-    pub exactness: Exactness,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Exactness {
-    Exact,
-    Inexact,
-    Default,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -156,15 +144,41 @@ where
     result
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Exactness {
+    Exact,
+    Inexact,
+    Default,
+}
+
+impl Exactness {
+    fn convert_rational(self, v: BigRational) -> NumValue {
+        match self {
+            Exactness::Exact | Exactness::Default => NumValue::Rational(v),
+            Exactness::Inexact => NumValue::Real(util::rational_to_float(&v)),
+        }
+    }
+
+    fn convert_real(self, v: BigRational) -> NumValue {
+        match self {
+            Exactness::Exact => NumValue::Rational(v),
+            Exactness::Inexact | Exactness::Default => NumValue::Real(util::rational_to_float(&v)),
+        }
+    }
+
+    fn convert_integer(self, v: BigInt) -> NumValue {
+        match self {
+            Exactness::Exact | Exactness::Default => NumValue::Integer(v),
+            Exactness::Inexact => NumValue::Real(util::integer_to_float(&v)),
+        }
+    }
+}
+
 fn consume_number<I>(it: &mut Peekable<I>) -> Result<Token, String>
 where
     I: Iterator<Item = char>,
 {
-    let value = parse_number(&take_delimited_token(it, 1), 10)?;
-    Ok(Token::Num(NumToken {
-        value,
-        exactness: Exactness::Default,
-    }))
+    parse_number(&take_delimited_token(it, 1), 10, Exactness::Default).map(Token::Num)
 }
 
 fn consume_sign_or_dot<I>(it: &mut Peekable<I>) -> Result<Token, String>
@@ -186,11 +200,7 @@ where
             || token_s.starts_with("+nan.0")
             || token_s.starts_with("-nan.0")
         {
-            let value = parse_number(&token, 10)?;
-            return Ok(Token::Num(NumToken {
-                value,
-                exactness: Exactness::Default,
-            }));
+            return parse_number(&token, 10, Exactness::Default).map(Token::Num);
         }
     }
     Ok(Token::Symbol(token_s))
@@ -231,7 +241,7 @@ where
             'i' | 'e' | 'b' | 'o' | 'd' | 'x' => {
                 let mut num = take_delimited_token(it, 1);
                 num.insert(0, c);
-                parse_prefixed_number(&num).map(|x| Token::Num(x))
+                parse_prefixed_number(&num).map(Token::Num)
             }
             _ => Err(format!("Unknown token form: `#{}...`.", c)),
         }
@@ -246,7 +256,7 @@ where
 /// specify exactness. This method assumes the first hash has been consumed.
 ///
 // TODO the code in here is terrible, doesn't check that there's at most one prefix of each kind.
-fn parse_prefixed_number(s: &[char]) -> Result<NumToken, String> {
+fn parse_prefixed_number(s: &[char]) -> Result<NumValue, String> {
     let mut base = 10;
     let mut exactness = Exactness::Default;
     let (prefixes, num_start_index) = if let Some('#') = s.get(1) {
@@ -270,16 +280,15 @@ fn parse_prefixed_number(s: &[char]) -> Result<NumToken, String> {
         }
     }
 
-    let value = parse_number(&s[num_start_index..], base)?;
-    Ok(NumToken { value, exactness })
+    parse_number(&s[num_start_index..], base, exactness)
 }
 
-fn parse_number(s: &[char], base: u8) -> Result<NumValue, String> {
+fn parse_number(s: &[char], base: u8, exactness: Exactness) -> Result<NumValue, String> {
     if let Some(pos) = s.iter().position(|x| *x == '@') {
         // Complex in polar notation
         Ok(NumValue::Polar(
-            Box::new(parse_simple_number(&s[..pos], base)?),
-            Box::new(parse_simple_number(&s[pos + 1..], base)?),
+            Box::new(parse_simple_number(&s[..pos], base, exactness)?),
+            Box::new(parse_simple_number(&s[pos + 1..], base, exactness)?),
         ))
     } else if let Some('i') = s.last() {
         // Rectangular complex.
@@ -287,7 +296,7 @@ fn parse_number(s: &[char], base: u8) -> Result<NumValue, String> {
         // a pure imaginary number.
         let sep_pos = s.iter().rposition(|x| *x == '+' || *x == '-').unwrap_or(0);
         let real_part = if sep_pos > 0 {
-            parse_simple_number(&s[..sep_pos], base)?
+            parse_simple_number(&s[..sep_pos], base, exactness)?
         } else {
             NumValue::Integer(0.into())
         };
@@ -295,42 +304,47 @@ fn parse_number(s: &[char], base: u8) -> Result<NumValue, String> {
             // expression ends in +i or -i.
             NumValue::Integer(if s[sep_pos] == '+' { 1 } else { -1 }.into())
         } else {
-            parse_simple_number(&s[sep_pos..s.len() - 1], base)?
+            parse_simple_number(&s[sep_pos..s.len() - 1], base, exactness)?
         };
         Ok(NumValue::Rectangular(
             Box::new(real_part),
             Box::new(imag_part),
         ))
     } else {
-        parse_simple_number(s, base)
+        parse_simple_number(s, base, exactness)
     }
 }
 
 /// Parses a simple type: Integer, Ratio, or Real.
-fn parse_simple_number(s: &[char], base: u8) -> Result<NumValue, String> {
+fn parse_simple_number(s: &[char], base: u8, exactness: Exactness) -> Result<NumValue, String> {
     if let Some(pos) = s.iter().position(|x| *x == '/') {
         let numerator =
-            parse_integer(&s[..pos], base).ok_or_else(|| format!("Invalid rational"))?;
+            parse_integer(&s[..pos], base).ok_or_else(|| "Invalid rational".to_string())?;
         let denominator =
-            parse_integer(&s[pos + 1..], base).ok_or_else(|| format!("Invalid rational"))?;
-        Ok(NumValue::Rational(BigRational::new(numerator, denominator)))
+            parse_integer(&s[pos + 1..], base).ok_or_else(|| "Invalid rational".to_string())?;
+        Ok(exactness.convert_rational(BigRational::new(numerator, denominator)))
     } else if let Some(x) = parse_special_real(s) {
+        if exactness == Exactness::Exact {
+            return Err(format!(
+                "{} cannot be cast to an exact value",
+                s.iter().collect::<String>()
+            ));
+        }
         Ok(NumValue::Real(x))
-    } else if s.iter().find(|x| **x == '.').is_some() {
-        let s: String = s.iter().collect();
+    } else if s.iter().any(|x| *x == '.' || *x == 'e') {
         if base != 10 {
             return Err(format!(
                 "Real is specified in base {}, but only base 10 is supported.",
                 base
             ));
         }
-        s.parse::<f64>()
-            .map(|x| NumValue::Real(x))
-            .map_err(|e| format!("Invalid real: {}: {}", s, e.description().to_string()))
+        parse_float(s)
+            .map(|x| exactness.convert_real(x))
+            .ok_or_else(|| format!("Invalid float: {}", s.iter().collect::<String>()))
     } else {
         parse_integer(s, base)
-            .map(|x| NumValue::Integer(x))
-            .ok_or_else(|| format!("Invalid integer {}", s.iter().collect::<String>()))
+            .map(|x| exactness.convert_integer(x))
+            .ok_or_else(|| format!("Invalid integer: {}", s.iter().collect::<String>()))
     }
 }
 
@@ -343,12 +357,44 @@ fn parse_integer(s: &[char], base: u8) -> Option<BigInt> {
     // I don't really understand why Rust's char::to_digit uses u32 for radices and digits, but
     // only supports values under 32, which easily fit in an u8. A mystery for another day, I
     // guess.
-    let base = base as u32;
+    let base = u32::from(base);
     let digits: Option<Vec<u8>> = trimmed_s
         .iter()
         .map(|x| x.to_digit(base).map(|y| y as u8))
         .collect();
     digits.and_then(|d| BigInt::from_radix_be(sign, &d, base))
+}
+
+fn parse_float(s: &[char]) -> Option<BigRational> {
+    let (mantissa_s, exponent_s) = if let Some(pos) = s.iter().position(|x| *x == 'e') {
+        (&s[..pos], Some(&s[pos + 1..]))
+    } else {
+        (s, None)
+    };
+    let mut exponent: i64 = exponent_s
+        .and_then(|x| x.iter().collect::<String>().parse().ok())
+        .unwrap_or(1);
+    let (int_str, float_expt) = if let Some(pos) = mantissa_s.iter().position(|x| *x == '.') {
+        (
+            [&mantissa_s[..pos], &mantissa_s[pos + 1..]].concat(),
+            mantissa_s.len() - pos,
+        )
+    } else {
+        (mantissa_s.to_vec(), 0)
+    };
+    exponent -= float_expt as i64;
+    let numerator: BigInt = int_str.iter().collect::<String>().parse().ok()?;
+    if exponent > 0 {
+        Some(BigRational::new(
+            numerator * BigInt::from(10).pow(exponent as u64),
+            1.into(),
+        ))
+    } else {
+        Some(BigRational::new(
+            numerator,
+            BigInt::from(10).pow((-exponent) as u64),
+        ))
+    }
 }
 
 fn parse_special_real(s: &[char]) -> Option<f64> {
@@ -466,17 +512,11 @@ mod tests {
     use super::*;
 
     fn int_tok(i: i64) -> Token {
-        Token::Num(NumToken {
-            value: NumValue::Integer(i.into()),
-            exactness: Exactness::Default,
-        })
+        Token::Num(NumValue::Integer(i.into()))
     }
 
     fn real_tok(r: f64) -> Token {
-        Token::Num(NumToken {
-            value: NumValue::Real(r),
-            exactness: Exactness::Default,
-        })
+        Token::Num(NumValue::Real(r))
     }
 
     #[test]
@@ -519,13 +559,10 @@ mod tests {
     fn lex_polar() {
         assert_eq!(
             lex("1.2@3/4").unwrap(),
-            vec![Token::Num(NumToken {
-                value: NumValue::Polar(
-                    Box::new(NumValue::Real(1.2)),
-                    Box::new(NumValue::Rational(BigRational::new(3.into(), 4.into())))
-                ),
-                exactness: Exactness::Default,
-            })]
+            vec![Token::Num(NumValue::Polar(
+                Box::new(NumValue::Real(1.2)),
+                Box::new(NumValue::Rational(BigRational::new(3.into(), 4.into())))
+            ))]
         );
     }
 

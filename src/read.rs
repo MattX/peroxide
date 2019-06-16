@@ -17,7 +17,7 @@ use std::iter::Peekable;
 
 use arena::Arena;
 use lex;
-use lex::{Exactness, NumToken, NumValue, Token};
+use lex::{NumValue, Token};
 use num_traits::cast::ToPrimitive;
 use value::Value;
 
@@ -91,8 +91,8 @@ where
     }
 }
 
-fn read_num_token(t: &NumToken) -> Result<Value, ParseResult> {
-    match &t.value {
+fn read_num_token(t: &NumValue) -> Result<Value, ParseResult> {
+    match t {
         NumValue::Real(r) => Ok(Value::Real(*r)),
         NumValue::Integer(i) => Ok(Value::Integer(i.to_i64().unwrap())),
         _ => Err(ParseResult::ParseError(format!("Unimplemented: {:?}", t))),
@@ -159,28 +159,12 @@ where
                 it.next();
                 break;
             }
-            Token::Num(t) => {
+            Token::Num(NumValue::Integer(i)) => {
                 it.next();
-                if t.exactness != Exactness::Default {
-                    return Err(ParseResult::ParseError(format!(
-                        "Bytes must not have specified exactness: {:?}.",
-                        t
-                    )));
-                }
-                match &t.value {
-                    NumValue::Integer(i) => {
-                        let b = i.to_u8().ok_or_else(|| {
-                            ParseResult::ParseError(format!("Invalid byte value: {}.", i))
-                        })?;
-                        result.push(b);
-                    }
-                    x => {
-                        return Err(ParseResult::ParseError(format!(
-                            "Non-byte in bytevector literal: {:?}.",
-                            x
-                        )))
-                    }
-                }
+                let b = i.to_u8().ok_or_else(|| {
+                    ParseResult::ParseError(format!("Invalid byte value: {}.", i))
+                })?;
+                result.push(b);
             }
             v => {
                 return Err(ParseResult::ParseError(format!(

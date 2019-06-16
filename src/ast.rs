@@ -669,7 +669,7 @@ fn expand_macro_full(
     while let Some(m) = get_macro(arena, env, expanded) {
         macro_count += 1;
         if macro_count > MAX_MACRO_EXPANSION {
-            return Err(format!("Maximum macro expansion depth reached."));
+            return Err("Maximum macro expansion depth reached.".into());
         }
         expanded = expand_macro(arena, vms, env, m, expanded)?;
     }

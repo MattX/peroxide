@@ -12,6 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use num_bigint::BigInt;
+use num_rational::BigRational;
+use num_traits::sign::Signed;
+use num_traits::ToPrimitive;
+
 /// Checks that a vector has at least `min`, at most `max` entries.
 // TODO this is not really idiomatic and should probably be made to return a boolean
 pub fn check_len<T>(v: &[T], min: Option<usize>, max: Option<usize>) -> Result<(), String> {
@@ -102,6 +107,22 @@ pub fn escape_symbol(s: &str) -> String {
     } else {
         format!("|{}|", s)
     }
+}
+
+// TODO these unwraps suck, and can fail if the bigintegers are large enough. Easy to fix
+//      by repeatedly diving each side until they're small.
+pub fn rational_to_float(v: &BigRational) -> f64 {
+    v.numer().to_f64().unwrap() / v.denom().to_f64().unwrap()
+}
+
+pub fn integer_to_float(v: &BigInt) -> f64 {
+    v.to_f64().unwrap_or_else(|| {
+        if v.is_positive() {
+            std::f64::INFINITY
+        } else {
+            std::f64::NEG_INFINITY
+        }
+    })
 }
 
 #[cfg(test)]
