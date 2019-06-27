@@ -111,6 +111,8 @@ pub fn escape_symbol(s: &str) -> String {
 
 // TODO these unwraps suck, and can fail if the bigintegers are large enough. Easy to fix
 //      by repeatedly diving each side until they're small.
+//      Will be done natively by rust_num once https://github.com/rust-num/num-rational/issues/4
+//      is merged.
 pub fn rational_to_float(v: &BigRational) -> f64 {
     v.numer().to_f64().unwrap() / v.denom().to_f64().unwrap()
 }
