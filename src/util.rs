@@ -13,9 +13,10 @@
 // limitations under the License.
 
 use num_bigint::BigInt;
+use num_complex::Complex;
 use num_rational::BigRational;
-use num_traits::sign::Signed;
-use num_traits::ToPrimitive;
+use num_traits::{Signed, ToPrimitive, Zero};
+use value::Value;
 
 /// Checks that a vector has at least `min`, at most `max` entries.
 // TODO this is not really idiomatic and should probably be made to return a boolean
@@ -125,6 +126,43 @@ pub fn integer_to_float(v: &BigInt) -> f64 {
             std::f64::NEG_INFINITY
         }
     })
+}
+
+fn bigint_to_i64(b: &BigInt) -> i64 {
+    let min_i64: BigInt = std::i64::MIN.into();
+    let max_i64: BigInt = std::i64::MAX.into();
+    let clamped = std::cmp::max(std::cmp::min(b, &max_i64), &min_i64);
+    clamped.to_i64().unwrap()
+}
+
+/// Turns complex value with an exact zero imaginary part into reals, and integer rationals into
+/// proper integers.
+pub fn simplify_numeric(v: Value) -> Value {
+    let realified = match &v {
+        Value::ComplexRational(x) if x.im.is_zero() => {
+            Some(Value::Rational(Box::new(x.re.clone())))
+        }
+        Value::ComplexInteger(x) if x.im.is_zero() => Some(Value::Integer(bigint_to_i64(&x.re))),
+        _ => None,
+    }
+    .unwrap_or(v);
+    match &realified {
+        Value::Rational(x) if x.is_integer() => {
+            Some(Value::Integer(bigint_to_i64(&x.to_integer())))
+        }
+        Value::ComplexRational(x) => {
+            if x.re.is_integer() && x.im.is_integer() {
+                Some(Value::ComplexInteger(Box::new(Complex::new(
+                    x.re.to_integer(),
+                    x.im.to_integer(),
+                ))))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+    .unwrap_or(realified)
 }
 
 #[cfg(test)]
