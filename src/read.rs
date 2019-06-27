@@ -20,6 +20,7 @@ use lex;
 use lex::{NumValue, Token};
 use num_complex::Complex;
 use num_traits::cast::ToPrimitive;
+use util::simplify_numeric;
 use value::Value;
 
 #[derive(Debug)]
@@ -70,7 +71,7 @@ where
 {
     if let Some(t) = it.next() {
         match t {
-            Token::Num(x) => read_num_token(x),
+            Token::Num(x) => Ok(read_num_token(x)),
             Token::Boolean(b) => Ok(Value::Boolean(*b)),
             Token::Character(c) => Ok(Value::Character(*c)),
             Token::String(s) => Ok(Value::String(RefCell::new(s.to_string()))),
@@ -93,33 +94,34 @@ where
 }
 
 // TODO we can avoid clones by consuming the NumValue here
-fn read_num_token(t: &NumValue) -> Result<Value, ParseResult> {
-    match t {
-        NumValue::Real(r) => Ok(Value::Real(*r)),
-        NumValue::Integer(i) => Ok(Value::Integer(i.to_i64().unwrap())),
-        NumValue::Rational(br) => Ok(Value::Rational(Box::new(br.clone()))),
+fn read_num_token(t: &NumValue) -> Value {
+    let equalized = match t {
+        NumValue::Real(r) => Value::Real(*r),
+        NumValue::Integer(i) => Value::Integer(i.to_i64().unwrap()),
+        NumValue::Rational(br) => Value::Rational(Box::new(br.clone())),
         NumValue::Polar(magnitude, phase) => {
             // TODO if phase or magnitude are exact zeros we can do better things
             let magnitude = magnitude.coerce_real();
             let phase = phase.coerce_real();
-            Ok(Value::ComplexReal(Complex::new(
+            Value::ComplexReal(Complex::new(
                 magnitude * phase.sin(),
                 magnitude * phase.cos(),
-            )))
+            ))
         }
         NumValue::Rectangular(real, imag) => match (real.as_ref(), imag.as_ref()) {
-            (NumValue::Real(_), _) | (_, NumValue::Real(_)) => Ok(Value::ComplexReal(
-                Complex::new(real.coerce_real(), imag.coerce_real()),
-            )),
-            (NumValue::Rational(_), _) | (_, NumValue::Rational(_)) => Ok(Value::ComplexRational(
+            (NumValue::Real(_), _) | (_, NumValue::Real(_)) => {
+                Value::ComplexReal(Complex::new(real.coerce_real(), imag.coerce_real()))
+            }
+            (NumValue::Rational(_), _) | (_, NumValue::Rational(_)) => Value::ComplexRational(
                 Box::new(Complex::new(real.coerce_rational(), imag.coerce_rational())),
-            )),
-            (NumValue::Integer(real), NumValue::Integer(imag)) => Ok(Value::ComplexInteger(
-                Box::new(Complex::new(real.clone(), imag.clone())),
-            )),
+            ),
+            (NumValue::Integer(real), NumValue::Integer(imag)) => {
+                Value::ComplexInteger(Box::new(Complex::new(real.clone(), imag.clone())))
+            }
             _ => panic!("Complex numbers in rectangular NumValue"),
         },
-    }
+    };
+    simplify_numeric(equalized)
 }
 
 fn read_list<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>

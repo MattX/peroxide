@@ -17,17 +17,25 @@ use num_bigint::BigInt;
 use num_complex::Complex;
 use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
-use util::{check_len, rational_to_float};
+use util::{check_len, rational_to_float, simplify_numeric};
 use value::{pretty_print, Value};
 
 macro_rules! simple_operator {
     ($inner_name:ident, $operator:tt) => {
         fn $inner_name(a: &Value, b: &Value) -> Value {
             match cast_same(a, b) {
-                (Value::ComplexReal(a), Value::ComplexReal(b)) => Value::ComplexReal(a $tt b),
-                (Value::Real(a), Value::Real(b)) => Value::Real(a $tt b),
-                (Value::Rational(a), Value::Rational(b)) => Value::Rational(Box::new(a $tt b)),
-                (Value::Integer(a), Value::Integer(b)) => Value::Integer(a $tt b),
+                (Value::ComplexReal(a), Value::ComplexReal(b)) => Value::ComplexReal(a $operator b),
+                (Value::ComplexRational(a), Value::ComplexRational(b)) => {
+                    Value::ComplexRational(Box::new((*a) $operator (*b)))
+                }
+                (Value::ComplexInteger(a), Value::ComplexInteger(b)) => {
+                    Value::ComplexInteger(Box::new((*a) $operator (*b)))
+                }
+                (Value::Real(a), Value::Real(b)) => Value::Real(a $operator b),
+                (Value::Rational(a), Value::Rational(b)) => {
+                    Value::Rational(Box::new((*a) $operator (*b)))
+                }
+                (Value::Integer(a), Value::Integer(b)) => Value::Integer(a $operator b),
                 _ => panic!(
                     "cast_same did not return equal numeric types: ({}, {})",
                     a, b
@@ -43,66 +51,26 @@ macro_rules! prim_fold_0 {
     ($name:ident, $folder:ident, $fold_initial:expr) => {
         pub fn $name(arena: &Arena, args: &[usize]) -> Result<usize, String> {
             let values = numeric_vec(arena, args)?;
-            Ok(arena.insert(values.iter().fold($fold_initial, |a, b| $folder(&a, &b))))
+            let result = values.iter().fold($fold_initial, |a, b| $folder(&a, &b));
+            Ok(arena.insert(simplify_numeric(result)))
         }
     };
 }
 
+simple_operator!(add2, +);
 prim_fold_0!(add, add2, Value::Integer(0));
-fn add2(a: &Value, b: &Value) -> Value {
-    match cast_same(a, b) {
-        (Value::ComplexReal(a), Value::ComplexReal(b)) => Value::ComplexReal(a + b),
-        (Value::ComplexRational(a), Value::ComplexRational(b)) => {
-            Value::ComplexRational(Box::new(*a + *b))
-        }
-        (Value::ComplexInteger(a), Value::ComplexInteger(b)) => {
-            Value::ComplexInteger(Box::new(*a + *b))
-        }
-        (Value::Real(a), Value::Real(b)) => Value::Real(a + b),
-        (Value::Rational(a), Value::Rational(b)) => Value::Rational(Box::new(*a + *b)),
-        (Value::Integer(a), Value::Integer(b)) => Value::Integer(a + b),
-        _ => panic!(
-            "cast_same did not return equal numeric types: ({}, {})",
-            a, b
-        ),
-    }
-}
 
+simple_operator!(mul2, *);
 prim_fold_0!(mul, mul2, Value::Integer(1));
-fn mul2(a: &Value, b: &Value) -> Value {
-    match cast_same(a, b) {
-        (Value::Integer(ia), Value::Integer(ib)) => Value::Integer(ia * ib),
-        (Value::Real(fa), Value::Real(fb)) => Value::Real(fa * fb),
-        _ => panic!(
-            "cast_same did not return equal numeric types: ({}, {})",
-            a, b
-        ),
-    }
-}
 
-/// Like [prim_fold_0], but uses the first element of the list as the fold initializer
-macro_rules! prim_fold_1 {
-    ($name:ident, $folder:ident) => {
-        pub fn $name(arena: &Arena, args: &[usize]) -> Result<usize, String> {
-            let values = numeric_vec(arena, args)?;
-            check_len(&values, Some(1), None)
-                .map_err(|e| format!("{}: {}", stringify!($name), e))?;
-            let first = (*values.first().expect("with_check_len is broken my bois")).clone();
-            Ok(arena.insert(values[1..].iter().fold(first, |a, b| $folder(&a, &b))))
-        }
-    };
-}
+simple_operator!(sub2, -);
 
-prim_fold_1!(subn, sub2);
-fn sub2(a: &Value, b: &Value) -> Value {
-    match cast_same(a, b) {
-        (Value::Integer(ia), Value::Integer(ib)) => Value::Integer(ia - ib),
-        (Value::Real(fa), Value::Real(fb)) => Value::Real(fa - fb),
-        _ => panic!(
-            "cast_same did not return equal numeric types: ({}, {})",
-            a, b
-        ),
-    }
+fn subn(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    let values = numeric_vec(arena, args)?;
+    check_len(&values, Some(1), None).map_err(|e| format!("(-): {}", e))?;
+    let first = (*values.first().expect("check_len is broken my bois")).clone();
+    let result = values[1..].iter().fold(first, |a, b| sub2(&a, &b));
+    Ok(arena.insert(simplify_numeric(result)))
 }
 
 pub fn sub(arena: &Arena, args: &[usize]) -> Result<usize, String> {
@@ -123,17 +91,36 @@ pub fn sub(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     }
 }
 
-prim_fold_1!(divn, div2);
-fn div2(a: &Value, b: &Value) -> Value {
+fn divn(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    let values = numeric_vec(arena, args)?;
+    check_len(&values, Some(1), None).map_err(|e| format!("(/): {}", e))?;
+    let mut result = (*values.first().expect("check_len is broken my bois")).clone();
+    for v in values[1..].iter() {
+        result = div2(&result, v).ok_or("exact division by zero".to_string())?;
+    }
+    Ok(arena.insert(simplify_numeric(result)))
+}
+
+fn div2(a: &Value, b: &Value) -> Option<Value> {
     match cast_same(a, b) {
-        (Value::Integer(ia), Value::Integer(ib)) => {
-            if ia % ib == 0 {
-                Value::Integer(ia / ib)
+        (Value::Real(a), Value::Real(b)) => Some(Value::Real(a / b)),
+        (Value::Rational(a), Value::Rational(b)) => {
+            if b.is_zero() {
+                None
             } else {
-                Value::Real(ia as f64 / ib as f64)
+                Some(Value::Rational(Box::new(*a / *b)))
             }
         }
-        (Value::Real(fa), Value::Real(fb)) => Value::Real(fa / fb),
+        (Value::Integer(a), Value::Integer(b)) => {
+            if b.is_zero() {
+                None
+            } else {
+                Some(Value::Rational(Box::new(BigRational::new(
+                    a.into(),
+                    b.into(),
+                ))))
+            }
+        }
         _ => panic!(
             "cast_same did not return equal numeric types: ({}, {})",
             a, b
