@@ -13,8 +13,12 @@
 // limitations under the License.
 
 use arena::Arena;
-use util::check_len;
+use util::{check_len, rational_to_float};
 use value::{pretty_print, Value};
+use num_complex::Complex;
+use num_bigint::BigInt;
+use num_rational::BigRational;
+use num_traits::{One, Signed, ToPrimitive, Zero};
 
 /// Generates a numeric primitive that runs a simple fold. The provided folder must be a function
 /// (&Value, &Value) -> Value
@@ -225,33 +229,135 @@ pub fn real_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
 ///
 /// TODO: we probably shouldn't collect into a vector because it makes basic math slow af.
 fn numeric_vec<'a>(arena: &'a Arena, args: &[usize]) -> Result<Vec<&'a Value>, String> {
-    args.iter()
-        .map(|v| verify_numeric(arena.get(*v)))
-        .collect::<Result<Vec<_>, _>>()
+    for arg in args {
+        if !is_numeric(arena.get(*arg)) {
+            return Err(format!("{} is not numeric.", arg));
+        }
+    }
+    Ok(args.iter()
+        .map(|v| arena.get(*v))
+        .collect())
 }
 
 /// Checks that a value is numeric
-fn verify_numeric(a: &Value) -> Result<&Value, String> {
+fn is_numeric(a: &Value) -> bool {
     match a {
-        Value::Integer(_) => Ok(a),
-        Value::Real(_) => Ok(a),
-        _ => Err(format!("{} is not numeric.", a)),
+        Value::Integer(_) => true,
+        Value::Rational(_) => true,
+        Value::Real(_) => true,
+        Value::ComplexInteger(_) => true,
+        Value::ComplexRational(_) => true,
+        Value::ComplexReal(_) => true,
+        _ => false,
+    }
+}
+
+fn is_complex(a: &Value) -> bool {
+    match a {
+        Value::ComplexInteger(_) => true,
+        Value::ComplexRational(_) => true,
+        Value::ComplexReal(_) => true,
+        _ => false,
+    }
+}
+
+fn is_real(a: &Value) -> bool {
+    match a {
+        Value::ComplexReal(_) | Value::Real(_) => true,
+        _ => false,
+    }
+}
+
+fn is_rational(a: &Value) -> bool {
+    match a {
+        Value::ComplexRational(_) | Value::Rational(_) => true,
+        _ => false,
+    }
+}
+
+fn is_integer(a: &Value) -> bool {
+    match a {
+        Value::ComplexInteger(_) | Value::Integer(_) => true,
+        _ => false,
     }
 }
 
 /// Casts two numeric values to the same type.
 fn cast_same(a: &Value, b: &Value) -> (Value, Value) {
-    match (a, b) {
-        (&Value::Integer(ia), &Value::Integer(ib)) => (Value::Integer(ia), Value::Integer(ib)),
-        _ => (as_float(a), as_float(b)),
+    let (a, b) = if is_complex(a) || is_complex(b) {
+        (as_complex(a), as_complex(b))
+    } else {
+        (a.clone(), b.clone())
+    };
+
+}
+
+// TODO all the casting methods below are repetitive and not very type-safe. Is there a better
+//      way? dun dun dun dun
+// TODO the methods below should probably take their arguments by value?
+
+fn as_complex_real(v: &Value) -> Value {
+    match v {
+        Value::ComplexReal(_) => v.clone(),
+        Value::ComplexRational(x) => Value::ComplexReal(Complex::new(rational_to_float(&x.re), rational_to_float(&x.im))),
+        Value::ComplexInteger(x) => Value::ComplexReal(Complex::new(bigint_to_f64(&x.re), bigint_to_f64(&x.im))),
+        _ => as_complex_real(&as_complex(v)),
     }
 }
 
-/// Turns a numeric value into a float.
-fn as_float(n: &Value) -> Value {
-    match *n {
-        Value::Integer(i) => Value::Real(i as f64),
-        Value::Real(f) => Value::Real(f),
-        _ => panic!("Non-numeric type passed to as_float"),
+fn as_complex_rational(v: &Value) -> Value {
+    match v {
+        Value::ComplexReal(_) => panic!("casting complex real as complex rational"),
+        Value::ComplexRational(_) => v.clone(),
+        Value::ComplexInteger(x) => Value::ComplexRational(Box::new(Complex::new(bigint_to_rational(&x.re), bigint_to_rational(&x.im)))),
+        _ => as_complex_rational(&as_complex(v)),
     }
+}
+
+fn as_complex_integer(v: &Value) -> Value {
+    match v {
+        Value::ComplexReal(_) => panic!("casting complex real as complex integer"),
+        Value::ComplexRational(_) => panic!("casting complex rational as complex integer"),
+        Value::ComplexInteger(_) => v.clone(),
+        _ => as_complex_integer(&as_complex(v)),
+    }
+}
+
+fn as_complex(v: &Value) -> Value {
+    match v {
+        Value::ComplexReal(_) | Value::ComplexRational(_) | Value::ComplexInteger(_) => v.clone(),
+        Value::Real(x) => Value::ComplexReal(Complex::new(*x, 0.0)),
+        Value::Integer(x) => Value::ComplexInteger(Box::new(Complex::new((*x).into(), BigInt::zero()))),
+        Value::Rational(x) => Value::ComplexRational(Box::new(Complex::new(*x.clone(), BigRational::zero()))),
+        _ => panic!("casting non-number as complex: {:?}", v),
+    }
+}
+
+fn as_real(n: &Value) -> Value {
+    match n {
+        Value::Real(f) => Value::Real(*f),
+        Value::Rational(x) => Value::Real(rational_to_float(x)),
+        Value::Integer(i) => Value::Real(*i as f64),
+        _ => panic!("cannot cast to float: {:?}", n),
+    }
+}
+
+fn as_rational(n: &Value) -> Value {
+    match n {
+        Value::Rational(x) => n.clone(),
+        Value::Integer(i) => Value::Rational(Box::new(BigRational::new(i.into(), BigInt::one()))),
+        _ => panic!("cannot cast to rational: {:?}", n),
+    }
+}
+
+fn bigint_to_f64(b: &BigInt) -> f64 {
+    b.to_f64().unwrap_or_else(|| if b.is_positive() {
+        std::f64::INFINITY
+    } else {
+        std::f64::NEG_INFINITY
+    })
+}
+
+fn bigint_to_rational(b: &BigInt) -> BigRational {
+    BigRational::new(b.clone(), BigInt::one())
 }

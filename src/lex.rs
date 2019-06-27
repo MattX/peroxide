@@ -14,9 +14,8 @@
 
 use std::iter::Peekable;
 
-use lex::Token::Num;
 use num_bigint::{BigInt, Sign};
-use num_rational::{BigRational, Rational};
+use num_rational::BigRational;
 use num_traits::identities::Zero;
 use num_traits::Pow;
 use util;
@@ -55,36 +54,6 @@ pub enum NumValue {
 }
 
 impl NumValue {
-    /*
-    fn is_exact_zero(&self) -> bool {
-        match self {
-            NumValue::Real(x) => x.abs() < std::f64::EPSILON,
-            NumValue::Integer(x) => x.is_zero(),
-            NumValue::Rational(x) => x.is_zero(),
-            NumValue::Rectangular(real, imag) => real.is_exact_zero() && imag.is_exact_zero(),
-            NumValue::Polar(magnitude, angle) => magnitude.is_exact_zero(),
-        }
-    }
-
-    fn is_exact(&self) -> bool {
-        match self {
-            NumValue::Real(_) => false,
-            NumValue::Integer(_) => true,
-            NumValue::Rational(_) => true,
-            NumValue::Rectangular(real, imag) => real.is_exact() && imag.is_exact(),
-            NumValue::Polar(magnitude, angle) => magnitude.is_exact_zero() || (magnitude.is_exact() && angle.is_exact_zero()),
-        }
-    }
-
-    fn is_real(&self) -> bool {
-        match self {
-            NumValue::Real(_) | NumValue::Integer(_) | NumValue::Rational(_) => true,
-            NumValue::Rectangular(_, imag) => imag.is_exact_zero(),
-            NumValue::Polar(magnitude, angle) => magnitude.is_exact_zero() || angle.is_exact_zero(),
-        }
-    }
-    */
-
     pub fn coerce_real(&self) -> f64 {
         match self {
             NumValue::Real(x) => *x,
@@ -373,7 +342,11 @@ fn parse_simple_number(s: &[char], base: u8, exactness: Exactness) -> Result<Num
             parse_integer(&s[..pos], base).ok_or_else(|| "Invalid rational".to_string())?;
         let denominator =
             parse_integer(&s[pos + 1..], base).ok_or_else(|| "Invalid rational".to_string())?;
-        Ok(exactness.convert_rational(BigRational::new(numerator, denominator)))
+        if denominator.is_zero() {
+            Err(format!("Invalid zero denominator: {}", denominator))
+        } else {
+            Ok(exactness.convert_rational(BigRational::new(numerator, denominator)))
+        }
     } else if let Some(x) = parse_special_real(s) {
         if exactness == Exactness::Exact {
             return Err(format!(
