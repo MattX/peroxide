@@ -58,7 +58,7 @@ impl NumValue {
         match self {
             NumValue::Real(x) => *x,
             NumValue::Integer(x) => util::integer_to_float(x),
-            NumValue::Rational(x) => util::rational_to_float(x),
+            NumValue::Rational(x) => util::rational_to_f64(x),
             _ => panic!("Can't convert complex to real"),
         }
     }
@@ -175,14 +175,14 @@ impl Exactness {
     fn convert_rational(self, v: BigRational) -> NumValue {
         match self {
             Exactness::Exact | Exactness::Default => NumValue::Rational(v),
-            Exactness::Inexact => NumValue::Real(util::rational_to_float(&v)),
+            Exactness::Inexact => NumValue::Real(util::rational_to_f64(&v)),
         }
     }
 
     fn convert_real(self, v: BigRational) -> NumValue {
         match self {
             Exactness::Exact => NumValue::Rational(v),
-            Exactness::Inexact | Exactness::Default => NumValue::Real(util::rational_to_float(&v)),
+            Exactness::Inexact | Exactness::Default => NumValue::Real(util::rational_to_f64(&v)),
         }
     }
 

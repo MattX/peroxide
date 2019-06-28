@@ -40,7 +40,7 @@ fn it_adds_two() {
     let arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
-        Value::Integer(4),
+        Value::Integer(4.into()),
         execute(&arena, &mut vm_state, "(+ 2 2)").unwrap()
     );
 }
@@ -50,7 +50,7 @@ fn nested_add() {
     let arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
-        Value::Integer(2),
+        Value::Integer(2.into()),
         execute(&arena, &mut vm_state, "(+ (+ 1 1 1) (- 1 2))").unwrap()
     );
 }
@@ -60,7 +60,7 @@ fn immediate_lambda_args() {
     let arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
-        Value::Integer(1),
+        Value::Integer(1.into()),
         execute(&arena, &mut vm_state, "((lambda (x) x) 1)").unwrap()
     );
 }
@@ -70,7 +70,7 @@ fn immediate_lambda_noargs() {
     let arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
-        Value::Integer(1),
+        Value::Integer(1.into()),
         execute(&arena, &mut vm_state, "((lambda () 1))").unwrap()
     );
 }
@@ -95,7 +95,11 @@ fn several_args() {
     let arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
-        vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)],
+        vec![
+            Value::Integer(1.into()),
+            Value::Integer(2.into()),
+            Value::Integer(3.into())
+        ],
         execute_to_vec(
             &arena,
             &mut vm_state,
@@ -111,7 +115,11 @@ fn dotted() {
     let arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
-        vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)],
+        vec![
+            Value::Integer(1.into()),
+            Value::Integer(2.into()),
+            Value::Integer(3.into())
+        ],
         execute_to_vec(
             &arena,
             &mut vm_state,
@@ -157,7 +165,7 @@ fn forward_global_reference() {
     let arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
-        Value::Integer(5),
+        Value::Integer(5.into()),
         execute(
             &arena,
             &mut vm_state,
@@ -191,7 +199,7 @@ fn set_local() {
     let arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
-        Value::Integer(2),
+        Value::Integer(2.into()),
         execute(
             &arena,
             &mut vm_state,
@@ -210,7 +218,7 @@ fn set_local2() {
     let arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
-        Value::Integer(3),
+        Value::Integer(3.into()),
         execute(
             &arena,
             &mut vm_state,
@@ -228,7 +236,7 @@ fn close_env() {
     let arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
-        vec![Value::Integer(26), Value::Integer(-5)],
+        vec![Value::Integer(26.into()), Value::Integer((-5).into())],
         execute_to_vec(
             &arena,
             &mut vm_state,
@@ -264,7 +272,7 @@ fn internal_define() {
     let arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
-        Value::Integer(5),
+        Value::Integer(5.into()),
         execute(
             &arena,
             &mut vm_state,
@@ -281,7 +289,7 @@ fn apply() {
     let arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
-        Value::Integer(5),
+        Value::Integer(5.into()),
         execute(&arena, &mut vm_state, "(apply + (apply - '(2 3)) '(6))").unwrap()
     );
 }
@@ -369,7 +377,7 @@ fn cond3() {
     let mut vm_state = VmState::new(&arena);
     initialize(&arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
     assert_eq!(
-        Value::Integer(2),
+        Value::Integer(2.into()),
         execute(
             &arena,
             &mut vm_state,
@@ -405,7 +413,7 @@ fn and() {
         vec![
             Value::Boolean(true),
             Value::Boolean(false),
-            Value::Integer(4),
+            Value::Integer(4.into()),
             Value::Boolean(true)
         ],
         execute_to_vec(
@@ -430,7 +438,7 @@ fn or() {
         vec![
             Value::Boolean(true),
             Value::Boolean(false),
-            Value::Integer(1),
+            Value::Integer(1.into()),
             Value::Boolean(false)
         ],
         execute_to_vec(
@@ -452,7 +460,7 @@ fn call_cc() {
     let mut vm_state = VmState::new(&arena);
     initialize(&arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
     assert_eq!(
-        Value::Integer(-4),
+        Value::Integer((-4).into()),
         execute(
             &arena,
             &mut vm_state,
@@ -469,7 +477,7 @@ fn do_macro() {
     let mut vm_state = VmState::new(&arena);
     initialize(&arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
     assert_eq!(
-        Value::Integer(5),
+        Value::Integer(5.into()),
         execute(
             &arena,
             &mut vm_state,

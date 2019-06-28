@@ -13,8 +13,9 @@
 // limitations under the License.
 
 use arena::Arena;
+use num_bigint::BigInt;
+use num_traits::ToPrimitive;
 use std::cell::RefCell;
-use std::convert::TryFrom;
 use util::check_len;
 use value::{pretty_print, Value};
 
@@ -41,13 +42,10 @@ pub fn make_string(arena: &Arena, args: &[usize]) -> Result<usize, String> {
             pretty_print(arena, args[0])
         )
     })?;
-    if l < 0 {
-        return Err(format!(
-            "make-string: String cannot have negative length: {}.",
-            l
-        ));
-    }
-    let s: String = std::iter::repeat(c).take(l as usize).collect();
+    let l = l
+        .to_usize()
+        .ok_or_else(|| format!("make-string: string cannot have negative length: {}.", l))?;
+    let s: String = std::iter::repeat(c).take(l).collect();
     Ok(arena.insert(Value::String(RefCell::new(s))))
 }
 
@@ -64,7 +62,7 @@ pub fn string_length(arena: &Arena, args: &[usize]) -> Result<usize, String> {
         .borrow()
         .chars()
         .count();
-    Ok(arena.insert(Value::Integer(l as i64)))
+    Ok(arena.insert(Value::Integer(BigInt::from(l))))
 }
 
 pub fn string_set_b(arena: &Arena, args: &[usize]) -> Result<usize, String> {
@@ -90,8 +88,9 @@ pub fn string_set_b(arena: &Arena, args: &[usize]) -> Result<usize, String> {
             pretty_print(arena, args[2])
         )
     })?;
-    let char_idx =
-        usize::try_from(idx).map_err(|_e| format!("string-ref: Invalid index: {}.", idx))?;
+    let char_idx = idx
+        .to_usize()
+        .ok_or_else(|| format!("string-ref: Invalid index: {}.", idx))?;
     let (byte_idx, _) = borrowed_string
         .char_indices()
         .nth(char_idx)
@@ -117,7 +116,9 @@ pub fn string_ref(arena: &Arena, args: &[usize]) -> Result<usize, String> {
             pretty_print(arena, args[1])
         )
     })?;
-    let idx = usize::try_from(idx).map_err(|_e| format!("string-ref: Invalid index: {}.", idx))?;
+    let idx = idx
+        .to_usize()
+        .ok_or_else(|| format!("string-ref: Invalid index: {}.", idx))?;
     let chr = borrowed_string
         .chars()
         .nth(idx)

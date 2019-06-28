@@ -97,7 +97,7 @@ where
 fn read_num_token(t: &NumValue) -> Value {
     let equalized = match t {
         NumValue::Real(r) => Value::Real(*r),
-        NumValue::Integer(i) => Value::Integer(i.to_i64().unwrap()),
+        NumValue::Integer(i) => Value::Integer(i.clone()),
         NumValue::Rational(br) => Value::Rational(Box::new(br.clone())),
         NumValue::Polar(magnitude, phase) => {
             // TODO if phase or magnitude are exact zeros we can do better things

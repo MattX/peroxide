@@ -36,7 +36,7 @@ pub enum Value {
     EofObject,
     EmptyList,
     Real(f64),
-    Integer(i64),
+    Integer(BigInt),
     Rational(Box<BigRational>),
     ComplexReal(Complex<f64>),
     ComplexInteger(Box<Complex<BigInt>>),
@@ -297,7 +297,7 @@ mod tests {
     #[test]
     fn format_atoms() {
         assert_eq!("3.45", &format!("{}", Value::Real(3.45)));
-        assert_eq!("69105", &format!("{}", Value::Integer(69105)));
+        assert_eq!("69105", &format!("{}", Value::Integer(69105.into())));
         assert_eq!("#f", &format!("{}", Value::Boolean(false)));
         assert_eq!("#t", &format!("{}", Value::Boolean(true)));
         assert_eq!("#\\newline", &format!("{}", Value::Character('\n')));

@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use std::cell::{RefCell, RefMut};
-use std::convert::TryFrom;
 use std::fmt;
 use std::io::{ErrorKind, Read};
 
 use arena::Arena;
 use gc;
+use num_traits::ToPrimitive;
 use util::check_len;
 use value::{pretty_print, Value};
 
@@ -404,7 +404,9 @@ pub fn read_string(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     let len = arena
         .try_get_integer(args[0])
         .ok_or_else(|| format!("Not an integer: {}", pretty_print(arena, args[0])))?;
-    let len = usize::try_from(len).map_err(|e| format!("Not a valid index: {}: {}", len, e))?;
+    let len = len
+        .to_usize()
+        .ok_or_else(|| format!("Not a valid index: {}", len))?;
     let mut port = get_open_text_input_port(arena, args[1])?;
     match port.read_string(len) {
         Ok(s) => Ok(arena.insert(Value::String(RefCell::new(s)))),

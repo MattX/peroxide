@@ -17,6 +17,7 @@ use std::collections::HashMap;
 
 use environment::{ActivationFrame, RcEnv};
 use gc::Gc;
+use num_bigint::BigInt;
 use primitives::{Port, SyntacticClosure};
 use std::ops::Deref;
 use value::Value;
@@ -83,9 +84,9 @@ impl Arena {
         }
     }
 
-    pub fn try_get_integer(&self, at: usize) -> Option<i64> {
+    pub fn try_get_integer(&self, at: usize) -> Option<&BigInt> {
         match self.get(at) {
-            Value::Integer(i) => Some(*i),
+            Value::Integer(i) => Some(i),
             _ => None,
         }
     }

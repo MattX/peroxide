@@ -15,6 +15,8 @@
 // TODO: deduplicate code between here and string.rs
 
 use arena::Arena;
+use num_bigint::BigInt;
+use num_traits::ToPrimitive;
 use std::cell::RefCell;
 use util::check_len;
 use value::{pretty_print, Value};
@@ -36,12 +38,9 @@ pub fn make_vector(arena: &Arena, args: &[usize]) -> Result<usize, String> {
             pretty_print(arena, args[0])
         )
     })?;
-    if l < 0 {
-        return Err(format!(
-            "make-vector: Vector cannot have negative length: {}.",
-            l
-        ));
-    }
+    let l = l
+        .to_usize()
+        .ok_or_else(|| format!("make-vector: string cannot have negative length: {}.", l))?;
     let v: Vec<usize> = std::iter::repeat(fill).take(l as usize).collect();
     Ok(arena.insert(Value::Vector(RefCell::new(v))))
 }
@@ -58,7 +57,7 @@ pub fn vector_length(arena: &Arena, args: &[usize]) -> Result<usize, String> {
         })?
         .borrow()
         .len();
-    Ok(arena.insert(Value::Integer(l as i64)))
+    Ok(arena.insert(Value::Integer(BigInt::from(l))))
 }
 
 pub fn vector_set_b(arena: &Arena, args: &[usize]) -> Result<usize, String> {
@@ -78,10 +77,13 @@ pub fn vector_set_b(arena: &Arena, args: &[usize]) -> Result<usize, String> {
             pretty_print(arena, args[1])
         )
     })?;
-    if idx < 0 || idx >= borrowed_vec.len() as i64 {
+    let idx = idx
+        .to_usize()
+        .ok_or_else(|| format!("vector-set!: Invalid index: {}.", idx))?;
+    if idx >= borrowed_vec.len() {
         return Err(format!("vector-set!: Invalid index: {}.", idx));
     }
-    borrowed_vec[idx as usize] = args[2];
+    borrowed_vec[idx] = args[2];
     Ok(arena.unspecific)
 }
 
@@ -102,8 +104,11 @@ pub fn vector_ref(arena: &Arena, args: &[usize]) -> Result<usize, String> {
             pretty_print(arena, args[1])
         )
     })?;
-    if idx < 0 || idx >= borrowed_vec.len() as i64 {
-        return Err(format!("vector-ref: Invalid index: {}.", idx));
-    }
-    Ok(borrowed_vec[idx as usize])
+    let idx = idx
+        .to_usize()
+        .ok_or_else(|| format!("vector-set!: Invalid index: {}.", idx))?;
+    borrowed_vec
+        .get(idx)
+        .map(|x| *x)
+        .ok_or_else(|| format!("vector-set!: Invalid index: {}.", idx))
 }

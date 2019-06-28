@@ -114,7 +114,7 @@ pub fn escape_symbol(s: &str) -> String {
 //      by repeatedly diving each side until they're small.
 //      Will be done natively by rust_num once https://github.com/rust-num/num-rational/issues/4
 //      is merged.
-pub fn rational_to_float(v: &BigRational) -> f64 {
+pub fn rational_to_f64(v: &BigRational) -> f64 {
     v.numer().to_f64().unwrap() / v.denom().to_f64().unwrap()
 }
 
@@ -142,14 +142,12 @@ pub fn simplify_numeric(v: Value) -> Value {
         Value::ComplexRational(x) if x.im.is_zero() => {
             Some(Value::Rational(Box::new(x.re.clone())))
         }
-        Value::ComplexInteger(x) if x.im.is_zero() => Some(Value::Integer(bigint_to_i64(&x.re))),
+        Value::ComplexInteger(x) if x.im.is_zero() => Some(Value::Integer(x.re.clone())),
         _ => None,
     }
     .unwrap_or(v);
     match &realified {
-        Value::Rational(x) if x.is_integer() => {
-            Some(Value::Integer(bigint_to_i64(&x.to_integer())))
-        }
+        Value::Rational(x) if x.is_integer() => Some(Value::Integer(x.to_integer())),
         Value::ComplexRational(x) => {
             if x.re.is_integer() && x.im.is_integer() {
                 Some(Value::ComplexInteger(Box::new(Complex::new(

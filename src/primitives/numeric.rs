@@ -18,7 +18,7 @@ use num_complex::Complex;
 use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
 use std::ops::Neg;
-use util::{bigint_to_i64, check_len, rational_to_float, simplify_numeric};
+use util::{check_len, rational_to_f64, simplify_numeric};
 use value::{pretty_print, Value};
 
 macro_rules! simple_operator {
@@ -73,10 +73,10 @@ macro_rules! prim_fold_0 {
 }
 
 simple_operator!(add2, +);
-prim_fold_0!(add, add2, Value::Integer(0));
+prim_fold_0!(add, add2, Value::Integer(BigInt::zero()));
 
 simple_operator!(mul2, *);
-prim_fold_0!(mul, mul2, Value::Integer(1));
+prim_fold_0!(mul, mul2, Value::Integer(BigInt::one()));
 
 simple_operator!(sub2, -);
 
@@ -169,7 +169,8 @@ pub fn div(arena: &Arena, args: &[usize]) -> Result<usize, String> {
                 pretty_print(arena, args[0])
             ));
         }
-        let result = div2(&Value::Integer(1), arg).ok_or_else(|| "division by 0".to_string())?;
+        let result =
+            div2(&Value::Integer(BigInt::one()), arg).ok_or_else(|| "division by 0".to_string())?;
         Ok(arena.insert(result))
     } else {
         divn(arena, args)
@@ -254,7 +255,7 @@ fn real_part(v: &Value) -> Value {
     match v {
         Value::ComplexReal(a) => Value::Real(a.re),
         Value::ComplexRational(a) => Value::Rational(Box::new(a.re.clone())),
-        Value::ComplexInteger(a) => Value::Integer(bigint_to_i64(&a.re)),
+        Value::ComplexInteger(a) => Value::Integer(a.re.clone()),
         Value::Real(_) => v.clone(),
         Value::Rational(_) => v.clone(),
         Value::Integer(_) => v.clone(),
@@ -266,10 +267,10 @@ fn imag_part(v: &Value) -> Value {
     match v {
         Value::ComplexReal(a) => Value::Real(a.im),
         Value::ComplexRational(a) => Value::Rational(Box::new(a.im.clone())),
-        Value::ComplexInteger(a) => Value::Integer(bigint_to_i64(&a.im)),
+        Value::ComplexInteger(a) => Value::Integer(a.re.clone()),
         Value::Real(_) => Value::Real(0.0),
         Value::Rational(_) => Value::Rational(Box::new(BigRational::zero())),
-        Value::Integer(_) => Value::Integer(0),
+        Value::Integer(_) => Value::Integer(BigInt::zero()),
         _ => panic!("real_part: non-numeric value"),
     }
 }
@@ -374,7 +375,7 @@ fn as_complex(v: &Value) -> Value {
         Value::ComplexReal(_) | Value::ComplexRational(_) | Value::ComplexInteger(_) => v.clone(),
         Value::Real(x) => Value::ComplexReal(Complex::new(*x, 0.0)),
         Value::Integer(x) => {
-            Value::ComplexInteger(Box::new(Complex::new((*x).into(), BigInt::zero())))
+            Value::ComplexInteger(Box::new(Complex::new(x.clone().into(), BigInt::zero())))
         }
         Value::Rational(x) => {
             Value::ComplexRational(Box::new(Complex::new(*x.clone(), BigRational::zero())))
@@ -386,16 +387,15 @@ fn as_complex(v: &Value) -> Value {
 fn as_real(n: &Value) -> Value {
     match n {
         Value::ComplexReal(x) => Value::ComplexReal(*x),
-        Value::ComplexRational(x) => Value::ComplexReal(Complex::new(
-            rational_to_float(&x.re),
-            rational_to_float(&x.im),
-        )),
+        Value::ComplexRational(x) => {
+            Value::ComplexReal(Complex::new(rational_to_f64(&x.re), rational_to_f64(&x.im)))
+        }
         Value::ComplexInteger(x) => {
             Value::ComplexReal(Complex::new(bigint_to_f64(&x.re), bigint_to_f64(&x.im)))
         }
         Value::Real(f) => Value::Real(*f),
-        Value::Rational(x) => Value::Real(rational_to_float(x)),
-        Value::Integer(i) => Value::Real(*i as f64),
+        Value::Rational(x) => Value::Real(rational_to_f64(x)),
+        Value::Integer(i) => Value::Real(bigint_to_f64(i)),
         _ => panic!("cannot cast to float: {:?}", n),
     }
 }
@@ -409,7 +409,7 @@ fn as_rational(n: &Value) -> Value {
         ))),
         Value::Rational(_) => n.clone(),
         Value::Integer(i) => {
-            Value::Rational(Box::new(BigRational::new((*i).into(), BigInt::one())))
+            Value::Rational(Box::new(BigRational::new(i.clone().into(), BigInt::one())))
         }
         _ => panic!("cannot cast to rational: {:?}", n),
     }

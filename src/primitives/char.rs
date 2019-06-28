@@ -13,8 +13,9 @@
 // limitations under the License.
 
 use arena::Arena;
+use num_bigint::BigInt;
+use num_traits::ToPrimitive;
 use std::cell::RefCell;
-use std::convert::TryFrom;
 use util::check_len;
 use value::{pretty_print, Value};
 
@@ -39,7 +40,7 @@ pub fn char_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
 
 pub fn char_to_integer(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     let arg = get_char_arg(arena, args, "char->integer")?;
-    let val = Value::Integer(i64::from(u32::from(arg)));
+    let val = Value::Integer(BigInt::from(u32::from(arg)));
     Ok(arena.insert(val))
 }
 
@@ -51,7 +52,9 @@ pub fn integer_to_char(arena: &Arena, args: &[usize]) -> Result<usize, String> {
             pretty_print(arena, args[0])
         )
     })?;
-    let u32i = u32::try_from(int).map_err(|e| e.to_string())?;
+    let u32i = int
+        .to_u32()
+        .ok_or_else(|| format!("integer->char: not a valid char: {}", int))?;
     let res = Value::Character(
         std::char::from_u32(u32i)
             .ok_or_else(|| format!("integer->char: not a valid char: {}", u32i))?,
