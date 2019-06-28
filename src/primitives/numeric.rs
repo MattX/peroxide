@@ -17,6 +17,7 @@ use num_bigint::BigInt;
 use num_complex::Complex;
 use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
+use std::ops::Neg;
 use util::{check_len, rational_to_float, simplify_numeric};
 use value::{pretty_print, Value};
 
@@ -43,6 +44,20 @@ macro_rules! simple_operator {
             }
         }
     }
+}
+
+macro_rules! unary_operation {
+    ($target:expr, $pp: expr, $operator:ident) => {
+        match $target {
+            Value::ComplexReal(a) => Value::ComplexReal($operator(a)),
+            Value::ComplexRational(a) => Value::ComplexRational(Box::new($operator(&*a))),
+            Value::ComplexInteger(a) => Value::ComplexInteger(Box::new($operator(&*a))),
+            Value::Real(a) => Value::Real($operator(a)),
+            Value::Rational(a) => Value::Rational(Box::new($operator(&*a))),
+            Value::Integer(a) => Value::Integer($operator(a)),
+            _ => return Err(format!("non-numeric argument: {}", $pp)),
+        }
+    };
 }
 
 /// Generates a numeric primitive that runs a simple fold. The provided folder must be a function
@@ -73,18 +88,16 @@ fn subn(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     Ok(arena.insert(simplify_numeric(result)))
 }
 
+fn sub1<'a, T>(n: &'a T) -> T
+where
+    &'a T: Neg<Output = T>,
+{
+    -n
+}
+
 pub fn sub(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     if args.len() == 1 {
-        let result = match arena.get(args[0]) {
-            Value::Integer(i) => Value::Integer(-*i),
-            Value::Real(f) => Value::Real(-*f),
-            _ => {
-                return Err(format!(
-                    "(-): non-numeric argument: {}",
-                    pretty_print(arena, args[0])
-                ))
-            }
-        };
+        let result = unary_operation!(arena.get(args[0]), pretty_print(arena, args[0]), sub1);
         Ok(arena.insert(result))
     } else {
         subn(arena, args)
@@ -103,6 +116,25 @@ fn divn(arena: &Arena, args: &[usize]) -> Result<usize, String> {
 
 fn div2(a: &Value, b: &Value) -> Option<Value> {
     match cast_same(a, b) {
+        (Value::ComplexReal(a), Value::ComplexReal(b)) => Some(Value::ComplexReal(a / b)),
+        (Value::ComplexRational(a), Value::ComplexRational(b)) => {
+            if b.is_zero() {
+                None
+            } else {
+                Some(Value::ComplexRational(Box::new(*a / *b)))
+            }
+        }
+        (Value::ComplexInteger(a), Value::ComplexInteger(b)) => {
+            if b.is_zero() {
+                None
+            } else {
+                let rational_a =
+                    Complex::<BigRational>::new(a.re.clone().into(), a.im.clone().into());
+                let rational_b =
+                    Complex::<BigRational>::new(b.re.clone().into(), b.im.clone().into());
+                Some(Value::ComplexRational(Box::new(rational_a / rational_b)))
+            }
+        }
         (Value::Real(a), Value::Real(b)) => Some(Value::Real(a / b)),
         (Value::Rational(a), Value::Rational(b)) => {
             if b.is_zero() {
@@ -130,16 +162,14 @@ fn div2(a: &Value, b: &Value) -> Option<Value> {
 
 pub fn div(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     if args.len() == 1 {
-        let result = match arena.get(args[0]) {
-            Value::Integer(i) => Value::Real(1.0 / (*i) as f64),
-            Value::Real(f) => Value::Real(1.0 / (*f)),
-            _ => {
-                return Err(format!(
-                    "(/): non-numeric argument: {}",
-                    pretty_print(arena, args[0])
-                ))
-            }
-        };
+        let arg = arena.get(args[0]);
+        if !is_numeric(arg) {
+            return Err(format!(
+                "non-numeric argument: {}",
+                pretty_print(arena, args[0])
+            ));
+        }
+        let result = div2(&Value::Integer(1), arg).ok_or_else(|| "division by 0".to_string())?;
         Ok(arena.insert(result))
     } else {
         divn(arena, args)
