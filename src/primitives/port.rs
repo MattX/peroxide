@@ -16,9 +16,10 @@ use std::cell::{RefCell, RefMut};
 use std::fmt;
 use std::io::{ErrorKind, Read};
 
+use num_traits::ToPrimitive;
+
 use arena::Arena;
 use gc;
-use num_traits::ToPrimitive;
 use util::check_len;
 use value::{pretty_print, Value};
 

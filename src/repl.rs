@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use rustyline::error::ReadlineError;
-use rustyline::Editor;
-
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
+
+use rustyline::error::ReadlineError;
+use rustyline::Editor;
 
 #[derive(Debug)]
 pub enum GetLineError {

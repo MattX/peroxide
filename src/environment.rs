@@ -22,12 +22,13 @@
 //! local environment), and altitude refers to the distance to the global environment (so 0 is
 //! the global environment).
 
-use arena::Arena;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::{Debug, Error, Formatter};
 use std::option::Option;
 use std::rc::Rc;
+
+use arena::Arena;
 use value::Value;
 
 pub struct Environment {

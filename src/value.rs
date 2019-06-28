@@ -16,11 +16,12 @@ use std::cell::RefCell;
 use std::fmt;
 use std::ops::Deref;
 
-use arena::Arena;
-use environment::{ActivationFrame, RcEnv};
 use num_bigint::BigInt;
 use num_complex::Complex;
 use num_rational::BigRational;
+
+use arena::Arena;
+use environment::{ActivationFrame, RcEnv};
 use primitives::{Port, Primitive, SyntacticClosure};
 use vm::Continuation;
 use {gc, util};

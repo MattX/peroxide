@@ -15,11 +15,12 @@
 use std::cell::RefCell;
 use std::iter::Peekable;
 
+use num_complex::Complex;
+use num_traits::cast::ToPrimitive;
+
 use arena::Arena;
 use lex;
 use lex::{NumValue, Token};
-use num_complex::Complex;
-use num_traits::cast::ToPrimitive;
 use util::simplify_numeric;
 use value::Value;
 

@@ -27,12 +27,13 @@
 //!
 //! Another small thing is dealing with loopy trees as allowed by R7RS.
 
-use arena::Arena;
-use environment::{Environment, EnvironmentValue, Macro, RcAfi, RcEnv};
-use primitives::SyntacticClosure;
 use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
+
+use arena::Arena;
+use environment::{Environment, EnvironmentValue, Macro, RcAfi, RcEnv};
+use primitives::SyntacticClosure;
 use util::check_len;
 use value::{list_from_vec, pretty_print, vec_from_list, Value};
 use {compile_run, environment};

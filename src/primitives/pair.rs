@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use arena::Arena;
 use std::cell::RefCell;
+
+use arena::Arena;
 use util::check_len;
 use value::Value;
 

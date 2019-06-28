@@ -18,6 +18,7 @@ use num_bigint::{BigInt, Sign};
 use num_rational::BigRational;
 use num_traits::identities::Zero;
 use num_traits::Pow;
+
 use util;
 
 /// Represents a token from the input.

@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use arena::Arena;
+use std::cell::RefCell;
+
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
-use std::cell::RefCell;
+
+use arena::Arena;
 use util::check_len;
 use value::{pretty_print, Value};
 

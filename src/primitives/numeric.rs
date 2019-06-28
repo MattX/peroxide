@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use arena::Arena;
+use std::ops::Neg;
+
 use num_bigint::BigInt;
 use num_complex::Complex;
 use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
-use std::ops::Neg;
+
+use arena::Arena;
 use util::{check_len, rational_to_f64, simplify_numeric};
 use value::{pretty_print, Value};
 

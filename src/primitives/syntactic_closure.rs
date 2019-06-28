@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use arena::Arena;
 use environment;
 use environment::{Environment, EnvironmentValue, RcEnv};
-use std::cell::RefCell;
-use std::rc::Rc;
 use util::check_len;
 use value::{list_from_vec, pretty_print, vec_from_list, Value};
 

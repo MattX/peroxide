@@ -20,13 +20,13 @@ extern crate num_traits;
 extern crate rustyline;
 
 use std::cell::RefCell;
+use std::fs;
 use std::rc::Rc;
 
 use arena::Arena;
 use ast::SyntaxElement;
 use environment::{ActivationFrame, ActivationFrameInfo, Environment, RcEnv};
 use read::read_many;
-use std::fs;
 use value::{pretty_print, Value};
 use vm::{Code, Instruction};
 

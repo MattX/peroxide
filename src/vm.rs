@@ -14,12 +14,13 @@
 
 // TODO in this file: stop calling the activation frame an environment.
 
+use std::cell::RefCell;
+use std::fmt::Write;
+
 use arena::Arena;
 use environment::{ActivationFrame, RcEnv};
 use gc;
 use primitives::PrimitiveImplementation;
-use std::cell::RefCell;
-use std::fmt::Write;
 use value::{list_from_vec, pretty_print, vec_from_list, Value};
 
 static MAX_RECURSION_DEPTH: usize = 1000;

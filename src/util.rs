@@ -16,6 +16,7 @@ use num_bigint::BigInt;
 use num_complex::Complex;
 use num_rational::BigRational;
 use num_traits::{Signed, ToPrimitive, Zero};
+
 use value::Value;
 
 /// Checks that a vector has at least `min`, at most `max` entries.

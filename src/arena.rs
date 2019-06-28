@@ -14,12 +14,13 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::ops::Deref;
+
+use num_bigint::BigInt;
 
 use environment::{ActivationFrame, RcEnv};
 use gc::Gc;
-use num_bigint::BigInt;
 use primitives::{Port, SyntacticClosure};
-use std::ops::Deref;
 use value::Value;
 
 pub struct Arena {
