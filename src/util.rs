@@ -128,7 +128,7 @@ pub fn integer_to_float(v: &BigInt) -> f64 {
     })
 }
 
-fn bigint_to_i64(b: &BigInt) -> i64 {
+pub fn bigint_to_i64(b: &BigInt) -> i64 {
     let min_i64: BigInt = std::i64::MIN.into();
     let max_i64: BigInt = std::i64::MAX.into();
     let clamped = std::cmp::max(std::cmp::min(b, &max_i64), &min_i64);

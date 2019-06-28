@@ -18,7 +18,7 @@ use num_complex::Complex;
 use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
 use std::ops::Neg;
-use util::{check_len, rational_to_float, simplify_numeric};
+use util::{bigint_to_i64, check_len, rational_to_float, simplify_numeric};
 use value::{pretty_print, Value};
 
 macro_rules! simple_operator {
@@ -250,12 +250,33 @@ fn greater_than_equal2(a: &Value, b: &Value) -> bool {
     }
 }
 
-pub fn integer_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+fn real_part(v: &Value) -> Value {
+    match v {
+        Value::ComplexReal(a) => Value::Real(a.re),
+        Value::ComplexRational(a) => Value::Rational(Box::new(a.re.clone())),
+        Value::ComplexInteger(a) => Value::Integer(bigint_to_i64(&a.re)),
+        Value::Real(_) => v.clone(),
+        Value::Rational(_) => v.clone(),
+        Value::Integer(_) => v.clone(),
+        _ => panic!("real_part: non-numeric value"),
+    }
+}
+
+fn imag_part(v: &Value) -> Value {
+    match v {
+        Value::ComplexReal(a) => Value::Real(a.im),
+        Value::ComplexRational(a) => Value::Rational(Box::new(a.im.clone())),
+        Value::ComplexInteger(a) => Value::Integer(bigint_to_i64(&a.im)),
+        Value::Real(_) => Value::Real(0.0),
+        Value::Rational(_) => Value::Rational(Box::new(BigRational::zero())),
+        Value::Integer(_) => Value::Integer(0),
+        _ => panic!("real_part: non-numeric value"),
+    }
+}
+
+pub fn number_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(1), Some(1))?;
-    Ok(match arena.get(args[0]) {
-        Value::Integer(_) => arena.t,
-        _ => arena.f,
-    })
+    Ok(arena.insert(Value::Boolean(is_numeric(arena.get(args[0])))))
 }
 
 pub fn real_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
@@ -264,6 +285,11 @@ pub fn real_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
         Value::Real(_) => arena.t,
         _ => arena.f,
     })
+}
+
+pub fn exact_p(_arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    unimplemented!()
 }
 
 /// Takes an argument list (vector of arena pointers), returns a vector of numeric values or
