@@ -111,6 +111,6 @@ pub fn vector_ref(arena: &Arena, args: &[usize]) -> Result<usize, String> {
         .ok_or_else(|| format!("vector-set!: Invalid index: {}.", idx))?;
     borrowed_vec
         .get(idx)
-        .map(|x| *x)
+        .copied()
         .ok_or_else(|| format!("vector-set!: Invalid index: {}.", idx))
 }

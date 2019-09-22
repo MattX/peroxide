@@ -47,8 +47,8 @@
 ; Numeric
 
 (define (zero? x) (= 0 x))
-(define (positive? x) (> 0 x))
-(define (negative? x) (< 0 x))
+(define (positive? x) (> x 0))
+(define (negative? x) (< x 0))
 
 
 ; Booleans
@@ -826,3 +826,9 @@
      (proc (continuation->procedure cont (%dk))))))
 
 (define call/cc call-with-current-continuation)
+
+
+;;; Random numeric stuff
+
+(define (abs x)
+  (if (negative? x) (- x) x))

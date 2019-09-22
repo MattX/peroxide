@@ -111,7 +111,7 @@ fn divn(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(&values, Some(1), None).map_err(|e| format!("(/): {}", e))?;
     let mut result = (*values.first().expect("check_len is broken my bois")).clone();
     for v in values[1..].iter() {
-        result = div2(&result, v).ok_or("exact division by zero".to_string())?;
+        result = div2(&result, v).ok_or_else(|| "exact division by zero".to_string())?;
     }
     Ok(arena.insert(simplify_numeric(result)))
 }
@@ -149,10 +149,7 @@ fn div2(a: &Value, b: &Value) -> Option<Value> {
             if b.is_zero() {
                 None
             } else {
-                Some(Value::Rational(Box::new(BigRational::new(
-                    a.into(),
-                    b.into(),
-                ))))
+                Some(Value::Rational(Box::new(BigRational::new(a, b))))
             }
         }
         _ => panic!(
@@ -290,9 +287,36 @@ pub fn real_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     })
 }
 
-pub fn exact_p(_arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn exact_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(1), Some(1))?;
-    unimplemented!()
+    let resp = match arena.get(args[0]) {
+        Value::ComplexRational(_)
+        | Value::ComplexInteger(_)
+        | Value::Rational(_)
+        | Value::Integer(_) => true,
+        _ => false,
+    };
+    Ok(arena.insert(Value::Boolean(resp)))
+}
+
+pub fn nan_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    let resp = match arena.get(args[0]) {
+        Value::ComplexReal(c) => c.is_nan(),
+        Value::Real(r) => r.is_nan(),
+        _ => false,
+    };
+    Ok(arena.insert(Value::Boolean(resp)))
+}
+
+pub fn infinite_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    let resp = match arena.get(args[0]) {
+        Value::ComplexReal(c) => c.is_infinite(),
+        Value::Real(r) => r.is_infinite(),
+        _ => false,
+    };
+    Ok(arena.insert(Value::Boolean(resp)))
 }
 
 /// Takes an argument list (vector of arena pointers), returns a vector of numeric values or
@@ -377,7 +401,7 @@ fn as_complex(v: &Value) -> Value {
         Value::ComplexReal(_) | Value::ComplexRational(_) | Value::ComplexInteger(_) => v.clone(),
         Value::Real(x) => Value::ComplexReal(Complex::new(*x, 0.0)),
         Value::Integer(x) => {
-            Value::ComplexInteger(Box::new(Complex::new(x.clone().into(), BigInt::zero())))
+            Value::ComplexInteger(Box::new(Complex::new(x.clone(), BigInt::zero())))
         }
         Value::Rational(x) => {
             Value::ComplexRational(Box::new(Complex::new(*x.clone(), BigRational::zero())))
@@ -410,9 +434,7 @@ fn as_rational(n: &Value) -> Value {
             bigint_to_rational(&x.im),
         ))),
         Value::Rational(_) => n.clone(),
-        Value::Integer(i) => {
-            Value::Rational(Box::new(BigRational::new(i.clone().into(), BigInt::one())))
-        }
+        Value::Integer(i) => Value::Rational(Box::new(BigRational::new(i.clone(), BigInt::one()))),
         _ => panic!("cannot cast to rational: {:?}", n),
     }
 }

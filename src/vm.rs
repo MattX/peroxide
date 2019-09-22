@@ -206,7 +206,7 @@ fn handle_error(arena: &Arena, vm: &mut Vm, e: Error) -> Result<(), usize> {
             match arena.get(handler) {
                 Value::Boolean(false) => Err(v),
                 Value::Lambda { .. } => {
-                    let mut frame = ActivationFrame {
+                    let frame = ActivationFrame {
                         parent: None,
                         values: vec![v],
                     };

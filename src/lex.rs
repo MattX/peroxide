@@ -124,7 +124,7 @@ pub fn lex(input: &str) -> Result<Vec<Token>, String> {
     Ok(tokens)
 }
 
-fn consume_to_newline(it: &mut Iterator<Item = char>) {
+fn consume_to_newline(it: &mut dyn Iterator<Item = char>) {
     for c in it {
         if c == '\n' {
             break;

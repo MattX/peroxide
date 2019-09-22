@@ -312,7 +312,7 @@ fn get_open_text_input_port(
         .try_get_port(val)
         .ok_or_else(|| format!("Not a port: {}", pretty_print(arena, val)))?
     {
-        let mut port = op.borrow_mut();
+        let port = op.borrow_mut();
         if port.is_closed() {
             Err(format!("Port is closed: {}", pretty_print(arena, val)))
         } else {

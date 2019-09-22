@@ -41,7 +41,7 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
         .map_err(|e| format!("Could not parse arguments: {}", e))?;
 
     let silent = options.input_file.is_some();
-    let mut repl: Box<Repl> = match options.input_file {
+    let mut repl: Box<dyn Repl> = match options.input_file {
         Some(f) => Box::new(FileRepl::new(&f)?),
         None => {
             if options.enable_readline {
@@ -67,7 +67,7 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
 
 // Returns true if the REPL loop should continue, false otherwise.
 fn handle_one_expr_wrap(
-    repl: &mut Repl,
+    repl: &mut dyn Repl,
     arena: &Arena,
     vm_state: &mut VmState,
     silent: bool,
@@ -78,7 +78,7 @@ fn handle_one_expr_wrap(
 }
 
 fn handle_one_expr(
-    repl: &mut Repl,
+    repl: &mut dyn Repl,
     arena: &Arena,
     vm_state: &mut VmState,
     silent: bool,

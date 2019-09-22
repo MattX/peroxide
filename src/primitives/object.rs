@@ -52,7 +52,6 @@ pub fn display_to_string(arena: &Arena, args: &[usize]) -> String {
     result
 }
 
-// TODO rename this to write and create an actual display method.
 pub fn write(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     println!("{}", display_to_string(arena, args));
     Ok(arena.unspecific)

@@ -102,7 +102,7 @@ macro_rules! simple_primitive {
     };
 }
 
-static PRIMITIVES: [Primitive; 76] = [
+static PRIMITIVES: [Primitive; 78] = [
     simple_primitive!("make-syntactic-closure", make_syntactic_closure),
     simple_primitive!("identifier=?", identifier_equal_p),
     simple_primitive!("identifier?", identifier_p),
@@ -130,6 +130,8 @@ static PRIMITIVES: [Primitive; 76] = [
     simple_primitive!("-", sub),
     simple_primitive!("/", div),
     simple_primitive!("real?", real_p),
+    simple_primitive!("nan?", nan_p),
+    simple_primitive!("infinite?", infinite_p),
     simple_primitive!("pair?", pair_p),
     simple_primitive!("cons", cons),
     simple_primitive!("car", car),
