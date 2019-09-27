@@ -18,6 +18,7 @@ on the interpreter described in _Lisp in Small Pieces_.
     extra trickiness around throwing errors from primitives.
 * ~~Figure out the `syntax-quote` vs `quote` thing~~
   * I think this is mostly a chibi-scheme thing.
+    * It is not :)
 * Fix the checked vs unchecked references
 * Write syntax-rules → done by lifting it from Chibi
 * Implement the rest of the stdlib, esp. ports and bytevecs

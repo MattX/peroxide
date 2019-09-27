@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
@@ -127,3 +127,55 @@ pub fn string_ref(arena: &Arena, args: &[usize]) -> Result<usize, String> {
         .ok_or_else(|| format!("string-ref: Invalid index: {}.", idx))?;
     Ok(arena.insert(Value::Character(chr)))
 }
+
+fn to_string_vec<'a>(arena: &'a Arena, args: &[usize]) -> Result<Vec<Ref<'a, String>>, String> {
+    args.iter()
+        .map(|v| {
+            arena
+                .try_get_string(*v)
+                .map(|s| s.borrow())
+                .ok_or_else(|| format!("not a string: {}", pretty_print(arena, *v)))
+        })
+        .collect::<Result<Vec<_>, String>>()
+}
+
+macro_rules! string_cmp {
+    ($fun:ident, $w:ident, $e:expr) => {
+        pub fn $fun(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+            let strings = to_string_vec(arena, args)?;
+            Ok(arena.insert(Value::Boolean(strings.as_slice().windows(2).all(|$w| $e))))
+        }
+    }
+}
+
+string_cmp!(string_equal, w, *w[0] == *w[1]);
+string_cmp!(string_less_than, w, *w[0] < *w[1]);
+string_cmp!(string_greater_than, w, *w[0] > *w[1]);
+string_cmp!(string_less_equal, w, *w[0] <= *w[1]);
+string_cmp!(string_greater_equal, w, *w[0] >= *w[1]);
+
+string_cmp!(
+    string_ci_equal,
+    w,
+    w[0].to_ascii_lowercase() == w[1].to_ascii_lowercase()
+);
+string_cmp!(
+    string_ci_less_than,
+    w,
+    w[0].to_ascii_lowercase() < w[1].to_ascii_lowercase()
+);
+string_cmp!(
+    string_ci_greater_than,
+    w,
+    w[0].to_ascii_lowercase() > w[1].to_ascii_lowercase()
+);
+string_cmp!(
+    string_ci_less_equal,
+    w,
+    w[0].to_ascii_lowercase() <= w[1].to_ascii_lowercase()
+);
+string_cmp!(
+    string_ci_greater_equal,
+    w,
+    w[0].to_ascii_lowercase() >= w[1].to_ascii_lowercase()
+);
