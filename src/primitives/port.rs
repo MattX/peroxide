@@ -14,7 +14,7 @@
 
 use std::cell::{RefCell, RefMut};
 use std::fmt;
-use std::io::{ErrorKind, Read};
+use std::io::{Error, ErrorKind, Read};
 
 use num_traits::ToPrimitive;
 
@@ -158,9 +158,36 @@ impl TextInputPort for FileTextInputPort {
     }
 }
 
+pub struct StringOutputPort {
+    underlying: String,
+}
+
+impl std::io::Write for StringOutputPort {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let as_str = std::str::from_utf8(buf).map_err(|_| Error::from(ErrorKind::InvalidData))?;
+        self.underlying.push_str(as_str);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl OutputPort for StringOutputPort {
+    fn close(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn is_closed(&self) -> bool {
+        false
+    }
+}
+
 pub enum Port {
     BinaryInputFile(RefCell<Box<dyn BinaryInputPort>>),
     TextInputFile(RefCell<Box<FileTextInputPort>>),
+    OutputString(RefCell<StringOutputPort>),
     OutputFile(RefCell<Box<dyn OutputPort>>),
 }
 
@@ -257,6 +284,7 @@ pub fn close_port(arena: &Arena, args: &[usize]) -> Result<usize, String> {
         Port::BinaryInputFile(s) => s.borrow_mut().close(),
         Port::TextInputFile(s) => s.borrow_mut().close(),
         Port::OutputFile(s) => s.borrow_mut().close(),
+        Port::OutputString(s) => s.borrow_mut().close(),
     }
     .map_err(|e| e.to_string())?;
     Ok(arena.unspecific)
@@ -271,6 +299,7 @@ pub fn port_open_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
         Port::BinaryInputFile(s) => s.borrow().is_closed(),
         Port::TextInputFile(s) => s.borrow().is_closed(),
         Port::OutputFile(s) => s.borrow().is_closed(),
+        Port::OutputString(s) => s.borrow().is_closed(),
     };
     Ok(arena.insert(Value::Boolean(v)))
 }
@@ -418,5 +447,32 @@ pub fn read_string(arena: &Arena, args: &[usize]) -> Result<usize, String> {
                 Err(e.to_string())
             }
         }
+    }
+}
+
+pub fn open_output_string(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(0), Some(0))?;
+    Ok(
+        arena.insert(Value::Port(Box::new(Port::OutputString(RefCell::new(
+            StringOutputPort {
+                underlying: String::new(),
+            },
+        ))))),
+    )
+}
+
+pub fn get_output_string(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    match arena
+        .try_get_port(args[0])
+        .ok_or_else(|| format!("not a port: {}", pretty_print(arena, args[0])))?
+    {
+        Port::OutputString(s) => {
+            Ok(arena.insert(Value::String(RefCell::new(s.borrow().underlying.clone()))))
+        }
+        _ => Err(format!(
+            "invalid port type: {}",
+            pretty_print(arena, args[0])
+        )),
     }
 }

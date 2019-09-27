@@ -148,34 +148,34 @@ macro_rules! string_cmp {
     }
 }
 
-string_cmp!(string_equal, w, *w[0] == *w[1]);
-string_cmp!(string_less_than, w, *w[0] < *w[1]);
-string_cmp!(string_greater_than, w, *w[0] > *w[1]);
-string_cmp!(string_less_equal, w, *w[0] <= *w[1]);
-string_cmp!(string_greater_equal, w, *w[0] >= *w[1]);
+string_cmp!(string_equal_p, w, *w[0] == *w[1]);
+string_cmp!(string_less_than_p, w, *w[0] < *w[1]);
+string_cmp!(string_greater_than_p, w, *w[0] > *w[1]);
+string_cmp!(string_less_equal_p, w, *w[0] <= *w[1]);
+string_cmp!(string_greater_equal_p, w, *w[0] >= *w[1]);
 
 string_cmp!(
-    string_ci_equal,
+    string_ci_equal_p,
     w,
     w[0].to_ascii_lowercase() == w[1].to_ascii_lowercase()
 );
 string_cmp!(
-    string_ci_less_than,
+    string_ci_less_than_p,
     w,
     w[0].to_ascii_lowercase() < w[1].to_ascii_lowercase()
 );
 string_cmp!(
-    string_ci_greater_than,
+    string_ci_greater_than_p,
     w,
     w[0].to_ascii_lowercase() > w[1].to_ascii_lowercase()
 );
 string_cmp!(
-    string_ci_less_equal,
+    string_ci_less_equal_p,
     w,
     w[0].to_ascii_lowercase() <= w[1].to_ascii_lowercase()
 );
 string_cmp!(
-    string_ci_greater_equal,
+    string_ci_greater_equal_p,
     w,
     w[0].to_ascii_lowercase() >= w[1].to_ascii_lowercase()
 );

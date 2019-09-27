@@ -832,3 +832,12 @@
 
 (define (abs x)
   (if (negative? x) (- x) x))
+
+(define (close-output-port p) (close-port p))
+
+(define (call-with-output-string proc)
+  (let ((out (open-output-string)))
+    (proc out)
+    (let ((res (get-output-string out)))
+      (close-output-port out)
+      res)))
