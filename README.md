@@ -8,28 +8,21 @@ on the interpreter described in _Lisp in Small Pieces_.
 
 ### Concrete
 
-* ~~Support internal defines~~
-* ~~Support let-syntax and letrec-syntax~~
-* ~~Support syntactic closures~~
+* Fix failing tests
+  * Implement quote and syntax-quote correctly. Quote should strip outermost
+    syntactic closures. 
 * Add ~~apply~~ and eval
-* Implement `dynamic-wind`
 * Implement error handling
   * It can be handled mostly in userspace, but that creates
     extra trickiness around throwing errors from primitives.
-* ~~Figure out the `syntax-quote` vs `quote` thing~~
-  * I think this is mostly a chibi-scheme thing.
-    * It is not :)
 * Fix the checked vs unchecked references
-* Write syntax-rules → done by lifting it from Chibi
 * Implement the rest of the stdlib, esp. ports and bytevecs
 * Implement libraries
 * Allow define-syntax in internal defines
 * Implement let (application of lambda) optimization
 * Inline primitives
-* ~~Implement name lookup on error~~
+* ~~Implement name lookup on error~~ ⇒ needs to be fixed
 * Assign names to lambdas when possible
-* There are more places where syntactic closures should be stripped.
-* ~~Add `call/cc`.~~
 * Turn the GC on (oh noooo)
 * Keep track of which lines map to which tokens, which map to which
 expressions, which map to what bytecode. This will let us have
@@ -38,7 +31,18 @@ much better error messages.
 https://doc.rust-lang.org/cargo/reference/manifest.html#the-features-section).
 
 
-#### R7RS stretch goals
+### Done
+
+* ~~Support internal defines~~
+* ~~Support let-syntax and letrec-syntax~~
+* ~~Support syntactic closures~~
+* ~~Implement `dynamic-wind`~~
+* ~~Figure out the `syntax-quote` vs `quote` thing~~
+  * I think this is mostly a chibi-scheme thing.
+    * It is not :) `quote` also strips out the topmost syntactic closure if it exists.
+* ~~Write syntax-rules → done by lifting it from Chibi~~
+* ~~Add `call/cc`.~~
+
 
 ### Vague
 

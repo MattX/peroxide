@@ -1,6 +1,6 @@
 ;; Copyright (c) 2009-2018 Alex Shinn
 ;; All rights reserved.
-;; 
+;;
 ;; Redistribution and use in source and binary forms, with or without
 ;; modification, are permitted provided that the following conditions
 ;; are met:
@@ -11,7 +11,7 @@
 ;;    documentation and/or other materials provided with the distribution.
 ;; 3. The name of the author may not be used to endorse or promote products
 ;;    derived from this software without specific prior written permission.
-;; 
+;;
 ;; THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
 ;; IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
 ;; OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
@@ -34,16 +34,24 @@
     ((test expect expr)
      (begin
        (set! *tests-run* (+ *tests-run* 1))
-       (let ((res expr))
-         (display *tests-run* ". " 'expr)
+       (let ((str (call-with-output-string
+                    (lambda (out)
+                      (write *tests-run*)
+                      (display ". ")
+                      (display 'expr out))))
+             (res expr))
+         (display str)
+         (write-char #\space)
+         (display (make-string (max 0 (- 72 (string-length str))) #\.))
+         (flush-output)
          (cond
           ((equal? res expect)
            (set! *tests-passed* (+ *tests-passed* 1))
            (display " [PASS]\n"))
           (else
            (display " [FAIL]\n")
-           (display "    expected " expect)
-           (display " but got " res))))))))
+           (display "    expected ") (write expect)
+           (display " but got ") (write res) (newline))))))))
 
 (define-syntax test-assert
   (syntax-rules ()
@@ -264,7 +272,7 @@
 
 (test "100" (number->string 256 16))
 
-(test "FF" (number->string 255 16))
+(test "ff" (number->string 255 16))
 
 (test "177" (number->string 127 8))
 
@@ -314,10 +322,10 @@
 
 (test #f (list? '(a . b)))
 
-;(test #f
-;    (let ((x (list 'a)))
-;      (set-cdr! x x)
-;      (list? x)))
+(test #f
+    (let ((x (list 'a)))
+      (set-cdr! x x)
+      (list? x)))
 
 (test '(a 7 c) (list 'a (+ 3 4) 'c))
 
@@ -478,18 +486,15 @@
                         ((_ . r) 'ok))))
         (s a b c))))
 
+(test 'ok (let ()
+            (let-syntax ()
+              (define internal-def 'ok))
+            internal-def))
 
-;; The following two tests seem to be incorrect according to the letter of R5RS (and R7RS, I believe).
-;; See also the last example and comments in http://sisc-scheme.org/r5rs_pitfall.scm
-;(test 'ok (let ()
-;            (let-syntax ()
-;              (define internal-def 'ok))
-;            internal-def))
-
-;(test 'ok (let ()
-;            (letrec-syntax ()
-;              (define internal-def 'ok))
-;            internal-def))
+(test 'ok (let ()
+            (letrec-syntax ()
+              (define internal-def 'ok))
+            internal-def))
 
 (test '(2 1)
     ((lambda () (let ((x 1)) (let ((y x)) (set! x 2) (list x y))))))

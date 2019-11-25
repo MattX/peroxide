@@ -17,7 +17,7 @@ use std::ops::Neg;
 use num_bigint::BigInt;
 use num_complex::Complex;
 use num_rational::BigRational;
-use num_traits::{One, Signed, ToPrimitive, Zero};
+use num_traits::{One, Pow, Signed, ToPrimitive, Zero};
 
 use arena::Arena;
 use util::{check_len, rational_to_f64, simplify_numeric};
@@ -202,6 +202,8 @@ fn equal2(a: &Value, b: &Value) -> bool {
     }
 }
 
+// TODO rewrite the following few methods with a macro to reduce repetition.
+
 prim_monotonic!(less_than, less_than2);
 fn less_than2(a: &Value, b: &Value) -> bool {
     match cast_same(a, b) {
@@ -317,6 +319,25 @@ pub fn infinite_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
         _ => false,
     };
     Ok(arena.insert(Value::Boolean(resp)))
+}
+
+pub fn inexact(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+    Ok(arena.insert(as_real(arena.get(args[0]))))
+}
+
+pub fn expt(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(2), Some(2))?;
+    let result = match (arena.get(args[0]), arena.get(args[1])) {
+        (Value::Integer(base), Value::Integer(exponent)) => {
+            let realistic_exponent = exponent.to_u64();
+            realistic_exponent
+                .map(|re| Value::Integer(base.pow(re)))
+                .unwrap_or(Value::Real(std::f64::INFINITY))
+        }
+        _ => return Err("only integer exponentiation is supported".to_string()),
+    };
+    Ok(arena.insert(result))
 }
 
 /// Takes an argument list (vector of arena pointers), returns a vector of numeric values or
@@ -439,6 +460,7 @@ fn as_rational(n: &Value) -> Value {
     }
 }
 
+// TODO fix me. Should be easy once https://github.com/rust-num/num-rational/pull/52 gets merged.
 fn bigint_to_f64(b: &BigInt) -> f64 {
     b.to_f64().unwrap_or_else(|| {
         if b.is_positive() {
