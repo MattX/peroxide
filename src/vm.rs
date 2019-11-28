@@ -363,7 +363,7 @@ fn run_one(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                 _ => {
                     return Err(raise_string(
                         arena,
-                        format!("Cannot pop non-function: {}", pretty_print(arena, fun_r)),
+                        format!("cannot pop non-function: {}", pretty_print(arena, fun_r)),
                     ));
                 }
             }

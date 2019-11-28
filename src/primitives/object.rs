@@ -47,13 +47,13 @@ pub fn procedure_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
 pub fn display_to_string(arena: &Arena, args: &[usize]) -> String {
     let mut result = String::new();
     for a in args.iter() {
-        write!(&mut result, "{} ", arena.get(*a).pretty_print(arena)).unwrap();
+        write!(&mut result, "{}", arena.get(*a).pretty_print(arena)).unwrap();
     }
     result
 }
 
 pub fn write(arena: &Arena, args: &[usize]) -> Result<usize, String> {
-    println!("{}", display_to_string(arena, args));
+    print!("{}", display_to_string(arena, args));
     Ok(arena.unspecific)
 }
 

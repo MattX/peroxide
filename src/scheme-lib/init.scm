@@ -210,12 +210,17 @@
           (every proc (cdr l))
           #f)))
 
-(define (any proc l)
-  (if (null? l)
-      #f
-      (if (proc (car (l)))
-          #t
-          (any proc (cdr l)))))
+(define (any pred ls . lol)
+  (define (any1 pred ls)
+    (if (pair? (cdr ls))
+        ((lambda (x) (if x x (any1 pred (cdr ls)))) (pred (car ls)))
+        (pred (car ls))))
+  (define (anyn pred lol)
+    (if (every pair? lol)
+        ((lambda (x) (if x x (anyn pred (map cdr lol))))
+         (apply pred (map car lol)))
+        #f))
+  (if (null? lol) (if (pair? ls) (any1 pred ls) #f) (anyn pred (cons ls lol))))
 
 (define (list->vector l)
   (define (list->vector l v k)
