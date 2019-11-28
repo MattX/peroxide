@@ -33,16 +33,15 @@ use std::rc::Rc;
 
 use arena::Arena;
 use environment::{
-    get_toplevel_afi, ActivationFrame, ActivationFrameInfo, Environment, EnvironmentValue, Macro,
-    RcAfi, RcEnv,
+    get_toplevel_afi, ActivationFrame, Environment, EnvironmentValue, Macro, RcAfi, RcEnv,
 };
 use primitives::SyntacticClosure;
 use util::check_len;
 use value::{list_from_vec, pretty_print, vec_from_list, Value};
 use vm::Instruction;
+use VmState;
 use {compile, vm};
 use {compile_run, environment};
-use {parse_compile_run, VmState};
 
 const MAX_MACRO_EXPANSION: usize = 1000;
 

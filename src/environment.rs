@@ -29,7 +29,6 @@ use std::option::Option;
 use std::rc::Rc;
 
 use arena::Arena;
-use value::Value;
 
 pub struct Environment {
     parent: Option<Rc<RefCell<Environment>>>,

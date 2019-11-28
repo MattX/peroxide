@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use ast::SyntaxElement;
-use environment::RcEnv;
 use vm::{Code, Instruction};
 
 pub fn compile(
