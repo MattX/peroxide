@@ -173,14 +173,21 @@ fn raise_string(arena: &Arena, error: String) -> Error {
     Error::Raise(arena.insert(Value::String(RefCell::new(error))))
 }
 
-pub fn run(arena: &Arena, code: &mut Code, pc: usize, env: usize) -> Result<usize, usize> {
+// TODO rename env around here to frame
+pub fn run(
+    arena: &Arena,
+    code: &mut Code,
+    pc: usize,
+    global_env: usize,
+    env: usize,
+) -> Result<usize, usize> {
     let mut vm = Vm {
         value: arena.unspecific,
         code,
         pc,
         return_stack: Vec::new(),
         stack: Vec::new(),
-        global_env: env,
+        global_env,
         env,
         fun: 0,
     };

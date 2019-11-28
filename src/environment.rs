@@ -242,13 +242,7 @@ pub struct ActivationFrame {
 
 impl ActivationFrame {
     pub fn get_parent<'a>(&self, arena: &'a Arena) -> Option<&'a RefCell<Self>> {
-        self.parent.map(|p| {
-            if let Value::ActivationFrame(af) = arena.get(p) {
-                af
-            } else {
-                panic!("Parent of ActivationFrame is {:?}", arena.get(p))
-            }
-        })
+        self.parent.map(|p| arena.get_activation_frame(p))
     }
 
     pub fn get(&self, arena: &Arena, depth: usize, index: usize) -> usize {
@@ -293,6 +287,7 @@ impl ActivationFrame {
     }
 }
 
+/// Compile-time information about an activation frame.
 #[derive(Debug)]
 pub struct ActivationFrameInfo {
     pub parent: Option<Rc<RefCell<ActivationFrameInfo>>>,

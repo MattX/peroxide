@@ -119,16 +119,16 @@ pub fn compile_run(
     syntax_tree: &SyntaxElement,
 ) -> Result<usize, String> {
     let start_pc = state.code.code_size();
-    compile::compile(
-        &syntax_tree,
-        &mut state.code,
-        &state.global_environment,
-        false,
-        true,
-    )
-    .map_err(|e| format!("Compilation error: {}", e))?;
+    compile::compile(&syntax_tree, &mut state.code, false, true)
+        .map_err(|e| format!("Compilation error: {}", e))?;
     state.code.push(Instruction::Finish);
     // println!(" => {:?}", &state.code[start_pc..state.code.len()]);
-    vm::run(arena, &mut state.code, start_pc, state.global_frame)
-        .map_err(|e| format!("Runtime error: {}", pretty_print(arena, e)))
+    vm::run(
+        arena,
+        &mut state.code,
+        start_pc,
+        state.global_frame,
+        state.global_frame,
+    )
+    .map_err(|e| format!("Runtime error: {}", pretty_print(arena, e)))
 }

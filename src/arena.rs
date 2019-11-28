@@ -23,6 +23,8 @@ use gc::Gc;
 use primitives::{Port, SyntacticClosure};
 use value::Value;
 
+type ValRef = usize;
+
 pub struct Arena {
     values: Gc<Value>,
     symbol_map: RefCell<HashMap<String, usize>>,

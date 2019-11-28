@@ -32,10 +32,15 @@ use std::fmt;
 use std::rc::Rc;
 
 use arena::Arena;
-use environment::{Environment, EnvironmentValue, Macro, RcAfi, RcEnv};
+use environment::{
+    get_toplevel_afi, ActivationFrame, ActivationFrameInfo, Environment, EnvironmentValue, Macro,
+    RcAfi, RcEnv,
+};
 use primitives::SyntacticClosure;
 use util::check_len;
 use value::{list_from_vec, pretty_print, vec_from_list, Value};
+use vm::Instruction;
+use {compile, vm};
 use {compile_run, environment};
 use {parse_compile_run, VmState};
 
@@ -190,7 +195,8 @@ fn parse_pair(
     let (car_env, resolved_car) = resolve_syntactic_closure(arena, env, car)?;
     match arena.get(resolved_car) {
         Value::Symbol(s) => match match_symbol(&car_env, s) {
-            Symbol::Quote => parse_quote(&rest),
+            Symbol::Quote => parse_quote(arena, &env, &rest, false),
+            Symbol::SyntaxQuote => parse_quote(arena, &env, &rest, true),
             Symbol::If => parse_if(arena, vms, &env, af_info, &rest),
             Symbol::Begin => parse_begin(arena, vms, &env, af_info, &rest),
             Symbol::Lambda => parse_lambda(arena, vms, &env, af_info, &rest),
@@ -211,11 +217,19 @@ fn parse_pair(
     }
 }
 
-fn parse_quote(rest: &[usize]) -> Result<SyntaxElement, String> {
+fn parse_quote(
+    arena: &Arena,
+    env: &RcEnv,
+    rest: &[usize],
+    syntax: bool,
+) -> Result<SyntaxElement, String> {
     if rest.len() != 1 {
         Err(format!("quote expected 1 argument, got {}.", rest.len()))
-    } else {
+    } else if syntax {
         Ok(SyntaxElement::Quote(Box::new(Quote { quoted: rest[0] })))
+    } else {
+        let quoted = strip_syntactic_closure(arena, env, rest[0]);
+        Ok(SyntaxElement::Quote(Box::new(Quote { quoted })))
     }
 }
 
@@ -286,6 +300,7 @@ fn parse_split_lambda(
     let inner_env = Rc::new(RefCell::new(raw_env));
     let mut targets = Vec::new();
 
+    // TODO check that the formals are all distinct.
     for define_target in formals.values.iter() {
         define_in_env(arena, &inner_env, &inner_afi, define_target, true);
         targets.push(define_target.clone());
@@ -590,7 +605,7 @@ fn parse_define_syntax(
             pretty_print(arena, rest[0])
         )
     })?;
-    let mac = make_macro(arena, vms, rest[1])?;
+    let mac = make_macro(arena, env, af_info, vms, rest[1])?;
     env.borrow_mut().define_macro(symbol, mac, env.clone());
 
     // TODO remove this somehow
@@ -621,7 +636,7 @@ fn parse_let_syntax(
                 pretty_print(arena, rest[0])
             )
         })?;
-        let mac = make_macro(arena, vms, binding[1])?;
+        let mac = make_macro(arena, env, af_info, vms, binding[1])?;
         inner_env
             .borrow_mut()
             .define_macro(symbol, mac, definition_env.clone());
@@ -644,18 +659,63 @@ fn parse_let_syntax(
     })))
 }
 
-fn make_macro(arena: &Arena, vms: &mut VmState, val: usize) -> Result<usize, String> {
-    let mac = parse_compile_run(arena, vms, val)?;
+fn make_macro(
+    arena: &Arena,
+    env: &RcEnv,
+    af_info: &RcAfi,
+    vms: &mut VmState,
+    val: usize,
+) -> Result<usize, String> {
+    let mac = parse_compile_run_macro(arena, env, af_info, vms, val)?;
     match arena.get(mac) {
-        Value::Lambda { .. } => (), // TODO check the lambda takes 3 args
-        _ => {
-            return Err(format!(
-                "Macro must be a Lambda, is {}",
-                pretty_print(arena, mac)
-            ))
-        }
+        Value::Lambda { .. } => Ok(mac), // TODO check the lambda takes 3 args
+        _ => Err(format!(
+            "macro must be a lambda, is {}",
+            pretty_print(arena, mac)
+        )),
+    }
+}
+
+/// Like parse_compile_run, but it creates a fake environment to evaluate the macro in.
+// TODO: refactor common code with parse_compile_run
+fn parse_compile_run_macro(
+    arena: &Arena,
+    env: &RcEnv,
+    af_info: &RcAfi,
+    vms: &mut VmState,
+    val: usize,
+) -> Result<usize, String> {
+    let syntax_tree =
+        parse(arena, vms, env, af_info, val).map_err(|e| format!("Syntax error: {}", e))?;
+    arena
+        .get_activation_frame(vms.global_frame)
+        .borrow_mut()
+        .ensure_index(arena, get_toplevel_afi(af_info).borrow().entries);
+
+    let frame = make_frame(arena, vms.global_frame, af_info);
+
+    let start_pc = vms.code.code_size();
+    compile::compile(&syntax_tree, &mut vms.code, false, true)
+        .map_err(|e| format!("Compilation error: {}", e))?;
+    vms.code.push(Instruction::Finish);
+    // println!(" => {:?}", &state.code[start_pc..state.code.len()]);
+    vm::run(arena, &mut vms.code, start_pc, vms.global_frame, frame)
+        .map_err(|e| format!("Runtime error: {}", pretty_print(arena, e)))
+}
+
+fn make_frame(arena: &Arena, global_frame: usize, af_info: &RcAfi) -> usize {
+    let parent = if let Some(p) = af_info.borrow().parent.clone() {
+        p
+    } else {
+        return global_frame;
     };
-    Ok(mac)
+    let entries = af_info.borrow().entries;
+    let mut frame = ActivationFrame {
+        parent: Some(make_frame(arena, global_frame, &parent)),
+        values: Vec::with_capacity(entries),
+    };
+    frame.values.resize(entries, arena.undefined);
+    arena.insert(Value::ActivationFrame(RefCell::new(frame)))
 }
 
 fn expand_macro_full(
@@ -719,6 +779,7 @@ fn get_macro(arena: &Arena, env: &RcEnv, expr: usize) -> Option<Macro> {
 
 enum Symbol {
     Quote,
+    SyntaxQuote,
     If,
     Begin,
     Lambda,
@@ -735,6 +796,7 @@ fn match_symbol(env: &RcEnv, sym: &str) -> Symbol {
     match env.borrow().get(sym) {
         None => match sym {
             "quote" => Symbol::Quote,
+            "syntax-quote" => Symbol::SyntaxQuote,
             "if" => Symbol::If,
             "begin" => Symbol::Begin,
             "lambda" => Symbol::Lambda,
@@ -826,6 +888,14 @@ fn resolve_syntactic_closure(
         resolve_syntactic_closure(arena, &inner_env, *expr)
     } else {
         Ok((env.clone(), value))
+    }
+}
+
+fn strip_syntactic_closure(arena: &Arena, env: &RcEnv, value: usize) -> usize {
+    if let Value::SyntacticClosure(SyntacticClosure { expr, .. }) = arena.get(value) {
+        strip_syntactic_closure(arena, env, *expr)
+    } else {
+        value
     }
 }
 

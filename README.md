@@ -15,6 +15,7 @@ on the interpreter described in _Lisp in Small Pieces_.
 * Implement error handling
   * It can be handled mostly in userspace, but that creates
     extra trickiness around throwing errors from primitives.
+* Make sure that syncloses aren't moved outside their domain of validity
 * Fix the checked vs unchecked references
 * Implement the rest of the stdlib, esp. ports and bytevecs
 * Implement libraries

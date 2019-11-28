@@ -96,6 +96,7 @@ impl fmt::Display for Value {
                     .join(" ");
                 write!(f, "#({})", contents)
             }
+            Value::Environment(rce) => write!(f, "{:?}", rce.borrow()),
             e => write!(f, "{:?}", e),
         }
     }

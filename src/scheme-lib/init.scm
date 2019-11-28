@@ -531,7 +531,7 @@
         (_cons (rename 'cons))          (_pair? (rename 'pair?))
         (_null? (rename 'null?))        (_expr (rename 'expr))
         (_rename (rename 'rename))      (_compare (rename 'compare))
-        (_quote (rename 'quote))        (_apply (rename 'apply))
+        (_quote (rename 'syntax-quote)) (_apply (rename 'apply))
         (_append (rename 'append))      (_map (rename 'map))
         (_vector? (rename 'vector?))    (_list? (rename 'list?))
         (_len (rename 'len))            (_length (rename 'length))
@@ -735,7 +735,6 @@
                      (list _error "no expansion for"
                            (list (rename 'strip-syntactic-closures) _expr))
                      #f)))))))))
-
 
 (define-syntax syntax-rules/aux
   (er-macro-transformer syntax-rules-transformer))

@@ -19,7 +19,6 @@ use vm::{Code, Instruction};
 pub fn compile(
     tree: &SyntaxElement,
     code: &mut Code,
-    env: &RcEnv,
     tail: bool,
     toplevel: bool,
 ) -> Result<usize, String> {
@@ -32,25 +31,25 @@ pub fn compile(
             code.push(Instruction::Constant(q.quoted));
         }
         SyntaxElement::If(i) => {
-            compile(&i.cond, code, env, false, false)?;
+            compile(&i.cond, code, false, false)?;
             let cond_jump = code.code_size();
             code.push(Instruction::NoOp); // Is rewritten as a conditional jump below
-            compile(&i.t, code, env, tail, false)?;
+            compile(&i.t, code, tail, false)?;
             let mut true_end = code.code_size();
             if let Some(ref f) = i.f {
                 code.push(Instruction::NoOp);
                 true_end += 1;
-                compile(f, code, env, tail, false)?;
+                compile(f, code, tail, false)?;
                 let jump_offset = code.code_size() - true_end;
                 code.replace(true_end - 1, Instruction::Jump(jump_offset));
             }
             code.replace(cond_jump, Instruction::JumpFalse(true_end - cond_jump - 1));
         }
         SyntaxElement::Begin(b) => {
-            compile_sequence(&b.expressions, code, env, tail)?;
+            compile_sequence(&b.expressions, code, tail)?;
         }
         SyntaxElement::Set(s) => {
-            compile(&s.value, code, env, false, false)?;
+            compile(&s.value, code, false, false)?;
             code.push(make_set_instruction(s.altitude, s.depth, s.index));
         }
         SyntaxElement::Reference(r) => {
@@ -73,9 +72,9 @@ pub fn compile(
             code.push_lambda(&l.name.clone().unwrap_or_else(|| "[anonymous]".into()));
 
             if !l.defines.is_empty() {
-                compile_sequence(&l.defines, code, &l.env, false)?;
+                compile_sequence(&l.defines, code, false)?;
             }
-            compile_sequence(&l.expressions, code, &l.env, true)?;
+            compile_sequence(&l.expressions, code, true)?;
 
             code.pop_lambda();
             code.pop_env();
@@ -84,10 +83,10 @@ pub fn compile(
             code.replace(skip_pos, Instruction::Jump(jump_offset));
         }
         SyntaxElement::Application(a) => {
-            compile(&a.function, code, env, false, false)?;
+            compile(&a.function, code, false, false)?;
             code.push(Instruction::PushValue);
             for instr in a.args.iter() {
-                compile(instr, code, env, false, false)?;
+                compile(instr, code, false, false)?;
                 code.push(Instruction::PushValue);
             }
             code.push(Instruction::CreateFrame(a.args.len()));
@@ -107,18 +106,16 @@ pub fn compile(
 fn compile_sequence(
     expressions: &[SyntaxElement],
     code: &mut Code,
-    env: &RcEnv,
     tail: bool,
 ) -> Result<usize, String> {
     let initial_len = code.code_size();
     for instr in expressions[..expressions.len() - 1].iter() {
-        compile(instr, code, env, false, false)?;
+        compile(instr, code, false, false)?;
     }
     compile(
         // This should have been caught at the syntax step.
         expressions.last().expect("Empty sequence."),
         code,
-        env,
         tail,
         false,
     )?;
