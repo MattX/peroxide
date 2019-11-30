@@ -12,15 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::fmt;
-use std::ops::Deref;
 
 use num_bigint::BigInt;
 use num_complex::Complex;
 use num_rational::BigRational;
 
-use arena::Arena;
+use arena::{Arena, ValRef};
 use environment::{ActivationFrame, RcEnv};
 use primitives::{Port, Primitive, SyntacticClosure};
 use vm::Continuation;
@@ -46,10 +45,10 @@ pub enum Value {
     Character(char),
     Symbol(String),
     String(RefCell<String>),
-    Pair(RefCell<usize>, RefCell<usize>),
+    Pair(Cell<ValRef>, Cell<ValRef>),
     ByteVector(RefCell<Vec<u8>>),
-    Vector(RefCell<Vec<usize>>),
-    Lambda { code: usize, environment: usize },
+    Vector(RefCell<Vec<ValRef>>),
+    Lambda { code: usize, environment: ValRef },
     Port(Box<Port>),
     Primitive(&'static Primitive),
     ActivationFrame(RefCell<ActivationFrame>),
@@ -77,7 +76,7 @@ impl fmt::Display for Value {
             Value::Character(c) => write!(f, "#\\{}", util::escape_char(*c)),
             Value::Symbol(s) => write!(f, "{}", util::escape_symbol(&s)),
             Value::String(s) => write!(f, "\"{}\"", util::escape_string(&s.borrow())),
-            Value::Pair(a, b) => write!(f, "(=>{} . =>{})", a.borrow(), b.borrow()),
+            Value::Pair(a, b) => write!(f, "(=>{} . =>{})", a.get(), b.get()),
             Value::ByteVector(bv) => {
                 let contents = bv
                     .borrow()
@@ -106,8 +105,8 @@ impl gc::Inventory for Value {
     fn inventory(&self, v: &mut gc::PushOnlyVec<usize>) {
         match self {
             Value::Pair(car, cdr) => {
-                v.push(*car.borrow());
-                v.push(*cdr.borrow());
+                v.push(car.get());
+                v.push(cdr.get());
             }
             Value::Vector(vals) => {
                 for val in vals.borrow().iter() {
@@ -161,12 +160,12 @@ impl Value {
         fn _print_pair(arena: &Arena, p: &Value, s: &mut String) {
             match p {
                 Value::Pair(a, b) => {
-                    s.push_str(&arena.get(*a.borrow()).pretty_print(arena)[..]);
-                    if let Value::EmptyList = arena.get(*b.borrow().deref()) {
+                    s.push_str(&arena.get(a.get()).pretty_print(arena)[..]);
+                    if let Value::EmptyList = arena.get(b.get()) {
                         s.push_str(")");
                     } else {
                         s.push_str(" ");
-                        _print_pair(arena, arena.get(*b.borrow().deref()), s);
+                        _print_pair(arena, arena.get(b.get()), s);
                     }
                 }
                 Value::EmptyList => {
@@ -214,8 +213,8 @@ impl Value {
         loop {
             match p {
                 Value::Pair(car_r, cdr_r) => {
-                    result.push(*car_r.borrow());
-                    p = arena.get(*cdr_r.borrow());
+                    result.push(car_r.get());
+                    p = arena.get(cdr_r.get());
                 }
                 Value::EmptyList => break,
                 _ => {
@@ -248,7 +247,7 @@ pub fn list_from_vec(arena: &Arena, vals: &[usize]) -> usize {
         arena.empty_list
     } else {
         let rest = list_from_vec(arena, &vals[1..]);
-        arena.insert(Value::Pair(RefCell::new(vals[0]), RefCell::new(rest)))
+        arena.insert(Value::Pair(Cell::new(vals[0]), Cell::new(rest)))
     }
 }
 
@@ -279,8 +278,8 @@ pub fn eqv(arena: &Arena, left: usize, right: usize) -> bool {
 pub fn equal(arena: &Arena, left: usize, right: usize) -> bool {
     match (arena.get(left), arena.get(right)) {
         (Value::Pair(left_car, left_cdr), Value::Pair(right_car, right_cdr)) => {
-            equal(arena, *left_car.borrow(), *right_car.borrow())
-                && equal(arena, *left_cdr.borrow(), *right_cdr.borrow())
+            equal(arena, left_car.get(), right_car.get())
+                && equal(arena, left_cdr.get(), right_cdr.get())
         }
         (Value::Vector(left_vec), Value::Vector(right_vec)) => left_vec
             .borrow()
@@ -316,7 +315,7 @@ mod tests {
         assert_eq!("()", &format!("{}", Value::EmptyList));
         assert_eq!(
             "(=>1 . =>2)",
-            &format!("{}", Value::Pair(RefCell::new(1), RefCell::new(2)))
+            &format!("{}", Value::Pair(Cell::new(1), Cell::new(2)))
         );
     }
 

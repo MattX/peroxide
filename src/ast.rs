@@ -27,11 +27,11 @@
 //!
 //! Another small thing is dealing with loopy trees as allowed by R7RS.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::fmt;
 use std::rc::Rc;
 
-use arena::Arena;
+use arena::{Arena, ValRef};
 use environment::{
     get_toplevel_afi, ActivationFrame, Environment, EnvironmentValue, Macro, RcAfi, RcEnv,
 };
@@ -148,8 +148,8 @@ pub fn parse(
         )?))),
         Value::EmptyList => Err("Cannot evaluate empty list".into()),
         Value::Pair(car, cdr) => {
-            let car = *car.borrow();
-            let cdr = *cdr.borrow();
+            let car = car.get();
+            let cdr = cdr.get();
             parse_pair(arena, vms, &env, af_info, car, cdr)
         }
         _ => Ok(SyntaxElement::Quote(Box::new(Quote { quoted: value }))),
@@ -208,7 +208,7 @@ fn parse_pair(
             Symbol::LetrecSyntax => parse_let_syntax(arena, vms, &env, af_info, &rest, true),
             Symbol::Macro(m) => {
                 // TODO fix this to avoid reconstructing the pair
-                let expr = arena.insert(Value::Pair(RefCell::new(car), RefCell::new(cdr)));
+                let expr = arena.insert(Value::Pair(Cell::new(car), Cell::new(cdr)));
                 let expanded = expand_macro_full(arena, vms, &env, m, expr)?;
                 parse(arena, vms, &env, af_info, expanded)
             }
@@ -510,19 +510,19 @@ fn get_define_data(arena: &Arena, rest: &[usize]) -> Result<DefineData, String> 
 fn get_lambda_define_value(arena: &Arena, rest: &[usize]) -> Result<DefineData, String> {
     check_len(rest, Some(2), None)?;
     if let Value::Pair(car, cdr) = arena.get(rest[0]) {
-        if let Value::Symbol(s) = arena.get(*car.borrow()) {
+        if let Value::Symbol(s) = arena.get(car.get()) {
             let variable = s.clone();
             Ok(DefineData {
                 target: DefineTarget::Bare(variable),
                 value: DefineValue::Lambda {
-                    formals: *cdr.borrow(),
+                    formals: cdr.get(),
                     body: rest[1..rest.len()].to_vec(),
                 },
             })
         } else {
             Err(format!(
                 "Expected symbol for method name in define method, got `{}`.",
-                pretty_print(arena, *car.borrow())
+                pretty_print(arena, car.get())
             ))
         }
     } else {
@@ -565,9 +565,9 @@ fn parse_formals(arena: &Arena, formals: usize) -> Result<Formals, String> {
             match arena.get(formal) {
                 Value::EmptyList => return Ok(Formals { values, rest: None }),
                 Value::Pair(car, cdr) => {
-                    if let Some(dt) = get_define_target(arena, *car.borrow()) {
+                    if let Some(dt) = get_define_target(arena, car.get()) {
                         values.push(dt);
-                        formal = *cdr.borrow();
+                        formal = cdr.get();
                     } else {
                         return Err(format!(
                             "Malformed formals: {}.",
@@ -726,7 +726,7 @@ fn make_frame(arena: &Arena, global_frame: usize, af_info: &RcAfi) -> usize {
 }
 
 fn expand_macro_full(
-    arena: &Arena,
+    arena: &mut Arena,
     vms: &mut VmState,
     env: &RcEnv,
     mac: Macro,
@@ -745,7 +745,7 @@ fn expand_macro_full(
 }
 
 fn expand_macro(
-    arena: &Arena,
+    arena: &mut Arena,
     vms: &mut VmState,
     env: &RcEnv,
     mac: Macro,
@@ -768,10 +768,10 @@ fn expand_macro(
     compile_run(arena, vms, &syntax_tree)
 }
 
-fn get_macro(arena: &Arena, env: &RcEnv, expr: usize) -> Option<Macro> {
+fn get_macro(arena: &Arena, env: &RcEnv, expr: ValRef) -> Option<Macro> {
     match arena.get(expr) {
         Value::Pair(car, _cdr) => {
-            let (res_env, res_car) = resolve_syntactic_closure(arena, env, *car.borrow()).unwrap();
+            let (res_env, res_car) = resolve_syntactic_closure(arena, env, car.get()).unwrap();
             match arena.get(res_car) {
                 Value::Symbol(s) => match match_symbol(&res_env, &s) {
                     Symbol::Macro(m) => Some(m),
@@ -821,7 +821,7 @@ fn match_symbol(env: &RcEnv, sym: &str) -> Symbol {
 
 #[allow(clippy::type_complexity)]
 fn collect_internal_defines(
-    arena: &Arena,
+    arena: &mut Arena,
     vms: &mut VmState,
     env: &RcEnv,
     body: &[usize],
@@ -841,16 +841,16 @@ fn collect_internal_defines(
             *statement
         };
         if let Value::Pair(car, cdr) = arena.get(expanded_statement) {
-            let (res_env, res_car) = resolve_syntactic_closure(arena, env, *car.borrow())?;
+            let (res_env, res_car) = resolve_syntactic_closure(arena, env, car.get())?;
             if let Value::Symbol(s) = arena.get(res_car) {
                 match match_symbol(&res_env, s) {
                     Symbol::Define => {
-                        let rest = vec_from_list(arena, *cdr.borrow())?;
+                        let rest = vec_from_list(arena, cdr.get())?;
                         let dv = get_define_data(arena, &rest)?;
                         defines.push(dv);
                     }
                     Symbol::Begin => {
-                        let expressions = vec_from_list(arena, *cdr.borrow())?;
+                        let expressions = vec_from_list(arena, cdr.get())?;
                         let (d, rest) = collect_internal_defines(arena, vms, env, &expressions)?;
                         if !rest.is_empty() {
                             return Err(

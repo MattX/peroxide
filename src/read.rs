@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::iter::Peekable;
 
 use num_complex::Complex;
@@ -154,10 +154,7 @@ where
                 }?;
                 let first_ptr = arena.insert(first);
                 let second_ptr = arena.insert(second);
-                Ok(Value::Pair(
-                    RefCell::new(first_ptr),
-                    RefCell::new(second_ptr),
-                ))
+                Ok(Value::Pair(Cell::new(first_ptr), Cell::new(second_ptr)))
             }
         }
     } else {
@@ -245,12 +242,12 @@ where
     let quoted_ptr = arena.insert(quoted);
     let empty_list_ptr = arena.insert(Value::EmptyList);
     let quoted_list_ptr = arena.insert(Value::Pair(
-        RefCell::new(quoted_ptr),
-        RefCell::new(empty_list_ptr),
+        Cell::new(quoted_ptr),
+        Cell::new(empty_list_ptr),
     ));
     let quote_sym_ptr = arena.insert(Value::Symbol(prefix.to_string()));
     Ok(Value::Pair(
-        RefCell::new(quote_sym_ptr),
-        RefCell::new(quoted_list_ptr),
+        Cell::new(quote_sym_ptr),
+        Cell::new(quoted_list_ptr),
     ))
 }

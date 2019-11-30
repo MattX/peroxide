@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::RefCell;
+use std::cell::Cell;
 
 use arena::Arena;
 use util::check_len;
@@ -29,13 +29,13 @@ pub fn pair_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
 
 pub fn cons(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(2), Some(2))?;
-    Ok(arena.insert(Value::Pair(RefCell::new(args[0]), RefCell::new(args[1]))))
+    Ok(arena.insert(Value::Pair(Cell::new(args[0]), Cell::new(args[1]))))
 }
 
 pub fn car(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(1), Some(1))?;
     match arena.get(args[0]) {
-        Value::Pair(car, _) => Ok(*car.borrow()),
+        Value::Pair(car, _) => Ok(car.get()),
         _ => Err(format!(
             "called car on a non-pair: {}",
             arena.get(args[0]).pretty_print(arena)
@@ -46,7 +46,7 @@ pub fn car(arena: &Arena, args: &[usize]) -> Result<usize, String> {
 pub fn cdr(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     check_len(args, Some(1), Some(1))?;
     match arena.get(args[0]) {
-        Value::Pair(_, cdr) => Ok(*cdr.borrow()),
+        Value::Pair(_, cdr) => Ok(cdr.get()),
         _ => Err(format!(
             "called cdr on a non-pair: {}",
             arena.get(args[0]).pretty_print(arena)

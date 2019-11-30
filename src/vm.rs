@@ -14,10 +14,11 @@
 
 // TODO in this file: stop calling the activation frame an environment.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::fmt::Write;
 
 use arena::Arena;
+use arena::ValRef;
 use environment::{ActivationFrame, RcEnv};
 use gc;
 use primitives::PrimitiveImplementation;
@@ -135,14 +136,15 @@ impl Code {
 
 #[derive(Debug)]
 struct Vm<'a> {
-    value: usize,
+    value: ValRef,
+    /// The value register
     code: &'a mut Code,
     pc: usize,
     return_stack: Vec<usize>,
-    stack: Vec<usize>,
-    global_env: usize,
-    env: usize,
-    fun: usize,
+    stack: Vec<ValRef>,
+    global_env: ValRef,
+    env: ValRef,
+    fun: ValRef,
 }
 
 enum Error {
@@ -178,9 +180,9 @@ pub fn run(
     arena: &Arena,
     code: &mut Code,
     pc: usize,
-    global_env: usize,
-    env: usize,
-) -> Result<usize, usize> {
+    global_env: ValRef,
+    env: ValRef,
+) -> Result<ValRef, ValRef> {
     let mut vm = Vm {
         value: arena.unspecific,
         code,
@@ -389,7 +391,7 @@ fn run_one(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
 }
 
 // TODO remove this
-fn get_activation_frame(arena: &Arena, env: usize) -> &RefCell<ActivationFrame> {
+fn get_activation_frame(arena: &Arena, env: ValRef) -> &RefCell<ActivationFrame> {
     arena.get_activation_frame(env)
 }
 
@@ -520,12 +522,12 @@ fn error_stack(arena: &Arena, vm: &Vm, error: Error) -> Error {
         write!(message, "\n\tat {}", name).unwrap();
     }
     let msg_r = arena.insert(Value::String(RefCell::new(message)));
-    error.map_error(|e| arena.insert(Value::Pair(RefCell::new(e), RefCell::new(msg_r))))
+    error.map_error(|e| arena.insert(Value::Pair(Cell::new(e), Cell::new(msg_r))))
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Continuation {
-    stack: Vec<usize>,
+    stack: Vec<ValRef>,
     return_stack: Vec<usize>,
 }
 

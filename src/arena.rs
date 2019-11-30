@@ -23,7 +23,7 @@ use gc::Gc;
 use primitives::{Port, SyntacticClosure};
 use value::Value;
 
-type ValRef = usize;
+pub type ValRef = usize;
 
 pub struct Arena {
     values: Gc<Value>,
@@ -122,7 +122,7 @@ impl Arena {
         }
     }
 
-    pub fn try_get_pair(&self, at: usize) -> Option<(&RefCell<usize>, &RefCell<usize>)> {
+    pub fn try_get_pair(&self, at: usize) -> Option<(&Cell<usize>, &Cell<usize>)> {
         match self.get(at) {
             Value::Pair(car, cdr) => Some((car, cdr)),
             _ => None,

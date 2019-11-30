@@ -118,7 +118,7 @@ pub fn parse_compile_run(
 }
 
 pub fn compile_run(
-    arena: &Arena,
+    arena: &mut Arena,
     state: &mut VmState,
     syntax_tree: &SyntaxElement,
 ) -> Result<usize, String> {
