@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::ops::Neg;
+use std::ops::{Neg, Rem};
 
 use num_bigint::BigInt;
 use num_complex::Complex;
+use num_integer::Integer;
 use num_rational::BigRational;
 use num_traits::{One, Pow, Signed, ToPrimitive, Zero};
 
@@ -193,64 +194,44 @@ macro_rules! prim_monotonic {
 prim_monotonic!(equal, equal2);
 fn equal2(a: &Value, b: &Value) -> bool {
     match cast_same(a, b) {
-        (Value::Integer(ia), Value::Integer(ib)) => ia == ib,
-        (Value::Real(fa), Value::Real(fb)) => (fa - fb).abs() < std::f64::EPSILON,
+        (Value::ComplexInteger(a), Value::ComplexInteger(b)) => a == b,
+        (Value::ComplexRational(a), Value::ComplexRational(b)) => a == b,
+        (Value::ComplexReal(a), Value::ComplexReal(b)) => a == b,
+        (Value::Integer(a), Value::Integer(b)) => a == b,
+        (Value::Rational(a), Value::Rational(b)) => a == b,
+        (Value::Real(fa), Value::Real(fb)) => fa == fb,
         _ => panic!(
             "cast_same did not return equal numeric types: ({}, {})",
             a, b
         ),
+    }
+}
+
+macro_rules! compare_op {
+    ($inner_name:ident, $operator:tt) => {
+        fn $inner_name(a: &Value, b: &Value) -> bool {
+            match cast_same(a, b) {
+                (Value::Real(a), Value::Real(b)) => a $operator b,
+                (Value::Rational(a), Value::Rational(b)) => a $operator b,
+                (Value::Integer(a), Value::Integer(b)) => a $operator b,
+                _ => false,
+            }
+        }
     }
 }
 
 // TODO rewrite the following few methods with a macro to reduce repetition.
-
+compare_op!(less_than2, <);
 prim_monotonic!(less_than, less_than2);
-fn less_than2(a: &Value, b: &Value) -> bool {
-    match cast_same(a, b) {
-        (Value::Integer(ia), Value::Integer(ib)) => ia < ib,
-        (Value::Real(fa), Value::Real(fb)) => fa < fb,
-        _ => panic!(
-            "cast_same did not return equal numeric types: ({}, {})",
-            a, b
-        ),
-    }
-}
 
+compare_op!(greater_than2, >);
 prim_monotonic!(greater_than, greater_than2);
-fn greater_than2(a: &Value, b: &Value) -> bool {
-    match cast_same(a, b) {
-        (Value::Integer(ia), Value::Integer(ib)) => ia > ib,
-        (Value::Real(fa), Value::Real(fb)) => fa > fb,
-        _ => panic!(
-            "cast_same did not return equal numeric types: ({}, {})",
-            a, b
-        ),
-    }
-}
 
+compare_op!(less_than_equal2, <=);
 prim_monotonic!(less_than_equal, less_than_equal2);
-fn less_than_equal2(a: &Value, b: &Value) -> bool {
-    match cast_same(a, b) {
-        (Value::Integer(ia), Value::Integer(ib)) => ia <= ib,
-        (Value::Real(fa), Value::Real(fb)) => fa <= fb,
-        _ => panic!(
-            "cast_same did not return equal numeric types: ({}, {})",
-            a, b
-        ),
-    }
-}
 
+compare_op!(greater_than_equal2, >=);
 prim_monotonic!(greater_than_equal, greater_than_equal2);
-fn greater_than_equal2(a: &Value, b: &Value) -> bool {
-    match cast_same(a, b) {
-        (Value::Integer(ia), Value::Integer(ib)) => ia >= ib,
-        (Value::Real(fa), Value::Real(fb)) => fa >= fb,
-        _ => panic!(
-            "cast_same did not return equal numeric types: ({}, {})",
-            a, b
-        ),
-    }
-}
 
 fn real_part(v: &Value) -> Value {
     match v {
@@ -336,6 +317,28 @@ pub fn expt(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
                 .unwrap_or(Value::Real(std::f64::INFINITY))
         }
         _ => return Err("only integer exponentiation is supported".to_string()),
+    };
+    Ok(arena.insert(result))
+}
+
+pub fn modulo(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+    check_len(args, Some(2), Some(2))?;
+    let result = match (arena.get(args[0]), arena.get(args[1])) {
+        (Value::Integer(dividend), Value::Integer(divisor)) => {
+            Value::Integer(dividend.mod_floor(divisor))
+        }
+        _ => return Err("modulo is only supported for integers".to_string()),
+    };
+    Ok(arena.insert(result))
+}
+
+pub fn remainder(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+    check_len(args, Some(2), Some(2))?;
+    let result = match (arena.get(args[0]), arena.get(args[1])) {
+        (Value::Integer(dividend), Value::Integer(divisor)) => {
+            Value::Integer(dividend.rem(divisor))
+        }
+        _ => return Err("remainder is only supported for integers".to_string()),
     };
     Ok(arena.insert(result))
 }

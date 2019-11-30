@@ -15,6 +15,7 @@
 extern crate core;
 extern crate num_bigint;
 extern crate num_complex;
+extern crate num_integer;
 extern crate num_rational;
 extern crate num_traits;
 extern crate rustyline;
