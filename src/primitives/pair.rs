@@ -37,7 +37,7 @@ pub fn car(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     match arena.get(args[0]) {
         Value::Pair(car, _) => Ok(*car.borrow()),
         _ => Err(format!(
-            "Called car on a non-pair: {}",
+            "called car on a non-pair: {}",
             arena.get(args[0]).pretty_print(arena)
         )),
     }
@@ -48,7 +48,7 @@ pub fn cdr(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     match arena.get(args[0]) {
         Value::Pair(_, cdr) => Ok(*cdr.borrow()),
         _ => Err(format!(
-            "Called cdr on a non-pair: {}",
+            "called cdr on a non-pair: {}",
             arena.get(args[0]).pretty_print(arena)
         )),
     }
@@ -59,7 +59,7 @@ pub fn set_car_b(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     match arena.get(args[0]) {
         Value::Pair(car, _) => Ok(car.replace(args[1])),
         _ => Err(format!(
-            "Called set-car! on a non-pair: {}",
+            "called set-car! on a non-pair: {}",
             arena.get(args[0]).pretty_print(arena)
         )),
     }
@@ -70,8 +70,49 @@ pub fn set_cdr_b(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     match arena.get(args[0]) {
         Value::Pair(_, cdr) => Ok(cdr.replace(args[1])),
         _ => Err(format!(
-            "Called set-cdr! on a non-pair: {}",
+            "called set-cdr! on a non-pair: {}",
             arena.get(args[0]).pretty_print(arena)
         )),
     }
 }
+
+// Code for a loop-compatible length function.
+/*
+enum ListType {
+    Invalid,
+    Empty,
+    Some(usize),
+}
+
+fn next(arena: &Arena, pair: usize) -> ListType {
+    match arena.get(pair[0]) {
+        Value::EmptyList => ListType::Empty,
+        Value::Pair(car, cdr) => ListType::Some(cdr.borrow().clone()),
+        _ => ListType::Invalid
+    }
+}
+
+fn next_twice(arena: &Arena, pair: usize) -> ListType {
+    match next(arena, pair) {
+        ListType::Some(s) => next(arena, s),
+        e => e
+    }
+}
+
+pub fn length(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+    check_len(args, Some(1), Some(1))?;
+
+    let mut slow = args[0];
+    let mut fast = slow;
+    let mut len = 0usize;
+
+    loop {
+        match arena.get(slow) {
+            Value::EmptyList => Ok(arena.insert(Value::Integer(len.into()))),
+            Value::Pair(car, cdr) => {
+                loop {}
+            }
+        }
+    }
+}
+*/
