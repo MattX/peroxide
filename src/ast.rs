@@ -135,7 +135,7 @@ struct Formals {
 /// Annoyingly enough, we need a full `VmState` passed everywhere here, because macros
 /// need to be executed and can add new code.
 pub fn parse(
-    arena: &Arena,
+    arena: &mut Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -148,7 +148,9 @@ pub fn parse(
         )?))),
         Value::EmptyList => Err("Cannot evaluate empty list".into()),
         Value::Pair(car, cdr) => {
-            parse_pair(arena, vms, &env, af_info, *car.borrow(), *cdr.borrow())
+            let car = *car.borrow();
+            let cdr = *cdr.borrow();
+            parse_pair(arena, vms, &env, af_info, car, cdr)
         }
         _ => Ok(SyntaxElement::Quote(Box::new(Quote { quoted: value }))),
     }
@@ -183,7 +185,7 @@ fn construct_reference(env: &RcEnv, afi: &RcAfi, name: &str) -> Result<Reference
 }
 
 fn parse_pair(
-    arena: &Arena,
+    arena: &mut Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -217,7 +219,7 @@ fn parse_pair(
 }
 
 fn parse_quote(
-    arena: &Arena,
+    arena: &mut Arena,
     env: &RcEnv,
     rest: &[usize],
     syntax: bool,
@@ -233,7 +235,7 @@ fn parse_quote(
 }
 
 fn parse_if(
-    arena: &Arena,
+    arena: &mut Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -251,7 +253,7 @@ fn parse_if(
 }
 
 fn parse_begin(
-    arena: &Arena,
+    arena: &mut Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -266,7 +268,7 @@ fn parse_begin(
 }
 
 fn parse_lambda(
-    arena: &Arena,
+    arena: &mut Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -285,7 +287,7 @@ fn parse_lambda(
 }
 
 fn parse_split_lambda(
-    arena: &Arena,
+    arena: &mut Arena,
     vms: &mut VmState,
     outer_env: &RcEnv,
     af_info: &RcAfi,
@@ -364,7 +366,7 @@ fn parse_split_lambda(
 }
 
 fn parse_set(
-    arena: &Arena,
+    arena: &mut Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -400,7 +402,7 @@ fn parse_set(
 /// Parses toplevel defines. Inner defines have different semantics and are parsed differently
 /// (see [collect_internal_defines]).
 fn parse_define(
-    arena: &Arena,
+    arena: &mut Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -470,7 +472,7 @@ enum DefineValue {
 impl DefineValue {
     pub fn parse(
         &self,
-        arena: &Arena,
+        arena: &mut Arena,
         vms: &mut VmState,
         env: &RcEnv,
         af_info: &RcAfi,
@@ -532,7 +534,7 @@ fn get_lambda_define_value(arena: &Arena, rest: &[usize]) -> Result<DefineData, 
 }
 
 fn parse_application(
-    arena: &Arena,
+    arena: &mut Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -585,7 +587,7 @@ fn parse_formals(arena: &Arena, formals: usize) -> Result<Formals, String> {
 }
 
 fn parse_define_syntax(
-    arena: &Arena,
+    arena: &mut Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -598,14 +600,17 @@ fn parse_define_syntax(
     }
     check_len(rest, Some(2), Some(2))?;
 
-    let symbol = arena.try_get_symbol(rest[0]).ok_or_else(|| {
-        format!(
-            "define-syntax: target must be symbol, not {}.",
-            pretty_print(arena, rest[0])
-        )
-    })?;
+    let symbol = arena
+        .try_get_symbol(rest[0])
+        .ok_or_else(|| {
+            format!(
+                "define-syntax: target must be symbol, not {}.",
+                pretty_print(arena, rest[0])
+            )
+        })?
+        .to_string();
     let mac = make_macro(arena, env, af_info, vms, rest[1])?;
-    env.borrow_mut().define_macro(symbol, mac, env.clone());
+    env.borrow_mut().define_macro(&symbol, mac, env.clone());
 
     // TODO remove this somehow
     Ok(SyntaxElement::Quote(Box::new(Quote {
@@ -614,7 +619,7 @@ fn parse_define_syntax(
 }
 
 fn parse_let_syntax(
-    arena: &Arena,
+    arena: &mut Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -629,16 +634,19 @@ fn parse_let_syntax(
         let binding = vec_from_list(arena, *b)?;
         check_len(&binding, Some(2), Some(2))?;
 
-        let symbol = arena.try_get_symbol(binding[0]).ok_or_else(|| {
-            format!(
-                "let-syntax: target must be symbol, not {}.",
-                pretty_print(arena, rest[0])
-            )
-        })?;
+        let symbol = arena
+            .try_get_symbol(binding[0])
+            .ok_or_else(|| {
+                format!(
+                    "let-syntax: target must be symbol, not {}.",
+                    pretty_print(arena, rest[0])
+                )
+            })?
+            .to_string();
         let mac = make_macro(arena, env, af_info, vms, binding[1])?;
         inner_env
             .borrow_mut()
-            .define_macro(symbol, mac, definition_env.clone());
+            .define_macro(&symbol, mac, definition_env.clone());
     }
 
     // Letrec and letrec syntax are allowed to have internal defines for some reason. We just
@@ -659,7 +667,7 @@ fn parse_let_syntax(
 }
 
 fn make_macro(
-    arena: &Arena,
+    arena: &mut Arena,
     env: &RcEnv,
     af_info: &RcAfi,
     vms: &mut VmState,
@@ -678,7 +686,7 @@ fn make_macro(
 /// Like parse_compile_run, but it creates a fake environment to evaluate the macro in.
 // TODO: refactor common code with parse_compile_run
 fn parse_compile_run_macro(
-    arena: &Arena,
+    arena: &mut Arena,
     env: &RcEnv,
     af_info: &RcAfi,
     vms: &mut VmState,
