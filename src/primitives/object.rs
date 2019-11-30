@@ -39,7 +39,7 @@ pub fn procedure_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     Ok(match arena.get(args[0]) {
         Value::Lambda { .. } => arena.t,
         Value::Primitive(_) => arena.t,
-        //TODO add continuations
+        Value::Continuation(_) => arena.t,
         _ => arena.f,
     })
 }
