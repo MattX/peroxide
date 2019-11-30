@@ -206,7 +206,7 @@ pub fn run(
     Ok(vm.value)
 }
 
-fn handle_error(arena: &Arena, vm: &mut Vm, e: Error) -> Result<(), usize> {
+fn handle_error(arena: &Arena, vm: &mut Vm, e: Error) -> Result<(), ValRef> {
     let annotated_e = error_stack(arena, &vm, e);
     match annotated_e {
         Error::Abort(v) => Err(v),

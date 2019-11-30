@@ -23,23 +23,24 @@ use gc::Gc;
 use primitives::{Port, SyntacticClosure};
 use value::Value;
 
-pub type ValRef = usize;
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct ValRef(usize);
 
 pub struct Arena {
     values: Gc<Value>,
-    symbol_map: RefCell<HashMap<String, usize>>,
+    symbol_map: RefCell<HashMap<String, ValRef>>,
     gensym_counter: Cell<usize>,
-    pub undefined: usize,
-    pub unspecific: usize,
-    pub eof: usize,
-    pub empty_list: usize,
-    pub t: usize,
-    pub f: usize,
+    pub undefined: ValRef,
+    pub unspecific: ValRef,
+    pub eof: ValRef,
+    pub empty_list: ValRef,
+    pub t: ValRef,
+    pub f: ValRef,
 }
 
 impl Arena {
     /// Moves a value into the arena, and returns a pointer to its new position.
-    pub fn insert(&self, v: Value) -> usize {
+    pub fn insert(&self, v: Value) -> ValRef {
         match v {
             Value::Undefined => self.undefined,
             Value::Unspecific => self.unspecific,
@@ -53,7 +54,7 @@ impl Arena {
                     Some(u) => u,
                     None => {
                         let label = s.clone();
-                        let pos = self.values.insert(Value::Symbol(s));
+                        let pos = ValRef(self.values.insert(Value::Symbol(s)));
                         self.symbol_map.borrow_mut().insert(label, pos);
                         pos
                     }
@@ -64,11 +65,11 @@ impl Arena {
     }
 
     /// Given a position in the arena, returns a reference to the value at that location.
-    pub fn get(&self, at: usize) -> &Value {
-        self.values.get(at)
+    pub fn get(&self, at: ValRef) -> &Value {
+        self.values.get(at.0)
     }
 
-    pub fn get_activation_frame(&self, at: usize) -> &RefCell<ActivationFrame> {
+    pub fn get_activation_frame(&self, at: ValRef) -> &RefCell<ActivationFrame> {
         if let Value::ActivationFrame(ref af) = self.get(at) {
             af
         } else {
@@ -76,7 +77,7 @@ impl Arena {
         }
     }
 
-    pub fn gensym(&self, base: Option<&str>) -> usize {
+    pub fn gensym(&self, base: Option<&str>) -> ValRef {
         let base_str = base.map(|s| format!("{}-", s)).unwrap_or_else(|| "".into());
         loop {
             let candidate = format!("--gs-{}{}", base_str, self.gensym_counter.get());
@@ -87,83 +88,79 @@ impl Arena {
         }
     }
 
-    pub fn try_get_integer(&self, at: usize) -> Option<&BigInt> {
+    pub fn try_get_integer(&self, at: ValRef) -> Option<&BigInt> {
         match self.get(at) {
             Value::Integer(i) => Some(i),
             _ => None,
         }
     }
 
-    pub fn try_get_character(&self, at: usize) -> Option<char> {
+    pub fn try_get_character(&self, at: ValRef) -> Option<char> {
         match self.get(at) {
             Value::Character(c) => Some(*c),
             _ => None,
         }
     }
 
-    pub fn try_get_string(&self, at: usize) -> Option<&RefCell<String>> {
+    pub fn try_get_string(&self, at: ValRef) -> Option<&RefCell<String>> {
         match self.get(at) {
             Value::String(s) => Some(s),
             _ => None,
         }
     }
 
-    pub fn try_get_vector(&self, at: usize) -> Option<&RefCell<Vec<usize>>> {
+    pub fn try_get_vector(&self, at: ValRef) -> Option<&RefCell<Vec<ValRef>>> {
         match self.get(at) {
             Value::Vector(v) => Some(v),
             _ => None,
         }
     }
 
-    pub fn try_get_symbol(&self, at: usize) -> Option<&str> {
+    pub fn try_get_symbol(&self, at: ValRef) -> Option<&str> {
         match self.get(at) {
             Value::Symbol(s) => Some(s),
             _ => None,
         }
     }
 
-    pub fn try_get_pair(&self, at: usize) -> Option<(&Cell<usize>, &Cell<usize>)> {
+    pub fn try_get_pair(&self, at: ValRef) -> Option<(&Cell<ValRef>, &Cell<ValRef>)> {
         match self.get(at) {
             Value::Pair(car, cdr) => Some((car, cdr)),
             _ => None,
         }
     }
 
-    pub fn try_get_environment(&self, at: usize) -> Option<&RcEnv> {
+    pub fn try_get_environment(&self, at: ValRef) -> Option<&RcEnv> {
         match self.get(at) {
             Value::Environment(r) => Some(r),
             _ => None,
         }
     }
 
-    pub fn try_get_syntactic_closure(&self, at: usize) -> Option<&SyntacticClosure> {
+    pub fn try_get_syntactic_closure(&self, at: ValRef) -> Option<&SyntacticClosure> {
         match self.get(at) {
             Value::SyntacticClosure(sc) => Some(sc),
             _ => None,
         }
     }
 
-    pub fn try_get_port(&self, at: usize) -> Option<&Port> {
+    pub fn try_get_port(&self, at: ValRef) -> Option<&Port> {
         match self.get(at) {
             Value::Port(p) => Some(p.deref()),
             _ => None,
         }
-    }
-
-    pub fn collect(&mut self, roots: &[usize]) {
-        self.values.collect(roots);
     }
 }
 
 impl Default for Arena {
     fn default() -> Self {
         let values = Gc::default();
-        let undefined = values.insert(Value::Undefined);
-        let unspecific = values.insert(Value::Unspecific);
-        let eof = values.insert(Value::EofObject);
-        let empty_list = values.insert(Value::EmptyList);
-        let f = values.insert(Value::Boolean(false));
-        let t = values.insert(Value::Boolean(true));
+        let undefined = ValRef(values.insert(Value::Undefined));
+        let unspecific = ValRef(values.insert(Value::Unspecific));
+        let eof = ValRef(values.insert(Value::EofObject));
+        let empty_list = ValRef(values.insert(Value::EmptyList));
+        let f = ValRef(values.insert(Value::Boolean(false)));
+        let t = ValRef(values.insert(Value::Boolean(true)));
         Arena {
             values,
             symbol_map: RefCell::new(HashMap::new()),
@@ -184,7 +181,7 @@ mod tests {
 
     use super::*;
 
-    const BASE_ENTRY: usize = 6;
+    const BASE_ENTRY: ValRef = ValRef(6);
 
     #[test]
     fn add_empty() {

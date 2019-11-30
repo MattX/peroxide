@@ -690,8 +690,8 @@ fn parse_compile_run_macro(
     env: &RcEnv,
     af_info: &RcAfi,
     vms: &mut VmState,
-    val: usize,
-) -> Result<usize, String> {
+    val: ValRef,
+) -> Result<ValRef, String> {
     let syntax_tree =
         parse(arena, vms, env, af_info, val).map_err(|e| format!("Syntax error: {}", e))?;
     arena

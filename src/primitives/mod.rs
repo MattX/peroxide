@@ -68,7 +68,7 @@
 
 use std::fmt::{Debug, Error, Formatter};
 
-use arena::Arena;
+use arena::{Arena, ValRef};
 use environment::{RcAfi, RcEnv};
 use primitives::char::*;
 use primitives::numeric::*;
@@ -221,7 +221,7 @@ pub struct Primitive {
 }
 
 pub enum PrimitiveImplementation {
-    Simple(fn(&Arena, &[usize]) -> Result<usize, String>),
+    Simple(fn(&Arena, &[ValRef]) -> Result<ValRef, String>),
     Eval,
     Apply,
     CallCC,
@@ -245,7 +245,7 @@ pub fn register_primitives(
     arena: &mut Arena,
     global_environment: &RcEnv,
     afi: &RcAfi,
-    global_frame: usize,
+    global_frame: ValRef,
 ) {
     let mut borrowed_env = global_environment.borrow_mut();
     let mut frame = arena.get_activation_frame(global_frame).borrow_mut();
