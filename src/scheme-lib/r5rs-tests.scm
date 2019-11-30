@@ -57,7 +57,7 @@
   (display " out of ")
   (write *tests-run*)
   (display " passed (")
-  (write (* (/ *tests-passed* *tests-run*) 100))
+  (write (* (/ *tests-passed* *tests-run*) 100.0))
   (display "%)")
   (newline))
 

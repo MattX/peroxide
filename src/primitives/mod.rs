@@ -102,7 +102,7 @@ macro_rules! simple_primitive {
     };
 }
 
-static PRIMITIVES: [Primitive; 96] = [
+static PRIMITIVES: [Primitive; 104] = [
     simple_primitive!("make-syntactic-closure", make_syntactic_closure),
     simple_primitive!("identifier=?", identifier_equal_p),
     simple_primitive!("identifier?", identifier_p),
@@ -134,9 +134,17 @@ static PRIMITIVES: [Primitive; 96] = [
     simple_primitive!("gcd", gcd),
     simple_primitive!("lcm", lcm),
     simple_primitive!("real?", real_p),
+    simple_primitive!("exact?", exact_p),
     simple_primitive!("inexact", inexact),
     simple_primitive!("nan?", nan_p),
     simple_primitive!("infinite?", infinite_p),
+    simple_primitive!("exp", exp),
+    simple_primitive!("cos", cos),
+    simple_primitive!("sin", sin),
+    simple_primitive!("tan", tan),
+    simple_primitive!("acos", acos),
+    simple_primitive!("asin", asin),
+    simple_primitive!("atan", atan),
     simple_primitive!("pair?", pair_p),
     simple_primitive!("expt", expt),
     simple_primitive!("cons", cons),

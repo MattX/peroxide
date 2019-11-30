@@ -837,6 +837,36 @@
 (define (abs x)
   (if (negative? x) (- x) x))
 
+(define (inexact? x) (not (exact? x)))
+
+(define exact->inexact inexact)
+
+(define (max x . rest)
+  (define (~max hi ls)
+    (if (null? ls)
+        (exact->inexact hi)
+        (~max (if (> (car ls) hi) (car ls) hi) (cdr ls))))
+  (if (inexact? x)
+      (~max x rest)
+      (let lp ((hi x) (ls rest))
+        (cond ((null? ls) hi)
+              ((inexact? (car ls)) (~max hi ls))
+              (else (lp (if (> (car ls) hi) (car ls) hi) (cdr ls)))))))
+
+(define (min x . rest)
+  (define (~min lo ls)
+    (if (null? ls)
+        (exact->inexact lo)
+        (~min (if (< (car ls) lo) (car ls) lo) (cdr ls))))
+  (if (inexact? x)
+      (~min x rest)
+      (let lp ((lo x) (ls rest))
+        (cond ((null? ls) lo)
+              ((inexact? (car ls)) (~min lo ls))
+              (else (lp (if (< (car ls) lo) (car ls) lo) (cdr ls)))))))
+
+;; Ports
+
 (define (close-output-port p) (close-port p))
 
 (define (call-with-output-string proc)

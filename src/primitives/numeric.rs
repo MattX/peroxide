@@ -220,7 +220,6 @@ macro_rules! compare_op {
     }
 }
 
-// TODO rewrite the following few methods with a macro to reduce repetition.
 compare_op!(less_than2, <);
 prim_monotonic!(less_than, less_than2);
 
@@ -265,7 +264,7 @@ pub fn number_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
 pub fn real_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(1), Some(1))?;
     Ok(match arena.get(args[0]) {
-        Value::Real(_) => arena.t,
+        Value::Real(_) | Value::Rational(_) | Value::Integer(_) => arena.t,
         _ => arena.f,
     })
 }
@@ -372,6 +371,36 @@ pub fn lcm(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     }
     Ok(arena.insert(Value::Integer(acc)))
 }
+
+// TODO: support complex results
+macro_rules! transcendental {
+    ($inner_name:ident, $operator:tt) => {
+        pub fn $inner_name(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+            check_len(args, Some(1), Some(1))?;
+            let arg = arena.get(args[0]);
+            if !is_numeric(arg) {
+                return Err(format!(
+                    "non-numeric value: {}",
+                    pretty_print(arena, args[0])
+                ));
+            }
+            Ok(arena.insert(match as_real(arena.get(args[0])) {
+                Value::ComplexReal(c) => Value::ComplexReal(c.$operator()),
+                Value::Real(c) => Value::Real(c.$operator()),
+                _ => panic!("conversion to real failed."),
+            }))
+        }
+    };
+}
+
+transcendental!(exp, exp);
+//transcendental!(log, log);  //TODO: figure out why that isn't working
+transcendental!(cos, cos);
+transcendental!(sin, sin);
+transcendental!(tan, tan);
+transcendental!(acos, acos);
+transcendental!(asin, asin);
+transcendental!(atan, atan);
 
 /// Takes an argument list (vector of arena pointers), returns a vector of numeric values or
 /// an error.
