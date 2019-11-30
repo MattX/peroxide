@@ -28,7 +28,7 @@ static MAX_RECURSION_DEPTH: usize = 1000;
 
 #[derive(Debug, Clone)]
 pub enum Instruction {
-    Constant(usize),
+    Constant(ValRef),
     JumpFalse(usize),
     Jump(usize),
     GlobalArgumentSet { index: usize },
@@ -148,14 +148,14 @@ struct Vm<'a> {
 }
 
 enum Error {
-    Raise(usize),
-    Abort(usize),
+    Raise(ValRef),
+    Abort(ValRef),
 }
 
 impl Error {
     fn map_error<F>(&self, f: F) -> Error
     where
-        F: FnOnce(usize) -> usize,
+        F: FnOnce(ValRef) -> ValRef,
     {
         match self {
             Error::Raise(v) => Error::Raise(f(*v)),
@@ -163,7 +163,7 @@ impl Error {
         }
     }
 
-    fn get_value(&self) -> usize {
+    fn get_value(&self) -> ValRef {
         match self {
             Error::Raise(v) => *v,
             Error::Abort(v) => *v,
@@ -191,7 +191,7 @@ pub fn run(
         stack: Vec::new(),
         global_env,
         env,
-        fun: 0,
+        fun: arena.unspecific,
     };
     loop {
         match run_one(arena, &mut vm) {
@@ -376,7 +376,7 @@ fn run_one(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
         Instruction::CreateFrame(size) => {
             let mut frame = ActivationFrame {
                 parent: None,
-                values: vec![0; size],
+                values: vec![arena.unspecific; size],
             };
             for i in (0..size).rev() {
                 frame.values[i] = vm.stack.pop().expect("Too few values on stack.");
@@ -534,7 +534,7 @@ pub struct Continuation {
 impl gc::Inventory for Continuation {
     fn inventory(&self, v: &mut gc::PushOnlyVec<usize>) {
         for obj in self.stack.iter() {
-            v.push(*obj);
+            v.push(obj.0);
         }
     }
 }

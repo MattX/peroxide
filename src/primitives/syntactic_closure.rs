@@ -15,7 +15,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use arena::Arena;
+use arena::{Arena, ValRef};
 use environment;
 use environment::{Environment, EnvironmentValue, RcEnv};
 use util::check_len;
@@ -23,9 +23,9 @@ use value::{list_from_vec, pretty_print, vec_from_list, Value};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SyntacticClosure {
-    pub closed_env: RefCell<usize>,
+    pub closed_env: RefCell<ValRef>,
     pub free_variables: Vec<String>,
-    pub expr: usize,
+    pub expr: ValRef,
 }
 
 impl SyntacticClosure {
@@ -55,7 +55,7 @@ impl SyntacticClosure {
     }
 }
 
-pub fn make_syntactic_closure(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn make_syntactic_closure(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(3), Some(3))?;
     let free_variables = vec_from_list(arena, args[1])?
         .iter()
@@ -85,7 +85,7 @@ pub fn make_syntactic_closure(arena: &Arena, args: &[usize]) -> Result<usize, St
 ///
 /// The outer Result is an error if the passed `val` is not a valid identifier. The inner
 /// Option<EnvironmentValue> corresponds to the normal return type for an environment query.
-fn get_in_env(arena: &Arena, env: &RcEnv, val: usize) -> Result<Option<EnvironmentValue>, String> {
+fn get_in_env(arena: &Arena, env: &RcEnv, val: ValRef) -> Result<Option<EnvironmentValue>, String> {
     match arena.get(val) {
         Value::Symbol(s) => Ok(env.borrow().get(s)),
         Value::SyntacticClosure(SyntacticClosure {
@@ -103,7 +103,7 @@ fn get_in_env(arena: &Arena, env: &RcEnv, val: usize) -> Result<Option<Environme
     }
 }
 
-pub fn identifier_equal_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn identifier_equal_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(4), Some(4))?;
     let env1 = arena.try_get_environment(args[0]).ok_or_else(|| {
         format!(
@@ -139,7 +139,7 @@ pub fn identifier_equal_p(arena: &Arena, args: &[usize]) -> Result<usize, String
     Ok(arena.insert(Value::Boolean(res)))
 }
 
-fn coerce_symbol(arena: &Arena, value: usize) -> String {
+fn coerce_symbol(arena: &Arena, value: ValRef) -> String {
     match arena.get(value) {
         Value::Symbol(s) => s.clone(),
         Value::SyntacticClosure(sc) => coerce_symbol(arena, sc.expr),
@@ -150,7 +150,7 @@ fn coerce_symbol(arena: &Arena, value: usize) -> String {
     }
 }
 
-fn is_identifier(arena: &Arena, value: usize) -> bool {
+fn is_identifier(arena: &Arena, value: ValRef) -> bool {
     match arena.get(value) {
         Value::Symbol(_) => true,
         Value::SyntacticClosure(SyntacticClosure { expr, .. }) => is_identifier(arena, *expr),
@@ -158,19 +158,19 @@ fn is_identifier(arena: &Arena, value: usize) -> bool {
     }
 }
 
-pub fn identifier_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn identifier_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(1), Some(1))?;
     Ok(arena.insert(Value::Boolean(is_identifier(arena, args[0]))))
 }
 
-pub fn syntactic_closure_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn syntactic_closure_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(1), Some(1))?;
     Ok(arena.insert(Value::Boolean(
         arena.try_get_syntactic_closure(args[0]).is_some(),
     )))
 }
 
-pub fn syntactic_closure_environment(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn syntactic_closure_environment(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(1), Some(1))?;
     let synclos = arena
         .try_get_syntactic_closure(args[0])
@@ -178,7 +178,7 @@ pub fn syntactic_closure_environment(arena: &Arena, args: &[usize]) -> Result<us
     Ok(*synclos.closed_env.borrow())
 }
 
-pub fn syntactic_closure_free_variables(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn syntactic_closure_free_variables(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(1), Some(1))?;
     let synclos = arena
         .try_get_syntactic_closure(args[0])
@@ -187,11 +187,11 @@ pub fn syntactic_closure_free_variables(arena: &Arena, args: &[usize]) -> Result
         .free_variables
         .iter()
         .map(|s| arena.insert(Value::Symbol(s.clone())));
-    let sv: Vec<usize> = symbols.collect();
+    let sv: Vec<ValRef> = symbols.collect();
     Ok(list_from_vec(arena, &sv))
 }
 
-pub fn syntactic_closure_expression(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn syntactic_closure_expression(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(1), Some(1))?;
     let synclos = arena
         .try_get_syntactic_closure(args[0])
@@ -199,7 +199,7 @@ pub fn syntactic_closure_expression(arena: &Arena, args: &[usize]) -> Result<usi
     Ok(synclos.expr)
 }
 
-pub fn gensym(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn gensym(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(0), Some(1))?;
     let base_name = if let Some(v) = args.get(0) {
         Some(

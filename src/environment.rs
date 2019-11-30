@@ -28,7 +28,7 @@ use std::fmt::{Debug, Error, Formatter};
 use std::option::Option;
 use std::rc::Rc;
 
-use arena::Arena;
+use arena::{Arena, ValRef};
 
 pub struct Environment {
     parent: Option<Rc<RefCell<Environment>>>,
@@ -71,14 +71,14 @@ pub struct Variable {
 
 #[derive(Clone)]
 pub struct Macro {
-    pub lambda: usize,
+    pub lambda: ValRef,
     pub definition_environment: RcEnv,
 }
 
 impl std::fmt::Debug for Macro {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         // hide the environment field to avoid environment -> macro -> environment reference loops
-        write!(f, "Macro{{Lambda={}}}", self.lambda)
+        write!(f, "Macro{{Lambda={:?}}}", self.lambda)
     }
 }
 
@@ -163,7 +163,7 @@ impl Environment {
     /// case, the macro will be replaced.
     ///
     /// TODO: definition environment should be a weak ref to avoid cycles?
-    pub fn define_macro(&mut self, name: &str, lambda: usize, definition_environment: RcEnv) {
+    pub fn define_macro(&mut self, name: &str, lambda: ValRef, definition_environment: RcEnv) {
         self.values.insert(
             name.to_string(),
             Some(EnvironmentValue::Macro(Macro {
@@ -235,8 +235,8 @@ pub fn filter(closed_env: &RcEnv, free_env: &RcEnv, free_vars: &[String]) -> Res
 // TODO make these fields private and have proper accessors
 #[derive(Debug, PartialEq, Clone)]
 pub struct ActivationFrame {
-    pub parent: Option<usize>,
-    pub values: Vec<usize>,
+    pub parent: Option<ValRef>,
+    pub values: Vec<ValRef>,
 }
 
 impl ActivationFrame {
@@ -244,7 +244,7 @@ impl ActivationFrame {
         self.parent.map(|p| arena.get_activation_frame(p))
     }
 
-    pub fn get(&self, arena: &Arena, depth: usize, index: usize) -> usize {
+    pub fn get(&self, arena: &Arena, depth: usize, index: usize) -> ValRef {
         if depth == 0 {
             self.values[index]
         } else if let Some(p) = self.get_parent(arena) {
@@ -275,7 +275,7 @@ impl ActivationFrame {
         }
     }
 
-    pub fn set(&mut self, arena: &Arena, depth: usize, index: usize, value: usize) {
+    pub fn set(&mut self, arena: &Arena, depth: usize, index: usize, value: ValRef) {
         if depth == 0 {
             self.values[index] = value;
         } else if let Some(p) = self.get_parent(arena) {

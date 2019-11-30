@@ -24,7 +24,7 @@ use primitives::{Port, SyntacticClosure};
 use value::Value;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct ValRef(usize);
+pub struct ValRef(pub usize);
 
 pub struct Arena {
     values: Gc<Value>,
@@ -60,7 +60,7 @@ impl Arena {
                     }
                 }
             }
-            _ => self.values.insert(v),
+            _ => ValRef(self.values.insert(v)),
         }
     }
 

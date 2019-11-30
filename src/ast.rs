@@ -65,7 +65,7 @@ pub struct Reference {
 
 #[derive(Debug)]
 pub struct Quote {
-    pub quoted: usize,
+    pub quoted: ValRef,
 }
 
 #[derive(Debug)]
@@ -118,7 +118,7 @@ pub struct Application {
 #[derive(Debug)]
 pub enum Identifier {
     Bare(String),
-    SyntacticClosure(usize),
+    SyntacticClosure(ValRef),
 }
 
 /// Structure that holds a function's formal argument list.
@@ -139,7 +139,7 @@ pub fn parse(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    value: usize,
+    value: ValRef,
 ) -> Result<SyntaxElement, String> {
     let (env, value) = resolve_syntactic_closure(arena, env, value)?;
     match arena.get(value) {
@@ -189,8 +189,8 @@ fn parse_pair(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    car: usize,
-    cdr: usize,
+    car: ValRef,
+    cdr: ValRef,
 ) -> Result<SyntaxElement, String> {
     let rest = vec_from_list(arena, cdr)?;
     let (car_env, resolved_car) = resolve_syntactic_closure(arena, env, car)?;
@@ -221,7 +221,7 @@ fn parse_pair(
 fn parse_quote(
     arena: &mut Arena,
     env: &RcEnv,
-    rest: &[usize],
+    rest: &[ValRef],
     syntax: bool,
 ) -> Result<SyntaxElement, String> {
     if rest.len() != 1 {
@@ -239,7 +239,7 @@ fn parse_if(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    rest: &[usize],
+    rest: &[ValRef],
 ) -> Result<SyntaxElement, String> {
     check_len(rest, Some(2), Some(3))?;
     let cond = parse(arena, vms, env, af_info, rest[0])?;
@@ -257,7 +257,7 @@ fn parse_begin(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    rest: &[usize],
+    rest: &[ValRef],
 ) -> Result<SyntaxElement, String> {
     check_len(rest, Some(1), None)?;
     let expressions = rest
@@ -272,7 +272,7 @@ fn parse_lambda(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    rest: &[usize],
+    rest: &[ValRef],
 ) -> Result<SyntaxElement, String> {
     check_len(rest, Some(2), None)?;
     parse_split_lambda(
@@ -291,8 +291,8 @@ fn parse_split_lambda(
     vms: &mut VmState,
     outer_env: &RcEnv,
     af_info: &RcAfi,
-    formals: usize,
-    body: &[usize],
+    formals: ValRef,
+    body: &[ValRef],
     name: Option<String>,
 ) -> Result<SyntaxElement, String> {
     let formals = parse_formals(arena, formals)?;
@@ -370,7 +370,7 @@ fn parse_set(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    rest: &[usize],
+    rest: &[ValRef],
 ) -> Result<SyntaxElement, String> {
     check_len(rest, Some(2), Some(2))?;
     if let Some(dt) = get_define_target(arena, rest[0]) {
@@ -406,7 +406,7 @@ fn parse_define(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    rest: &[usize],
+    rest: &[ValRef],
 ) -> Result<SyntaxElement, String> {
     // TODO the actual check should not be on activation frame altitude, but on syntactic
     //      toplevelness. (eg `(define x (define y 1))` should not work).
@@ -433,7 +433,7 @@ fn parse_define(
 #[derive(Debug, Clone)]
 enum DefineTarget {
     Bare(String),
-    SyntacticClosure(usize),
+    SyntacticClosure(ValRef),
 }
 
 impl DefineTarget {
@@ -465,8 +465,8 @@ impl DefineTarget {
 
 #[derive(Debug)]
 enum DefineValue {
-    Value(usize),
-    Lambda { formals: usize, body: Vec<usize> },
+    Value(ValRef),
+    Lambda { formals: ValRef, body: Vec<ValRef> },
 }
 
 impl DefineValue {
@@ -493,7 +493,7 @@ struct DefineData {
     pub value: DefineValue,
 }
 
-fn get_define_data(arena: &Arena, rest: &[usize]) -> Result<DefineData, String> {
+fn get_define_data(arena: &Arena, rest: &[ValRef]) -> Result<DefineData, String> {
     let res = if let Some(target) = get_define_target(arena, rest[0]) {
         check_len(rest, Some(2), Some(2))?;
         DefineData {
@@ -507,7 +507,7 @@ fn get_define_data(arena: &Arena, rest: &[usize]) -> Result<DefineData, String> 
 }
 
 /// Helper method to parse direct lambda defines `(define (x y z) y z)`.
-fn get_lambda_define_value(arena: &Arena, rest: &[usize]) -> Result<DefineData, String> {
+fn get_lambda_define_value(arena: &Arena, rest: &[ValRef]) -> Result<DefineData, String> {
     check_len(rest, Some(2), None)?;
     if let Value::Pair(car, cdr) = arena.get(rest[0]) {
         if let Value::Symbol(s) = arena.get(car.get()) {
@@ -538,8 +538,8 @@ fn parse_application(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    fun: usize,
-    rest: &[usize],
+    fun: ValRef,
+    rest: &[ValRef],
 ) -> Result<SyntaxElement, String> {
     let function = parse(arena, vms, env, af_info, fun)?;
     let args = rest
@@ -552,7 +552,7 @@ fn parse_application(
     })))
 }
 
-fn parse_formals(arena: &Arena, formals: usize) -> Result<Formals, String> {
+fn parse_formals(arena: &Arena, formals: ValRef) -> Result<Formals, String> {
     let mut values = Vec::new();
     let mut formal = formals;
     loop {
@@ -591,7 +591,7 @@ fn parse_define_syntax(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    rest: &[usize],
+    rest: &[ValRef],
 ) -> Result<SyntaxElement, String> {
     // TODO the actual check should not be on activation frame altitude, but on syntactic
     //      toplevelness. (eg `(define x (define y 1))` should not work).
@@ -623,7 +623,7 @@ fn parse_let_syntax(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    rest: &[usize],
+    rest: &[ValRef],
     rec: bool,
 ) -> Result<SyntaxElement, String> {
     check_len(rest, Some(2), None)?;
@@ -671,8 +671,8 @@ fn make_macro(
     env: &RcEnv,
     af_info: &RcAfi,
     vms: &mut VmState,
-    val: usize,
-) -> Result<usize, String> {
+    val: ValRef,
+) -> Result<ValRef, String> {
     let mac = parse_compile_run_macro(arena, env, af_info, vms, val)?;
     match arena.get(mac) {
         Value::Lambda { .. } => Ok(mac), // TODO check the lambda takes 3 args
@@ -710,7 +710,7 @@ fn parse_compile_run_macro(
         .map_err(|e| format!("Runtime error: {}", pretty_print(arena, e)))
 }
 
-fn make_frame(arena: &Arena, global_frame: usize, af_info: &RcAfi) -> usize {
+fn make_frame(arena: &Arena, global_frame: ValRef, af_info: &RcAfi) -> ValRef {
     let parent = if let Some(p) = af_info.borrow().parent.clone() {
         p
     } else {
@@ -730,8 +730,8 @@ fn expand_macro_full(
     vms: &mut VmState,
     env: &RcEnv,
     mac: Macro,
-    expr: usize,
-) -> Result<usize, String> {
+    expr: ValRef,
+) -> Result<ValRef, String> {
     let mut expanded = expand_macro(arena, vms, env, mac, expr)?;
     let mut macro_count = 0;
     while let Some(m) = get_macro(arena, env, expanded) {
@@ -749,8 +749,8 @@ fn expand_macro(
     vms: &mut VmState,
     env: &RcEnv,
     mac: Macro,
-    expr: usize,
-) -> Result<usize, String> {
+    expr: ValRef,
+) -> Result<ValRef, String> {
     let definition_environment = Value::Environment(mac.definition_environment.clone());
     let usage_environment = Value::Environment(env.clone());
     let syntax_tree = SyntaxElement::Application(Box::new(Application {
@@ -824,8 +824,8 @@ fn collect_internal_defines(
     arena: &mut Arena,
     vms: &mut VmState,
     env: &RcEnv,
-    body: &[usize],
-) -> Result<(Vec<DefineData>, Vec<usize>), String> {
+    body: &[ValRef],
+) -> Result<(Vec<DefineData>, Vec<ValRef>), String> {
     // TODO figure out a nice way to push macro expanded, non-define values. Right know
     //      we'll perform macro expansion both here and at the actual parse site.
     // TODO support internal macro definitions
@@ -880,8 +880,8 @@ fn collect_internal_defines(
 fn resolve_syntactic_closure(
     arena: &Arena,
     env: &RcEnv,
-    value: usize,
-) -> Result<(RcEnv, usize), String> {
+    value: ValRef,
+) -> Result<(RcEnv, ValRef), String> {
     if let Value::SyntacticClosure(SyntacticClosure {
         closed_env,
         free_variables,
@@ -898,7 +898,7 @@ fn resolve_syntactic_closure(
     }
 }
 
-fn strip_syntactic_closure(arena: &Arena, env: &RcEnv, value: usize) -> usize {
+fn strip_syntactic_closure(arena: &Arena, env: &RcEnv, value: ValRef) -> ValRef {
     if let Value::SyntacticClosure(SyntacticClosure { expr, .. }) = arena.get(value) {
         strip_syntactic_closure(arena, env, *expr)
     } else {
@@ -906,7 +906,7 @@ fn strip_syntactic_closure(arena: &Arena, env: &RcEnv, value: usize) -> usize {
     }
 }
 
-fn get_define_target(arena: &Arena, value: usize) -> Option<DefineTarget> {
+fn get_define_target(arena: &Arena, value: ValRef) -> Option<DefineTarget> {
     match arena.get(value) {
         Value::Symbol(s) => Some(DefineTarget::Bare(s.clone())),
         Value::SyntacticClosure(sc) => match arena.get(sc.expr) {

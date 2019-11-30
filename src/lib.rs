@@ -23,7 +23,7 @@ use std::cell::RefCell;
 use std::fs;
 use std::rc::Rc;
 
-use arena::Arena;
+use arena::{Arena, ValRef};
 use ast::SyntaxElement;
 use environment::{ActivationFrame, ActivationFrameInfo, Environment, RcEnv};
 use read::read_many;
@@ -48,7 +48,7 @@ pub const ERROR_HANDLER_INDEX: usize = 0;
 /// Structure holding the global state of the interpreter.
 pub struct VmState {
     pub global_environment: RcEnv,
-    pub global_frame: usize,
+    pub global_frame: ValRef,
     pub code: Code,
 }
 
@@ -95,8 +95,8 @@ pub fn initialize(arena: &mut Arena, state: &mut VmState, fname: &str) -> Result
 pub fn parse_compile_run(
     arena: &mut Arena,
     state: &mut VmState,
-    read: usize,
-) -> Result<usize, String> {
+    read: ValRef,
+) -> Result<ValRef, String> {
     let cloned_env = state.global_environment.clone();
     let global_af_info = Rc::new(RefCell::new(ActivationFrameInfo {
         parent: None,
@@ -121,7 +121,7 @@ pub fn compile_run(
     arena: &mut Arena,
     state: &mut VmState,
     syntax_tree: &SyntaxElement,
-) -> Result<usize, String> {
+) -> Result<ValRef, String> {
     let start_pc = state.code.code_size();
     compile::compile(&syntax_tree, &mut state.code, false, true)
         .map_err(|e| format!("Compilation error: {}", e))?;

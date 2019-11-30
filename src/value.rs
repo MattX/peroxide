@@ -76,7 +76,7 @@ impl fmt::Display for Value {
             Value::Character(c) => write!(f, "#\\{}", util::escape_char(*c)),
             Value::Symbol(s) => write!(f, "{}", util::escape_symbol(&s)),
             Value::String(s) => write!(f, "\"{}\"", util::escape_string(&s.borrow())),
-            Value::Pair(a, b) => write!(f, "(=>{} . =>{})", a.get(), b.get()),
+            Value::Pair(a, b) => write!(f, "(=>{:?} . =>{:?})", a.get(), b.get()),
             Value::ByteVector(bv) => {
                 let contents = bv
                     .borrow()
@@ -90,7 +90,7 @@ impl fmt::Display for Value {
                 let contents = values
                     .borrow()
                     .iter()
-                    .map(|v| format!("=>{}", v))
+                    .map(|v| format!("=>{:?}", v))
                     .collect::<Vec<_>>()
                     .join(" ");
                 write!(f, "#({})", contents)
@@ -105,29 +105,29 @@ impl gc::Inventory for Value {
     fn inventory(&self, v: &mut gc::PushOnlyVec<usize>) {
         match self {
             Value::Pair(car, cdr) => {
-                v.push(car.get());
-                v.push(cdr.get());
+                v.push(car.get().0);
+                v.push(cdr.get().0);
             }
             Value::Vector(vals) => {
                 for val in vals.borrow().iter() {
-                    v.push(*val);
+                    v.push(val.0);
                 }
             }
             Value::Lambda { environment, .. } => {
-                v.push(*environment);
+                v.push(environment.0);
             }
             Value::ActivationFrame(af) => {
                 let f = af.borrow();
                 if let Some(p) = f.parent {
-                    v.push(p)
+                    v.push(p.0)
                 };
                 for val in f.values.iter() {
-                    v.push(*val)
+                    v.push(val.0)
                 }
             }
             Value::SyntacticClosure(sc) => {
-                v.push(sc.expr);
-                v.push(*sc.closed_env.borrow());
+                v.push(sc.expr.0);
+                v.push(sc.closed_env.borrow().0);
             }
             Value::Port(p) => {
                 p.inventory(v);
@@ -207,9 +207,9 @@ impl Value {
         }
     }
 
-    pub fn pair_to_vec(&self, arena: &Arena) -> Result<Vec<usize>, String> {
+    pub fn pair_to_vec(&self, arena: &Arena) -> Result<Vec<ValRef>, String> {
         let mut p = self;
-        let mut result: Vec<usize> = Vec::new();
+        let mut result: Vec<ValRef> = Vec::new();
         loop {
             match p {
                 Value::Pair(car_r, cdr_r) => {
@@ -238,11 +238,11 @@ impl Value {
 }
 
 // TODO phase out inline version
-pub fn vec_from_list(arena: &Arena, val: usize) -> Result<Vec<usize>, String> {
+pub fn vec_from_list(arena: &Arena, val: ValRef) -> Result<Vec<ValRef>, String> {
     arena.get(val).pair_to_vec(arena)
 }
 
-pub fn list_from_vec(arena: &Arena, vals: &[usize]) -> usize {
+pub fn list_from_vec(arena: &Arena, vals: &[ValRef]) -> ValRef {
     if vals.is_empty() {
         arena.empty_list
     } else {
@@ -252,11 +252,11 @@ pub fn list_from_vec(arena: &Arena, vals: &[usize]) -> usize {
 }
 
 // TODO phase out inline version
-pub fn pretty_print(arena: &Arena, at: usize) -> String {
+pub fn pretty_print(arena: &Arena, at: ValRef) -> String {
     arena.get(at).pretty_print(arena)
 }
 
-pub fn eqv(arena: &Arena, left: usize, right: usize) -> bool {
+pub fn eqv(arena: &Arena, left: ValRef, right: ValRef) -> bool {
     match (arena.get(left), arena.get(right)) {
         // This comparison is in the same order as the R5RS one for ease of
         // verification.
@@ -275,7 +275,7 @@ pub fn eqv(arena: &Arena, left: usize, right: usize) -> bool {
 }
 
 //TODO should not loop on recursive data (R7RS)
-pub fn equal(arena: &Arena, left: usize, right: usize) -> bool {
+pub fn equal(arena: &Arena, left: ValRef, right: ValRef) -> bool {
     match (arena.get(left), arena.get(right)) {
         (Value::Pair(left_car, left_cdr), Value::Pair(right_car, right_cdr)) => {
             equal(arena, left_car.get(), right_car.get())
@@ -314,8 +314,11 @@ mod tests {
     fn format_list() {
         assert_eq!("()", &format!("{}", Value::EmptyList));
         assert_eq!(
-            "(=>1 . =>2)",
-            &format!("{}", Value::Pair(Cell::new(1), Cell::new(2)))
+            "(=>ValRef(1) . =>ValRef(2))",
+            &format!(
+                "{}",
+                Value::Pair(Cell::new(ValRef(1)), Cell::new(ValRef(2)))
+            )
         );
     }
 
@@ -323,8 +326,11 @@ mod tests {
     fn format_vec() {
         assert_eq!("#()", &format!("{}", Value::Vector(RefCell::new(vec![]))));
         assert_eq!(
-            "#(=>1 =>2)",
-            &format!("{}", Value::Vector(RefCell::new(vec![1, 2])))
+            "#(=>ValRef(1) =>ValRef(2))",
+            &format!(
+                "{}",
+                Value::Vector(RefCell::new(vec![ValRef(1), ValRef(2)]))
+            )
         );
     }
 }

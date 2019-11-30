@@ -14,11 +14,11 @@
 
 use std::cell::Cell;
 
-use arena::Arena;
+use arena::{Arena, ValRef};
 use util::check_len;
 use value::Value;
 
-pub fn pair_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn pair_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(1), Some(1))?;
     let ans = match arena.get(args[0]) {
         Value::Pair(_, _) => true,
@@ -27,12 +27,12 @@ pub fn pair_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     Ok(arena.insert(Value::Boolean(ans)))
 }
 
-pub fn cons(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn cons(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(2), Some(2))?;
     Ok(arena.insert(Value::Pair(Cell::new(args[0]), Cell::new(args[1]))))
 }
 
-pub fn car(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn car(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(1), Some(1))?;
     match arena.get(args[0]) {
         Value::Pair(car, _) => Ok(car.get()),
@@ -43,7 +43,7 @@ pub fn car(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     }
 }
 
-pub fn cdr(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn cdr(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(1), Some(1))?;
     match arena.get(args[0]) {
         Value::Pair(_, cdr) => Ok(cdr.get()),
@@ -54,7 +54,7 @@ pub fn cdr(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     }
 }
 
-pub fn set_car_b(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn set_car_b(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(2), Some(2))?;
     match arena.get(args[0]) {
         Value::Pair(car, _) => Ok(car.replace(args[1])),
@@ -65,7 +65,7 @@ pub fn set_car_b(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     }
 }
 
-pub fn set_cdr_b(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn set_cdr_b(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(2), Some(2))?;
     match arena.get(args[0]) {
         Value::Pair(_, cdr) => Ok(cdr.replace(args[1])),
@@ -99,7 +99,7 @@ fn next_twice(arena: &Arena, pair: usize) -> ListType {
     }
 }
 
-pub fn length(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn length(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(1), Some(1))?;
 
     let mut slow = args[0];

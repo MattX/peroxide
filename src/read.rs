@@ -18,7 +18,7 @@ use std::iter::Peekable;
 use num_complex::Complex;
 use num_traits::cast::ToPrimitive;
 
-use arena::Arena;
+use arena::{Arena, ValRef};
 use lex;
 use lex::{NumValue, Token};
 use util::simplify_numeric;
@@ -30,7 +30,7 @@ pub enum ParseResult {
     ParseError(String),
 }
 
-pub fn read_tokens(arena: &mut Arena, tokens: &[Token]) -> Result<usize, ParseResult> {
+pub fn read_tokens(arena: &mut Arena, tokens: &[Token]) -> Result<ValRef, ParseResult> {
     if tokens.is_empty() {
         return Err(ParseResult::Nothing);
     }
@@ -44,12 +44,12 @@ pub fn read_tokens(arena: &mut Arena, tokens: &[Token]) -> Result<usize, ParseRe
     }
 }
 
-pub fn read(arena: &mut Arena, input: &str) -> Result<usize, String> {
+pub fn read(arena: &mut Arena, input: &str) -> Result<ValRef, String> {
     let tokens = lex::lex(input)?;
     read_tokens(arena, &tokens).map_err(|e| format!("{:?}", e))
 }
 
-pub fn read_many(arena: &mut Arena, code: &str) -> Result<Vec<usize>, String> {
+pub fn read_many(arena: &mut Arena, code: &str) -> Result<Vec<ValRef>, String> {
     let tokens = lex::lex(code)?;
     let segments = lex::segment(tokens)?;
     if !segments.remainder.is_empty() {
@@ -205,7 +205,7 @@ fn read_vec<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<Val
 where
     I: Iterator<Item = &'b Token>,
 {
-    let mut result: Vec<usize> = Vec::new();
+    let mut result = Vec::new();
 
     if None == it.peek() {
         return Err(ParseResult::ParseError(

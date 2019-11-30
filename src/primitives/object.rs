@@ -14,27 +14,27 @@
 
 use std::fmt::Write;
 
-use arena::Arena;
+use arena::{Arena, ValRef};
 use util::check_len;
 use value;
 use value::{pretty_print, Value};
 
-pub fn eq_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn eq_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(2), Some(2))?;
     Ok(arena.insert(Value::Boolean(args[0] == args[1])))
 }
 
-pub fn eqv_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn eqv_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(2), Some(2))?;
     Ok(arena.insert(Value::Boolean(value::eqv(arena, args[0], args[1]))))
 }
 
-pub fn equal_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn equal_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(2), Some(2))?;
     Ok(arena.insert(Value::Boolean(value::equal(arena, args[0], args[1]))))
 }
 
-pub fn procedure_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn procedure_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     check_len(args, Some(1), Some(1))?;
     Ok(match arena.get(args[0]) {
         Value::Lambda { .. } => arena.t,
@@ -44,7 +44,7 @@ pub fn procedure_p(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     })
 }
 
-pub fn display_to_string(arena: &Arena, args: &[usize]) -> String {
+pub fn display_to_string(arena: &Arena, args: &[ValRef]) -> String {
     let mut result = String::new();
     for a in args.iter() {
         write!(&mut result, "{}", arena.get(*a).pretty_print(arena)).unwrap();
@@ -52,12 +52,12 @@ pub fn display_to_string(arena: &Arena, args: &[usize]) -> String {
     result
 }
 
-pub fn write(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn write(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     print!("{}", display_to_string(arena, args));
     Ok(arena.unspecific)
 }
 
-pub fn display(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn display(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     for arg in args {
         match arena.get(*arg) {
             Value::String(s) => print!("{}", &s.borrow()),
@@ -68,11 +68,11 @@ pub fn display(arena: &Arena, args: &[usize]) -> Result<usize, String> {
     Ok(arena.unspecific)
 }
 
-pub fn newline(arena: &Arena, _args: &[usize]) -> Result<usize, String> {
+pub fn newline(arena: &Arena, _args: &[ValRef]) -> Result<ValRef, String> {
     println!();
     Ok(arena.unspecific)
 }
 
-pub fn error(arena: &Arena, args: &[usize]) -> Result<usize, String> {
+pub fn error(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     Err(display_to_string(arena, args))
 }
