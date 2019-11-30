@@ -21,7 +21,7 @@ use peroxide::read::read_many;
 use peroxide::value::Value;
 use peroxide::VmState;
 
-fn execute(arena: &Arena, vm_state: &mut VmState, code: &str) -> Result<Value, String> {
+fn execute(arena: &mut Arena, vm_state: &mut VmState, code: &str) -> Result<Value, String> {
     let mut results: Vec<_> = read_many(arena, code)?
         .iter()
         .map(|read| parse_compile_run(arena, vm_state, *read).map(|v| arena.get(v).clone()))
@@ -29,7 +29,11 @@ fn execute(arena: &Arena, vm_state: &mut VmState, code: &str) -> Result<Value, S
     results.pop().ok_or("No expressions".into())
 }
 
-fn execute_to_vec(arena: &Arena, vm_state: &mut VmState, code: &str) -> Result<Vec<Value>, String> {
+fn execute_to_vec(
+    arena: &mut Arena,
+    vm_state: &mut VmState,
+    code: &str,
+) -> Result<Vec<Value>, String> {
     let val = execute(arena, vm_state, code)?;
     let vec = val.pair_to_vec(arena)?;
     Ok(vec.iter().map(|iv| arena.get(*iv).clone()).collect())
@@ -37,52 +41,52 @@ fn execute_to_vec(arena: &Arena, vm_state: &mut VmState, code: &str) -> Result<V
 
 #[test]
 fn it_adds_two() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         Value::Integer(4.into()),
-        execute(&arena, &mut vm_state, "(+ 2 2)").unwrap()
+        execute(&mut arena, &mut vm_state, "(+ 2 2)").unwrap()
     );
 }
 
 #[test]
 fn nested_add() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         Value::Integer(2.into()),
-        execute(&arena, &mut vm_state, "(+ (+ 1 1 1) (- 1 2))").unwrap()
+        execute(&mut arena, &mut vm_state, "(+ (+ 1 1 1) (- 1 2))").unwrap()
     );
 }
 
 #[test]
 fn immediate_lambda_args() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         Value::Integer(1.into()),
-        execute(&arena, &mut vm_state, "((lambda (x) x) 1)").unwrap()
+        execute(&mut arena, &mut vm_state, "((lambda (x) x) 1)").unwrap()
     );
 }
 
 #[test]
 fn immediate_lambda_noargs() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         Value::Integer(1.into()),
-        execute(&arena, &mut vm_state, "((lambda () 1))").unwrap()
+        execute(&mut arena, &mut vm_state, "((lambda () 1))").unwrap()
     );
 }
 
 #[test]
 fn shadow() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         Value::Symbol("inner".into()),
         execute(
-            &arena,
+            &mut arena,
             &mut vm_state,
             "((lambda (x) ((lambda (x) x) 'inner)) 'outer)"
         )
@@ -92,7 +96,7 @@ fn shadow() {
 
 #[test]
 fn several_args() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         vec![
@@ -101,7 +105,7 @@ fn several_args() {
             Value::Integer(3.into())
         ],
         execute_to_vec(
-            &arena,
+            &mut arena,
             &mut vm_state,
             "(define (list . vals) vals)\
              ((lambda (x y z) (list x y z)) 1 2 3)"
@@ -112,7 +116,7 @@ fn several_args() {
 
 #[test]
 fn dotted() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         vec![
@@ -121,7 +125,7 @@ fn dotted() {
             Value::Integer(3.into())
         ],
         execute_to_vec(
-            &arena,
+            &mut arena,
             &mut vm_state,
             "(define (list . vals) vals)\
              ((lambda (x y z) (list x y z)) 1 2 3)"
@@ -132,42 +136,42 @@ fn dotted() {
 
 #[test]
 fn global_reference() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         Value::Boolean(true),
-        execute(&arena, &mut vm_state, "(define x #t) x").unwrap()
+        execute(&mut arena, &mut vm_state, "(define x #t) x").unwrap()
     );
 }
 
 #[test]
 fn replace_global_reference() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         Value::Boolean(false),
-        execute(&arena, &mut vm_state, "(define x #t) (define x #f) x").unwrap()
+        execute(&mut arena, &mut vm_state, "(define x #t) (define x #f) x").unwrap()
     );
 }
 
 #[test]
 fn set_global_reference() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         Value::Boolean(false),
-        execute(&arena, &mut vm_state, "(define x #t) (set! x #f) x").unwrap()
+        execute(&mut arena, &mut vm_state, "(define x #t) (set! x #f) x").unwrap()
     );
 }
 
 #[test]
 fn forward_global_reference() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         Value::Integer(5.into()),
         execute(
-            &arena,
+            &mut arena,
             &mut vm_state,
             "(define (print-x) x)\
              (define x 5)\
@@ -179,12 +183,12 @@ fn forward_global_reference() {
 
 #[test]
 fn mut_rec() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         Value::Boolean(true),
         execute(
-            &arena,
+            &mut arena,
             &mut vm_state,
             "(define (odd? x) (if (= x 0) #f (even? (- x 1))))\
              (define (even? x) (if (= x 0) #t (odd? (- x 1))))\
@@ -196,12 +200,12 @@ fn mut_rec() {
 
 #[test]
 fn set_local() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         Value::Integer(2.into()),
         execute(
-            &arena,
+            &mut arena,
             &mut vm_state,
             "(define x 2)\
              ((lambda (x)\
@@ -215,12 +219,12 @@ fn set_local() {
 
 #[test]
 fn set_local2() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         Value::Integer(3.into()),
         execute(
-            &arena,
+            &mut arena,
             &mut vm_state,
             "(define x 2)\
              ((lambda (x)\
@@ -233,12 +237,12 @@ fn set_local2() {
 
 #[test]
 fn close_env() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         vec![Value::Integer(26.into()), Value::Integer((-5).into())],
         execute_to_vec(
-            &arena,
+            &mut arena,
             &mut vm_state,
             "(define (list . args) args)\
              (define (make-counter init-value)\
@@ -259,22 +263,22 @@ fn close_env() {
 
 #[test]
 fn rename_keyword() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         Value::Boolean(false),
-        execute(&arena, &mut vm_state, "(define (set!) #f) (set!)").unwrap()
+        execute(&mut arena, &mut vm_state, "(define (set!) #f) (set!)").unwrap()
     );
 }
 
 #[test]
 fn internal_define() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         Value::Integer(5.into()),
         execute(
-            &arena,
+            &mut arena,
             &mut vm_state,
             "((lambda ()\
              (define x 5)\
@@ -286,22 +290,22 @@ fn internal_define() {
 
 #[test]
 fn apply() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         Value::Integer(5.into()),
-        execute(&arena, &mut vm_state, "(apply + (apply - '(2 3)) '(6))").unwrap()
+        execute(&mut arena, &mut vm_state, "(apply + (apply - '(2 3)) '(6))").unwrap()
     );
 }
 
 #[test]
 fn syntactic_closure() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         Value::Symbol("outer".into()),
         execute(
-            &arena,
+            &mut arena,
             &mut vm_state,
             "(define x 'outer)\
              (define-syntax tst\
@@ -317,12 +321,12 @@ fn syntactic_closure() {
 
 #[test]
 fn let_syntax() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
     assert_eq!(
         Value::Symbol("outer".into()),
         execute(
-            &arena,
+            &mut arena,
             &mut vm_state,
             "(define x 'outer)\
              (let-syntax ((tst\
@@ -338,13 +342,13 @@ fn let_syntax() {
 
 #[test]
 fn cond1() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
-    initialize(&arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
+    initialize(&mut arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
     assert_eq!(
         Value::Symbol("greater".into()),
         execute(
-            &arena,
+            &mut arena,
             &mut vm_state,
             "(cond ((> 3 2) 'greater)
              ((< 3 2) 'less))"
@@ -355,13 +359,13 @@ fn cond1() {
 
 #[test]
 fn cond2() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
-    initialize(&arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
+    initialize(&mut arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
     assert_eq!(
         Value::Symbol("equal".into()),
         execute(
-            &arena,
+            &mut arena,
             &mut vm_state,
             "(cond ((> 3 3) 'greater)
       ((< 3 3) 'less)
@@ -373,13 +377,13 @@ fn cond2() {
 
 #[test]
 fn cond3() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
-    initialize(&arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
+    initialize(&mut arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
     assert_eq!(
         Value::Integer(2.into()),
         execute(
-            &arena,
+            &mut arena,
             &mut vm_state,
             "(cond ((assv 'b '((a 1) (b 2))) => cadr)\
              (else #f))"
@@ -390,13 +394,13 @@ fn cond3() {
 
 #[test]
 fn cond4() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
-    initialize(&arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
+    initialize(&mut arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
     assert_eq!(
         Value::Symbol("not-one".into()),
         execute(
-            &arena,
+            &mut arena,
             &mut vm_state,
             "((lambda (x) (cond ((= x 1) 'one) (else 'not-one))) 2)"
         )
@@ -406,9 +410,9 @@ fn cond4() {
 
 #[test]
 fn and() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
-    initialize(&arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
+    initialize(&mut arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
     assert_eq!(
         vec![
             Value::Boolean(true),
@@ -417,7 +421,7 @@ fn and() {
             Value::Boolean(true)
         ],
         execute_to_vec(
-            &arena,
+            &mut arena,
             &mut vm_state,
             "(list\
              (and (= 2 2) (> 2 1))\
@@ -431,9 +435,9 @@ fn and() {
 
 #[test]
 fn or() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
-    initialize(&arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
+    initialize(&mut arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
     assert_eq!(
         vec![
             Value::Boolean(true),
@@ -442,7 +446,7 @@ fn or() {
             Value::Boolean(false)
         ],
         execute_to_vec(
-            &arena,
+            &mut arena,
             &mut vm_state,
             "(list\
              (or (= 2 2) (< 2 1))\
@@ -456,13 +460,13 @@ fn or() {
 
 #[test]
 fn call_cc() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
-    initialize(&arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
+    initialize(&mut arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
     assert_eq!(
         Value::Integer((-4).into()),
         execute(
-            &arena,
+            &mut arena,
             &mut vm_state,
             "(%call/cc (lambda (exit)\
              (for-each (lambda (x) (if (< x 0) (exit x))) '(1 2 3 -4 5 6))))"
@@ -473,13 +477,13 @@ fn call_cc() {
 
 #[test]
 fn do_macro() {
-    let arena = Arena::default();
+    let mut arena = Arena::default();
     let mut vm_state = VmState::new(&arena);
-    initialize(&arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
+    initialize(&mut arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
     assert_eq!(
         Value::Integer(5.into()),
         execute(
-            &arena,
+            &mut arena,
             &mut vm_state,
             "(do ((i 0 (+ i 1)))
        ((= i 5) i)

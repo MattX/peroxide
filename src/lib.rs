@@ -80,7 +80,7 @@ impl VmState {
     }
 }
 
-pub fn initialize(arena: &Arena, state: &mut VmState, fname: &str) -> Result<(), String> {
+pub fn initialize(arena: &mut Arena, state: &mut VmState, fname: &str) -> Result<(), String> {
     let contents = fs::read_to_string(fname).map_err(|e| e.to_string())?;
     let values = read_many(arena, &contents)?;
     println!("Values: {:?}", values);
@@ -92,7 +92,11 @@ pub fn initialize(arena: &Arena, state: &mut VmState, fname: &str) -> Result<(),
 }
 
 /// High-level interface to parse, compile, and run a value that's been read.
-pub fn parse_compile_run(arena: &Arena, state: &mut VmState, read: usize) -> Result<usize, String> {
+pub fn parse_compile_run(
+    arena: &mut Arena,
+    state: &mut VmState,
+    read: usize,
+) -> Result<usize, String> {
     let cloned_env = state.global_environment.clone();
     let global_af_info = Rc::new(RefCell::new(ActivationFrameInfo {
         parent: None,
