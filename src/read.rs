@@ -30,7 +30,7 @@ pub enum ParseResult {
     ParseError(String),
 }
 
-pub fn read_tokens(arena: &Arena, tokens: &[Token]) -> Result<usize, ParseResult> {
+pub fn read_tokens(arena: &mut Arena, tokens: &[Token]) -> Result<usize, ParseResult> {
     if tokens.is_empty() {
         return Err(ParseResult::Nothing);
     }
@@ -44,12 +44,12 @@ pub fn read_tokens(arena: &Arena, tokens: &[Token]) -> Result<usize, ParseResult
     }
 }
 
-pub fn read(arena: &Arena, input: &str) -> Result<usize, String> {
+pub fn read(arena: &mut Arena, input: &str) -> Result<usize, String> {
     let tokens = lex::lex(input)?;
     read_tokens(arena, &tokens).map_err(|e| format!("{:?}", e))
 }
 
-pub fn read_many(arena: &Arena, code: &str) -> Result<Vec<usize>, String> {
+pub fn read_many(arena: &mut Arena, code: &str) -> Result<Vec<usize>, String> {
     let tokens = lex::lex(code)?;
     let segments = lex::segment(tokens)?;
     if !segments.remainder.is_empty() {
@@ -66,7 +66,7 @@ pub fn read_many(arena: &Arena, code: &str) -> Result<Vec<usize>, String> {
         .map_err(|e| format!("{:?}", e))
 }
 
-fn do_read<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
+fn do_read<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
 where
     I: Iterator<Item = &'b Token>,
 {
@@ -125,7 +125,7 @@ fn read_num_token(t: &NumValue) -> Value {
     simplify_numeric(equalized)
 }
 
-fn read_list<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
+fn read_list<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
 where
     I: Iterator<Item = &'b Token>,
 {
@@ -204,7 +204,7 @@ where
     Ok(Value::ByteVector(RefCell::new(result)))
 }
 
-fn read_vec<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
+fn read_vec<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
 where
     I: Iterator<Item = &'b Token>,
 {
@@ -234,7 +234,7 @@ where
 }
 
 fn read_quote<'a, 'b, I>(
-    arena: &Arena,
+    arena: &mut Arena,
     it: &'a mut Peekable<I>,
     prefix: &'static str,
 ) -> Result<Value, ParseResult>

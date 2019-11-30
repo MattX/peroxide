@@ -242,7 +242,7 @@ impl PartialEq for Primitive {
 }
 
 pub fn register_primitives(
-    arena: &Arena,
+    arena: &mut Arena,
     global_environment: &RcEnv,
     afi: &RcAfi,
     global_frame: usize,

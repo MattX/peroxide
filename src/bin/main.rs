@@ -53,7 +53,7 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
     };
 
     let mut arena = Arena::default();
-    let mut vm_state = VmState::new(&arena);
+    let mut vm_state = VmState::new(&mut arena);
     initialize(&mut arena, &mut vm_state, "src/scheme-lib/init.scm")?;
     loop {
         if !handle_one_expr_wrap(&mut *repl, &mut arena, &mut vm_state, silent) {

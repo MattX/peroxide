@@ -53,7 +53,7 @@ pub struct VmState {
 }
 
 impl VmState {
-    pub fn new(arena: &Arena) -> Self {
+    pub fn new(arena: &mut Arena) -> Self {
         let global_environment = Rc::new(RefCell::new(Environment::new(None)));
         let global_frame = arena.insert(Value::ActivationFrame(RefCell::new(ActivationFrame {
             parent: None,
@@ -70,7 +70,7 @@ impl VmState {
                 .define("%error-handler", &afi, true),
             ERROR_HANDLER_INDEX
         );
-        primitives::register_primitives(&arena, &global_environment, &afi, global_frame);
+        primitives::register_primitives(arena, &global_environment, &afi, global_frame);
 
         VmState {
             global_environment: global_environment.clone(),
