@@ -102,7 +102,7 @@ macro_rules! simple_primitive {
     };
 }
 
-static PRIMITIVES: [Primitive; 94] = [
+static PRIMITIVES: [Primitive; 96] = [
     simple_primitive!("make-syntactic-closure", make_syntactic_closure),
     simple_primitive!("identifier=?", identifier_equal_p),
     simple_primitive!("identifier?", identifier_p),
@@ -131,6 +131,8 @@ static PRIMITIVES: [Primitive; 94] = [
     simple_primitive!("/", div),
     simple_primitive!("modulo", modulo),
     simple_primitive!("remainder", remainder),
+    simple_primitive!("gcd", gcd),
+    simple_primitive!("lcm", lcm),
     simple_primitive!("real?", real_p),
     simple_primitive!("inexact", inexact),
     simple_primitive!("nan?", nan_p),

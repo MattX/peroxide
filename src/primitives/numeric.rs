@@ -343,6 +343,36 @@ pub fn remainder(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     Ok(arena.insert(result))
 }
 
+pub fn gcd(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+    let mut acc = BigInt::zero();
+    for arg in args {
+        if let Value::Integer(i) = arena.get(*arg) {
+            acc = acc.gcd(i);
+        } else {
+            return Err(format!(
+                "non-integer argument: {}",
+                pretty_print(arena, *arg)
+            ));
+        }
+    }
+    Ok(arena.insert(Value::Integer(acc)))
+}
+
+pub fn lcm(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+    let mut acc = BigInt::one();
+    for arg in args {
+        if let Value::Integer(i) = arena.get(*arg) {
+            acc = acc.lcm(i);
+        } else {
+            return Err(format!(
+                "non-integer argument: {}",
+                pretty_print(arena, *arg)
+            ));
+        }
+    }
+    Ok(arena.insert(Value::Integer(acc)))
+}
+
 /// Takes an argument list (vector of arena pointers), returns a vector of numeric values or
 /// an error.
 ///
