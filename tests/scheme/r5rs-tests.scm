@@ -252,6 +252,10 @@
 
 (test 100 (string->number "100"))
 
+(test 255 (string->number "FF" 16))
+
+(test 255 (string->number "ff" 16))
+
 (test 256 (string->number "100" 16))
 
 (test 127 (string->number "177" 8))

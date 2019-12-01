@@ -367,7 +367,9 @@ fn parse_simple_number(s: &[char], base: u8, exactness: Exactness) -> Result<Num
             ));
         }
         Ok(NumValue::Real(x))
-    } else if s.iter().any(|x| *x == '.' || EXPT_MARKERS.contains(x)) {
+    } else if s.iter().any(|x| *x == '.')
+        || (base == 10 && s[1..].iter().any(|x| EXPT_MARKERS.contains(x)))
+    {
         if base != 10 {
             return Err(format!(
                 "Real is specified in base {}, but only base 10 is supported.",
@@ -582,6 +584,7 @@ mod tests {
         assert_eq!(lex("0").unwrap(), vec![int_tok(0)]);
         assert_eq!(lex("-123").unwrap(), vec![int_tok(-123)]);
         assert_eq!(lex("+123").unwrap(), vec![int_tok(123)]);
+        assert_eq!(lex("#xfe").unwrap(), vec![int_tok(254)]);
         assert!(lex("12x3").is_err());
         assert!(lex("123x").is_err());
     }

@@ -26,7 +26,7 @@ use value::{list_from_vec, pretty_print, vec_from_list, Value};
 
 static MAX_RECURSION_DEPTH: usize = 1000;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Instruction {
     Constant(ValRef),
     JumpFalse(usize),
