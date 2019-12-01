@@ -84,7 +84,7 @@ impl VmState {
 pub fn initialize(arena: &mut Arena, state: &mut VmState, fname: &str) -> Result<(), String> {
     let contents = fs::read_to_string(fname).map_err(|e| e.to_string())?;
     let values = read_many(arena, &contents)?;
-    println!("Values: {:?}", values);
+    //println!("Values: {:?}", values);
     for v in values.iter() {
         // println!("> {}", pretty_print(arena, *v));
         parse_compile_run(arena, state, *v)?;

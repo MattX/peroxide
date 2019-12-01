@@ -21,6 +21,8 @@ use num_traits::Pow;
 
 use util;
 
+const EXPT_MARKERS: [char; 10] = ['e', 'E', 's', 'S', 'f', 'F', 'd', 'D', 'l', 'L'];
+
 /// Represents a token from the input.
 ///
 /// For atoms, i.e. basic types, this is essentially the same as a Value: it holds a tag and the
@@ -356,7 +358,7 @@ fn parse_simple_number(s: &[char], base: u8, exactness: Exactness) -> Result<Num
             ));
         }
         Ok(NumValue::Real(x))
-    } else if s.iter().any(|x| *x == '.' || *x == 'e') {
+    } else if s.iter().any(|x| *x == '.' || EXPT_MARKERS.contains(x)) {
         if base != 10 {
             return Err(format!(
                 "Real is specified in base {}, but only base 10 is supported.",
@@ -391,18 +393,23 @@ fn parse_integer(s: &[char], base: u8) -> Option<BigInt> {
 }
 
 fn parse_float(s: &[char]) -> Option<BigRational> {
-    let (mantissa_s, exponent_s) = if let Some(pos) = s.iter().position(|x| *x == 'e') {
-        (&s[..pos], Some(&s[pos + 1..]))
+    let exponent_position = s.iter().position(|x| EXPT_MARKERS.contains(x));
+    let (mantissa_s, mut exponent) = if let Some(pos) = exponent_position {
+        (
+            &s[..pos],
+            (&s[pos + 1..])
+                .iter()
+                .collect::<String>()
+                .parse::<i64>()
+                .ok()?,
+        )
     } else {
-        (s, None)
+        (s, 0)
     };
-    let mut exponent: i64 = exponent_s
-        .and_then(|x| x.iter().collect::<String>().parse().ok())
-        .unwrap_or(1);
     let (int_str, float_expt) = if let Some(pos) = mantissa_s.iter().position(|x| *x == '.') {
         (
             [&mantissa_s[..pos], &mantissa_s[pos + 1..]].concat(),
-            mantissa_s.len() - pos,
+            mantissa_s.len() - pos - 1,
         )
     } else {
         (mantissa_s.to_vec(), 0)
@@ -561,8 +568,8 @@ mod tests {
         assert_eq!(lex("0").unwrap(), vec![int_tok(0)]);
         assert_eq!(lex("-123").unwrap(), vec![int_tok(-123)]);
         assert_eq!(lex("+123").unwrap(), vec![int_tok(123)]);
-        assert!(lex("12d3").is_err());
-        assert!(lex("123d").is_err());
+        assert!(lex("12x3").is_err());
+        assert!(lex("123x").is_err());
     }
 
     #[test]
@@ -571,6 +578,9 @@ mod tests {
         assert_eq!(lex(".4567").unwrap(), vec![real_tok(0.4567)]);
         assert_eq!(lex("0.").unwrap(), vec![real_tok(0.0)]);
         assert_eq!(lex("-0.").unwrap(), vec![real_tok(-0.0)]);
+        assert_eq!(lex("0.06").unwrap(), vec![real_tok(0.06)]);
+        assert_eq!(lex("0.06d0").unwrap(), vec![real_tok(0.06)]);
+        assert_eq!(lex("0.06d2").unwrap(), vec![real_tok(6.0)]);
         assert_eq!(
             lex("-inf.0").unwrap(),
             vec![real_tok(std::f64::NEG_INFINITY)]
@@ -578,6 +588,7 @@ mod tests {
         assert_eq!(lex("+inf.0").unwrap(), vec![real_tok(std::f64::INFINITY)]);
         assert!(lex("-0a.").is_err());
         assert!(lex("-0.123d").is_err());
+        assert!(lex("0.06e").is_err());
     }
 
     #[test]
