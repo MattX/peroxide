@@ -415,7 +415,12 @@ fn parse_float(s: &[char]) -> Option<BigRational> {
         (mantissa_s.to_vec(), 0)
     };
     exponent -= float_expt as i64;
-    let numerator: BigInt = int_str.iter().collect::<String>().parse().ok()?;
+    let numerator: BigInt = int_str
+        .iter()
+        .map(|c| if *c == '#' { '0' } else { *c })
+        .collect::<String>()
+        .parse()
+        .ok()?;
     if exponent > 0 {
         Some(BigRational::new(
             numerator * BigInt::from(10).pow(exponent as u64),
@@ -581,6 +586,8 @@ mod tests {
         assert_eq!(lex("0.06").unwrap(), vec![real_tok(0.06)]);
         assert_eq!(lex("0.06d0").unwrap(), vec![real_tok(0.06)]);
         assert_eq!(lex("0.06d2").unwrap(), vec![real_tok(6.0)]);
+        assert_eq!(lex("0.06d-2").unwrap(), vec![real_tok(0.0006)]);
+        assert_eq!(lex("123#.##").unwrap(), vec![real_tok(1230.0)]);
         assert_eq!(
             lex("-inf.0").unwrap(),
             vec![real_tok(std::f64::NEG_INFINITY)]
