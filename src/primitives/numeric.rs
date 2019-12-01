@@ -21,8 +21,10 @@ use num_rational::BigRational;
 use num_traits::{One, Pow, Signed, ToPrimitive, Zero};
 
 use arena::{Arena, ValRef};
+use std::cell::RefCell;
 use util::{check_len, rational_to_f64, simplify_numeric};
 use value::{pretty_print, Value};
+use {lex, read};
 
 macro_rules! simple_operator {
     ($inner_name:ident, $operator:tt) => {
@@ -401,6 +403,85 @@ transcendental!(tan, tan);
 transcendental!(acos, acos);
 transcendental!(asin, asin);
 transcendental!(atan, atan);
+
+fn get_radix(arena: &Arena, v: Option<&ValRef>) -> Result<u8, String> {
+    let r = match v {
+        Some(r) => arena
+            .try_get_integer(*r)
+            .map(|x| x.to_u8().unwrap())
+            .ok_or_else(|| format!("invalid radix: {}", pretty_print(arena, *r)))?,
+        None => 10u8,
+    };
+    if ![2u8, 8, 10, 16].contains(&r) {
+        return Err(format!("radix must be 2, 8, 10 or 16, not {}", r));
+    }
+    Ok(r)
+}
+
+pub fn string_to_number(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+    check_len(args, Some(1), Some(2))?;
+    let radix = get_radix(arena, args.get(1))?;
+    let st = arena
+        .try_get_string(args[0])
+        .ok_or_else(|| format!("invalid argument: {}", pretty_print(arena, args[0])))?;
+    let chars = st.borrow().chars().collect::<Vec<_>>();
+    let parsed = lex::parse_full_number(&chars, radix)
+        .map(|parsed| read::read_num_token(&parsed))
+        .map(|read| arena.insert(read))
+        .unwrap_or(arena.f);
+    Ok(parsed)
+}
+
+pub fn number_to_string(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+    check_len(args, Some(1), Some(2))?;
+    let radix = get_radix(arena, args.get(1))? as u32;
+
+    fn format_int(n: &BigInt, r: u32) -> String {
+        n.to_str_radix(r)
+    }
+
+    fn format_real(n: f64, r: u32) -> Result<String, String> {
+        if r != 10 {
+            Err("inexact numbers can only be formatted in radix 10.".to_string())
+        } else {
+            Ok(format!("{}", n))
+        }
+    }
+
+    fn format_rational(n: &BigRational, r: u32) -> String {
+        format!(
+            "{}/{}",
+            n.numer().to_str_radix(r),
+            n.denom().to_str_radix(r)
+        )
+    }
+
+    let resp = match arena.get(args[0]) {
+        Value::Integer(a) => format_int(a, radix),
+        Value::Real(a) => format_real(*a, radix)?,
+        Value::Rational(a) => format_rational(a, radix),
+        Value::ComplexReal(a) => format!(
+            "{}+{}i",
+            format_real(a.re, radix)?,
+            format_real(a.im, radix)?
+        ),
+        Value::ComplexInteger(a) => {
+            format!("{}+{}i", format_int(&a.re, radix), format_int(&a.im, radix))
+        }
+        Value::ComplexRational(a) => format!(
+            "{}+{}i",
+            format_rational(&a.re, radix),
+            format_rational(&a.im, radix)
+        ),
+        _ => {
+            return Err(format!(
+                "converting non-number: {}",
+                pretty_print(arena, args[0])
+            ))
+        }
+    };
+    Ok(arena.insert(Value::String(RefCell::new(resp))))
+}
 
 /// Takes an argument list (vector of arena pointers), returns a vector of numeric values or
 /// an error.

@@ -95,7 +95,7 @@ where
 }
 
 // TODO we can avoid clones by consuming the NumValue here
-fn read_num_token(t: &NumValue) -> Value {
+pub fn read_num_token(t: &NumValue) -> Value {
     let equalized = match t {
         NumValue::Real(r) => Value::Real(*r),
         NumValue::Integer(i) => Value::Integer(i.clone()),

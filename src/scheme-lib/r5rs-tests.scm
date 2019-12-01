@@ -43,7 +43,7 @@
           (else
            (display " [FAIL]\n")
            (display "    expected " expect)
-           (display " but got " res))))))))
+           (display " but got " res "\n"))))))))
 
 (define-syntax test-assert
   (syntax-rules ()
@@ -264,7 +264,7 @@
 
 (test "100" (number->string 256 16))
 
-(test "FF" (number->string 255 16))
+(test "ff" (number->string 255 16))
 
 (test "177" (number->string 127 8))
 

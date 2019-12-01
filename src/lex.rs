@@ -264,12 +264,21 @@ where
             'i' | 'e' | 'b' | 'o' | 'd' | 'x' => {
                 let mut num = take_delimited_token(it, 1);
                 num.insert(0, c);
-                parse_prefixed_number(&num).map(Token::Num)
+                parse_prefixed_number(&num, None).map(Token::Num)
             }
             _ => Err(format!("Unknown token form: `#{}...`.", c)),
         }
     } else {
         Err("Unexpected end of #-token.".to_string())
+    }
+}
+
+/// Parses a number that may or may not have prefixes.
+pub fn parse_full_number(s: &[char], base: u8) -> Result<NumValue, String> {
+    if s[0] == '#' {
+        parse_prefixed_number(&s[1..], Some(base))
+    } else {
+        parse_number(s, base, Exactness::Default)
     }
 }
 
@@ -279,8 +288,8 @@ where
 /// specify exactness. This method assumes the first hash has been consumed.
 ///
 // TODO the code in here is terrible, doesn't check that there's at most one prefix of each kind.
-fn parse_prefixed_number(s: &[char]) -> Result<NumValue, String> {
-    let mut base = 10;
+fn parse_prefixed_number(s: &[char], base: Option<u8>) -> Result<NumValue, String> {
+    let mut base = base.unwrap_or(10);
     let mut exactness = Exactness::Default;
     let (prefixes, num_start_index) = if let Some('#') = s.get(1) {
         if s.len() < 4 {
