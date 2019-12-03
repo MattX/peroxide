@@ -19,15 +19,24 @@ use std::ops::Deref;
 use num_bigint::BigInt;
 
 use environment::{ActivationFrame, RcEnv};
-use gc::Gc;
+use heap;
+use heap::RootPtr;
 use primitives::{Port, SyntacticClosure};
 use value::Value;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct ValRef(pub usize);
+pub struct ValRef(pub heap::PoolPtr);
+
+impl Deref for ValRef {
+    type Target = Value;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
 
 pub struct Arena {
-    values: Gc<Value>,
+    values: heap::RHeap,
     symbol_map: RefCell<HashMap<String, ValRef>>,
     gensym_counter: Cell<usize>,
     pub undefined: ValRef,
@@ -54,19 +63,23 @@ impl Arena {
                     Some(u) => u,
                     None => {
                         let label = s.clone();
-                        let pos = ValRef(self.values.insert(Value::Symbol(s)));
+                        let pos = ValRef(self.values.allocate(Value::Symbol(s)));
                         self.symbol_map.borrow_mut().insert(label, pos);
                         pos
                     }
                 }
             }
-            _ => ValRef(self.values.insert(v)),
+            _ => ValRef(self.values.allocate(v)),
         }
     }
 
+    pub fn root(&self, at: ValRef) -> RootPtr {
+        self.values.root(at.0)
+    }
+
     /// Given a position in the arena, returns a reference to the value at that location.
-    pub fn get(&self, at: ValRef) -> &Value {
-        self.values.get(at.0)
+    pub fn get<'a>(&'a self, at: ValRef) -> &'a Value {
+        unsafe { std::mem::transmute::<&Value, &'a Value>(&*(at.0)) }
     }
 
     pub fn get_activation_frame(&self, at: ValRef) -> &RefCell<ActivationFrame> {
@@ -154,13 +167,13 @@ impl Arena {
 
 impl Default for Arena {
     fn default() -> Self {
-        let values = Gc::default();
-        let undefined = ValRef(values.insert(Value::Undefined));
-        let unspecific = ValRef(values.insert(Value::Unspecific));
-        let eof = ValRef(values.insert(Value::EofObject));
-        let empty_list = ValRef(values.insert(Value::EmptyList));
-        let f = ValRef(values.insert(Value::Boolean(false)));
-        let t = ValRef(values.insert(Value::Boolean(true)));
+        let values = heap::RHeap::default();
+        let undefined = ValRef(values.allocate(Value::Undefined));
+        let unspecific = ValRef(values.allocate(Value::Unspecific));
+        let eof = ValRef(values.allocate(Value::EofObject));
+        let empty_list = ValRef(values.allocate(Value::EmptyList));
+        let f = ValRef(values.allocate(Value::Boolean(false)));
+        let t = ValRef(values.allocate(Value::Boolean(true)));
         Arena {
             values,
             symbol_map: RefCell::new(HashMap::new()),
@@ -181,18 +194,18 @@ mod tests {
 
     use super::*;
 
-    const BASE_ENTRY: ValRef = ValRef(6);
-
     #[test]
-    fn add_empty() {
+    fn get_symbol() {
+        let r = Value::Symbol("abc".into());
         let arena = Arena::default();
-        assert_eq!(BASE_ENTRY, arena.insert(Value::Symbol("abc".into())));
+        let vr = arena.insert(r.clone());
+        assert_eq!(arena.get(vr), &r);
     }
 
     #[test]
-    fn get() {
+    fn get_number() {
         let arena = Arena::default();
-        assert_eq!(BASE_ENTRY, arena.insert(Value::Real(0.1)));
-        assert_eq!(Value::Real(0.1), *arena.get(BASE_ENTRY));
+        let vr = arena.insert(Value::Real(0.1));
+        assert_eq!(arena.get(vr), &Value::Real(0.1));
     }
 }

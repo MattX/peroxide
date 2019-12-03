@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+extern crate bitvec;
 extern crate core;
 extern crate num_bigint;
 extern crate num_complex;
@@ -35,7 +36,7 @@ pub mod arena;
 pub mod ast;
 pub mod compile;
 pub mod environment;
-pub mod gc;
+pub mod heap;
 pub mod lex;
 pub mod primitives;
 pub mod read;

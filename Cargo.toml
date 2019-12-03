@@ -6,6 +6,7 @@ license = "Apache-2.0"
 publish = false
 
 [dependencies]
+bitvec = "0.16"
 num-bigint = "0.2"
 num-complex = "0.2"
 num-integer = "0.1"

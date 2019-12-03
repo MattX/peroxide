@@ -19,7 +19,7 @@ use std::io::{Error, ErrorKind, Read};
 use num_traits::ToPrimitive;
 
 use arena::{Arena, ValRef};
-use gc;
+use heap;
 use util::check_len;
 use value::{pretty_print, Value};
 
@@ -209,8 +209,8 @@ impl PartialEq for Port {
     }
 }
 
-impl gc::Inventory for Port {
-    fn inventory(&self, _v: &mut gc::PushOnlyVec<usize>) {}
+impl heap::Inventory for Port {
+    fn inventory(&self, _v: &mut heap::PushOnlyVec<heap::PoolPtr>) {}
 }
 
 fn is_port(arena: &Arena, arg: ValRef) -> bool {

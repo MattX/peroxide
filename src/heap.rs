@@ -1,0 +1,465 @@
+// Copyright 2018-2019 Matthieu Felix
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use std::cell::UnsafeCell;
+use std::convert::{From, TryFrom};
+use std::fmt::{Error, Formatter};
+use std::mem::MaybeUninit;
+use std::ops::Deref;
+use std::pin::Pin;
+use std::rc::{Rc, Weak};
+
+use value::Value;
+
+use bitvec::prelude::{BitBox, BitVec};
+
+const POOL_ENTRIES: u16 = 1 << 8;
+
+#[derive(Debug, Clone, Copy)]
+struct FreePoolEntry {
+    prev: Option<u16>,
+    next: Option<u16>,
+}
+
+#[derive(Debug)]
+struct UsedPoolEntry(Value);
+
+#[derive(Debug)]
+enum PoolEntry {
+    Free(FreePoolEntry),
+    Used(UsedPoolEntry),
+}
+
+impl PoolEntry {
+    fn is_free(&self) -> bool {
+        match self {
+            PoolEntry::Free(_) => true,
+            PoolEntry::Used(_) => false,
+        }
+    }
+}
+
+impl Default for PoolEntry {
+    fn default() -> Self {
+        PoolEntry::Free(FreePoolEntry {
+            prev: None,
+            next: None,
+        })
+    }
+}
+
+struct Pool {
+    data: [PoolEntry; POOL_ENTRIES as usize],
+    free_block: Option<u16>,
+    allocated: u16,
+    marked: BitBox,
+}
+
+impl std::fmt::Debug for Pool {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        let mut data_string = "[".to_string();
+        data_string.push_str(
+            &self.data[..]
+                .iter()
+                .map(|pe| format!("{:?}", pe))
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
+        data_string.push(']');
+        f.debug_struct("Pool")
+            .field("data", &data_string)
+            .field("free", &self.free_block)
+            .field("allocated", &self.allocated)
+            .finish()
+    }
+}
+
+impl Pool {
+    fn new() -> Pin<Box<Self>> {
+        let data = {
+            let mut data: [MaybeUninit<PoolEntry>; POOL_ENTRIES as usize] =
+                unsafe { MaybeUninit::uninit().assume_init() };
+
+            for (i_block, item) in data.iter_mut().enumerate() {
+                let i_block = u16::try_from(i_block).expect("wat");
+                *item = MaybeUninit::new(PoolEntry::Free(FreePoolEntry {
+                    prev: if i_block == 0 {
+                        None
+                    } else {
+                        Some(i_block - 1)
+                    },
+                    next: if i_block == POOL_ENTRIES - 1 {
+                        None
+                    } else {
+                        Some(i_block + 1)
+                    },
+                }));
+            }
+
+            unsafe { std::mem::transmute::<_, [PoolEntry; POOL_ENTRIES as usize]>(data) }
+        };
+        let pool = Pool {
+            data,
+            free_block: Some(0),
+            allocated: 0,
+            marked: BitVec::from(&[false; POOL_ENTRIES as usize][..]).into_boxed_bitslice(),
+        };
+        Box::pin(pool)
+    }
+}
+
+impl Pool {
+    fn allocate(self: Pin<&mut Self>, value: Value) -> Option<PoolPtr> {
+        let selr = unsafe { self.get_unchecked_mut() };
+        selr.free_block.map(|old_free_index| {
+            let next = if let PoolEntry::Free(ref e) = selr.data[usize::from(old_free_index)] {
+                e.next
+            } else {
+                panic!("free not pointing to free entry")
+            };
+            selr.data[usize::from(old_free_index)] = PoolEntry::Used(UsedPoolEntry(value));
+            if let Some(next) = next {
+                if let PoolEntry::Free(ref mut e) = selr.data[usize::from(next)] {
+                    e.prev = None
+                } else {
+                    panic!("free->next not pointing to free entry")
+                }
+            }
+            selr.free_block = next;
+            selr.allocated += 1;
+            PoolPtr {
+                pool: selr as *mut Pool,
+                idx: old_free_index,
+            }
+        })
+    }
+
+    fn free(self: Pin<&mut Self>, idx: u16) {
+        let selr = unsafe { self.get_unchecked_mut() };
+        selr.free_ref(idx);
+    }
+
+    fn free_ref(&mut self, idx: u16) {
+        debug_assert!(
+            !self.data[usize::from(idx)].is_free(),
+            "Freeing free entry!"
+        );
+        self.data[usize::from(idx)] = PoolEntry::Free(FreePoolEntry {
+            prev: None,
+            next: self.free_block,
+        });
+        if let Some(free_index) = self.free_block {
+            if let PoolEntry::Free(ref mut f) = self.data[usize::from(free_index)] {
+                debug_assert_eq!(f.prev, None);
+                f.prev = Some(idx);
+            } else {
+                panic!("free not pointing at free entry");
+            }
+        }
+        self.free_block = Some(idx);
+        self.allocated -= 1;
+    }
+
+    /// Returns the number of freed entries
+    fn sweep(self: Pin<&mut Self>) -> u16 {
+        let mut selr = unsafe { self.get_unchecked_mut() };
+        let init = selr.allocated;
+        for (i_mark, mark) in selr.marked.clone().iter().enumerate() {
+            if !mark && !selr.data[i_mark].is_free() {
+                selr.free_ref(u16::try_from(i_mark).unwrap())
+            }
+        }
+        selr.marked = BitVec::from(&[false; POOL_ENTRIES as usize][..]).into_boxed_bitslice();
+        init - selr.allocated
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct PoolPtr {
+    pool: *mut Pool,
+    idx: u16,
+}
+
+impl Copy for PoolPtr {}
+impl Clone for PoolPtr {
+    fn clone(&self) -> Self {
+        Self {
+            pool: self.pool,
+            idx: self.idx,
+        }
+    }
+}
+
+impl Deref for PoolPtr {
+    type Target = Value;
+
+    fn deref(&self) -> &Self::Target {
+        let pool = unsafe { &*self.pool };
+        match &pool.data[usize::from(self.idx)] {
+            PoolEntry::Used(u) => &u.0,
+            PoolEntry::Free(_) => panic!("dereferencing freed value"),
+        }
+    }
+}
+
+impl PoolPtr {
+    fn maybe_deref(&self) -> &PoolEntry {
+        let pool = unsafe { &*self.pool };
+        &pool.data[usize::from(self.idx)]
+    }
+}
+
+pub struct PushOnlyVec<T>(Vec<T>);
+
+impl<T> PushOnlyVec<T> {
+    pub fn push(&mut self, v: T) {
+        self.0.push(v);
+    }
+
+    fn get_vec(&mut self) -> &mut Vec<T> {
+        &mut self.0
+    }
+}
+
+pub trait Inventory {
+    fn inventory(&self, v: &mut PushOnlyVec<PoolPtr>);
+}
+
+#[derive(Debug)]
+struct Heap {
+    pools: Vec<Pin<Box<Pool>>>,
+    full_pools: Vec<Pin<Box<Pool>>>,
+    roots: Vec<Option<PoolPtr>>,
+    allocated_values: usize,
+}
+
+impl Default for Heap {
+    fn default() -> Self {
+        Heap {
+            pools: Vec::new(),
+            full_pools: Vec::new(),
+            roots: Vec::new(),
+            allocated_values: 0,
+        }
+    }
+}
+
+impl Heap {
+    fn allocate(&mut self, v: Value) -> PoolPtr {
+        if self.pools.is_empty() {
+            // TODO: GC, then try again.
+            self.pools.push(Pool::new())
+        }
+        let last_pool = self.pools.last_mut().expect("no free pools");
+        let ptr = last_pool
+            .as_mut()
+            .allocate(v)
+            .expect("full pull in non-full list");
+        let last_pool = &*last_pool;
+        if last_pool.allocated == POOL_ENTRIES {
+            let pool = self.pools.pop().unwrap();
+            self.full_pools.push(pool);
+        }
+        self.allocated_values += 1;
+        ptr
+    }
+
+    fn root(&mut self, p: PoolPtr) -> usize {
+        let empty = self
+            .roots
+            .iter_mut()
+            .enumerate()
+            .find(|(_i, e)| e.is_some());
+        match empty {
+            Some((i_r, r)) => {
+                *r = Some(p);
+                i_r
+            }
+            None => {
+                self.roots.push(Some(p));
+                self.roots.len() - 1
+            }
+        }
+    }
+
+    fn gc(&mut self) {
+        let stack: Vec<_> = self.roots.iter().filter_map(|s| *s).collect();
+        let mut stack = PushOnlyVec(stack);
+
+        while let Some(root) = stack.get_vec().pop() {
+            let pool = unsafe { &mut *root.pool };
+            pool.marked.set(usize::from(root.idx), true);
+            (*root).inventory(&mut stack);
+        }
+        for pool in self.pools.iter_mut() {
+            self.allocated_values -= usize::from(pool.as_mut().sweep());
+        }
+        for pool in self.full_pools.iter_mut() {
+            self.allocated_values -= usize::from(pool.as_mut().sweep());
+        }
+        for i_pool in (0..self.full_pools.len()).rev() {
+            if self.full_pools[i_pool].allocated != POOL_ENTRIES {
+                let pool = self.full_pools.swap_remove(i_pool);
+                self.pools.push(pool);
+            }
+        }
+        self.pools.sort_by_key(|p| p.allocated)
+    }
+}
+
+pub struct RHeap(Rc<UnsafeCell<Heap>>);
+
+impl Default for RHeap {
+    fn default() -> Self {
+        RHeap(Rc::new(UnsafeCell::new(Heap::default())))
+    }
+}
+
+impl RHeap {
+    pub fn allocate(&self, v: Value) -> PoolPtr {
+        unsafe { &mut *self.0.get() }.allocate(v)
+    }
+
+    pub fn root(&self, v: PoolPtr) -> RootPtr {
+        let s = unsafe { &mut *self.0.get() };
+        let idx = s.root(v);
+        let heap = Rc::downgrade(&self.0);
+        RootPtr { ptr: v, heap, idx }
+    }
+
+    fn gc(&self) {
+        unsafe { &mut *self.0.get() }.gc()
+    }
+}
+
+#[derive(Debug)]
+pub struct RootPtr {
+    ptr: PoolPtr,
+    heap: Weak<UnsafeCell<Heap>>,
+    idx: usize,
+}
+
+impl Clone for RootPtr {
+    fn clone(&self) -> Self {
+        let rheap = RHeap(self.heap.upgrade().expect("heap destroyed"));
+        rheap.root(self.ptr)
+    }
+}
+
+impl Deref for RootPtr {
+    type Target = Value;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.ptr
+    }
+}
+
+impl Drop for RootPtr {
+    fn drop(&mut self) {
+        unsafe { &mut *self.heap.upgrade().expect("heap destroyed").get() }.roots[self.idx] = None
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::heap::{Pool, RHeap, POOL_ENTRIES};
+    use crate::value::Value;
+    use std::cell::RefCell;
+
+    #[test]
+    fn test_alloc_free() {
+        let reference = Value::String(RefCell::new("abcdef".to_string()));
+        let mut pool = Pool::new();
+        let ptr = pool
+            .as_mut()
+            .allocate(reference.clone())
+            .expect("should have room");
+        assert_eq!(pool.allocated, 1);
+        assert_eq!(*ptr, reference);
+        pool.as_mut().free(ptr.idx);
+        assert_eq!(pool.allocated, 0);
+    }
+
+    #[test]
+    fn test_alloc_dealloc_alloc() {
+        let mut pool = Pool::new();
+        pool.as_mut()
+            .allocate(Value::Integer(0.into()))
+            .expect("should have room");
+        let ptr1 = pool
+            .as_mut()
+            .allocate(Value::Integer(1.into()))
+            .expect("should have room");
+        pool.as_mut()
+            .allocate(Value::Integer(2.into()))
+            .expect("should have room");
+        assert_eq!(pool.allocated, 3);
+        assert_eq!(*ptr1, Value::Integer(1.into()));
+        pool.as_mut().free(ptr1.idx);
+        assert_eq!(pool.allocated, 2);
+        let ptr1b = pool
+            .as_mut()
+            .allocate(Value::Integer(3.into()))
+            .expect("should have room");
+        assert_eq!(ptr1b.idx, 1);
+    }
+
+    #[test]
+    fn test_exhaust() {
+        let val = Value::Integer(0.into());
+        let mut pool = Pool::new();
+        for _ in 0..POOL_ENTRIES {
+            pool.as_mut()
+                .allocate(val.clone())
+                .expect("should have room");
+        }
+        assert_eq!(pool.as_mut().allocate(val.clone()), None);
+        pool.as_mut().free(POOL_ENTRIES / 2);
+        assert!(pool.as_mut().allocate(val.clone()).is_some());
+    }
+
+    #[test]
+    fn test_alloc_heap() {
+        let val = Value::Integer(0.into());
+        let heap = RHeap::default();
+        let val_ptr = heap.allocate(val.clone());
+        assert_eq!(*val_ptr, val);
+    }
+
+    #[test]
+    fn test_reclaim_unrooted() {
+        let val = Value::Integer(0.into());
+        let heap = RHeap::default();
+        let val_ptr = heap.allocate(val.clone());
+        assert_eq!(*val_ptr, val);
+        heap.gc();
+        assert!(val_ptr.maybe_deref().is_free());
+    }
+
+    #[test]
+    fn test_dont_reclaim_rooted() {
+        let val = Value::Integer(0.into());
+        let heap = RHeap::default();
+        let val_ptr = heap.allocate(val.clone());
+        let rooted_ptr = heap.root(val_ptr);
+        assert_eq!(*rooted_ptr, val);
+        assert_eq!(*val_ptr, val);
+        heap.gc();
+        assert_eq!(*rooted_ptr, val);
+        assert_eq!(*val_ptr, val);
+        std::mem::drop(rooted_ptr);
+        heap.gc();
+        assert!(val_ptr.maybe_deref().is_free());
+    }
+}

@@ -20,7 +20,7 @@ use std::fmt::Write;
 use arena::Arena;
 use arena::ValRef;
 use environment::{ActivationFrame, RcEnv};
-use gc;
+use heap;
 use primitives::PrimitiveImplementation;
 use value::{list_from_vec, pretty_print, vec_from_list, Value};
 
@@ -136,8 +136,8 @@ impl Code {
 
 #[derive(Debug)]
 struct Vm<'a> {
-    value: ValRef,
     /// The value register
+    value: ValRef,
     code: &'a mut Code,
     pc: usize,
     return_stack: Vec<usize>,
@@ -531,8 +531,8 @@ pub struct Continuation {
     return_stack: Vec<usize>,
 }
 
-impl gc::Inventory for Continuation {
-    fn inventory(&self, v: &mut gc::PushOnlyVec<usize>) {
+impl heap::Inventory for Continuation {
+    fn inventory(&self, v: &mut heap::PushOnlyVec<heap::PoolPtr>) {
         for obj in self.stack.iter() {
             v.push(obj.0);
         }

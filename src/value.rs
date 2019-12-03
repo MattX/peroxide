@@ -23,7 +23,7 @@ use arena::{Arena, ValRef};
 use environment::{ActivationFrame, RcEnv};
 use primitives::{Port, Primitive, SyntacticClosure};
 use vm::Continuation;
-use {gc, util};
+use {heap, util};
 
 // TODO box some of these, values are currently 56 bytes long oh no
 // TODO remove PartialEq and Clone. Clone should only be used in the numeric primitives library.
@@ -101,8 +101,8 @@ impl fmt::Display for Value {
     }
 }
 
-impl gc::Inventory for Value {
-    fn inventory(&self, v: &mut gc::PushOnlyVec<usize>) {
+impl heap::Inventory for Value {
+    fn inventory(&self, v: &mut heap::PushOnlyVec<heap::PoolPtr>) {
         match self {
             Value::Pair(car, cdr) => {
                 v.push(car.get().0);
@@ -307,30 +307,6 @@ mod tests {
         assert_eq!(
             "\"abc\"",
             &format!("{}", Value::String(RefCell::new("abc".to_string())))
-        );
-    }
-
-    #[test]
-    fn format_list() {
-        assert_eq!("()", &format!("{}", Value::EmptyList));
-        assert_eq!(
-            "(=>ValRef(1) . =>ValRef(2))",
-            &format!(
-                "{}",
-                Value::Pair(Cell::new(ValRef(1)), Cell::new(ValRef(2)))
-            )
-        );
-    }
-
-    #[test]
-    fn format_vec() {
-        assert_eq!("#()", &format!("{}", Value::Vector(RefCell::new(vec![]))));
-        assert_eq!(
-            "#(=>ValRef(1) =>ValRef(2))",
-            &format!(
-                "{}",
-                Value::Vector(RefCell::new(vec![ValRef(1), ValRef(2)]))
-            )
         );
     }
 }
