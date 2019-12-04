@@ -24,6 +24,7 @@ use value::Value;
 
 use arena::ValRef;
 use bitvec::prelude::{BitBox, BitVec};
+use vm::Vm;
 
 const POOL_ENTRIES: u16 = 1 << 8;
 const FIRST_GC: usize = 64 * 1024;
@@ -277,6 +278,7 @@ struct Heap {
     allocated_values: usize,
     next_gc: usize,
     gc_mode: GcMode,
+    vm: Option<*const Vm>,
 }
 
 impl Default for Heap {
@@ -288,6 +290,7 @@ impl Default for Heap {
             allocated_values: 0,
             next_gc: FIRST_GC,
             gc_mode: GcMode::Off,
+            vm: None,
         }
     }
 }
@@ -341,9 +344,27 @@ impl Heap {
         }
     }
 
+    fn root_vm(&mut self, vm: &Vm) {
+        if self.vm.replace(vm as *const Vm).is_some() {
+            panic!("rooting VM while a VM is already rooted");
+        }
+    }
+
+    fn unroot_vm(&mut self) {
+        if self.vm.take().is_none() {
+            panic!("unrooting nonexistent VM");
+        }
+    }
+
     fn gc(&mut self) {
         let stack: Vec<_> = self.roots.iter().filter_map(|s| *s).collect();
         let mut stack = PushOnlyVec(stack);
+
+        if let Some(v) = self.vm {
+            unsafe {
+                (*v).inventory(&mut stack);
+            }
+        }
 
         while let Some(root) = stack.get_vec().pop() {
             let pool = unsafe { &mut *root.pool };
@@ -383,6 +404,7 @@ impl RHeap {
             allocated_values: 0,
             next_gc: FIRST_GC,
             gc_mode,
+            vm: None,
         })))
     }
 
@@ -395,6 +417,14 @@ impl RHeap {
         let idx = s.root(v);
         let heap = Rc::downgrade(&self.0);
         RootPtr { ptr: v, heap, idx }
+    }
+
+    pub fn root_vm(&self, vm: &Vm) {
+        unsafe { &mut *self.0.get() }.root_vm(vm);
+    }
+
+    pub fn unroot_vm(&self) {
+        unsafe { &mut *self.0.get() }.unroot_vm();
     }
 
     pub fn allocate_rooted(&self, v: Value) -> RootPtr {

@@ -21,7 +21,7 @@ use arena::Arena;
 use arena::ValRef;
 use environment::{ActivationFrame, RcEnv};
 use heap;
-use heap::RootPtr;
+use heap::{Inventory, PoolPtr, PushOnlyVec, RootPtr};
 use primitives::PrimitiveImplementation;
 use value::{list_from_vec, pretty_print, vec_from_list, Value};
 
@@ -142,17 +142,28 @@ impl Code {
     }
 }
 
-#[derive(Debug)]
-struct Vm<'a> {
+#[derive(Debug, Clone, PartialEq)]
+pub struct Vm {
     /// The value register
     value: ValRef,
-    code: &'a mut Code,
     pc: usize,
     return_stack: Vec<usize>,
     stack: Vec<ValRef>,
     global_env: ValRef,
     env: ValRef,
     fun: ValRef,
+}
+
+impl Inventory for Vm {
+    fn inventory(&self, v: &mut PushOnlyVec<PoolPtr>) {
+        v.push(self.value.0);
+        v.push(self.global_env.0);
+        v.push(self.env.0);
+        v.push(self.fun.0);
+        for s in self.stack.iter() {
+            v.push(s.0);
+        }
+    }
 }
 
 enum Error {
@@ -193,7 +204,6 @@ pub fn run(
 ) -> Result<ValRef, ValRef> {
     let mut vm = Vm {
         value: arena.unspecific,
-        code,
         pc,
         return_stack: Vec::new(),
         stack: Vec::new(),
@@ -201,21 +211,20 @@ pub fn run(
         env,
         fun: arena.unspecific,
     };
+    arena.root_vm(&vm);
     loop {
-        match run_one(arena, &mut vm) {
-            Ok(brk) => {
-                if brk {
-                    break;
-                }
-            }
-            Err(e) => handle_error(arena, &mut vm, e)?,
+        match run_one(arena, &mut vm, code) {
+            Ok(true) => break,
+            Ok(_) => (),
+            Err(e) => handle_error(arena, &mut vm, code, e)?,
         }
     }
+    arena.unroot_vm();
     Ok(vm.value)
 }
 
-fn handle_error(arena: &Arena, vm: &mut Vm, e: Error) -> Result<(), ValRef> {
-    let annotated_e = error_stack(arena, &vm, e);
+fn handle_error(arena: &Arena, vm: &mut Vm, code: &Code, e: Error) -> Result<(), ValRef> {
+    let annotated_e = error_stack(arena, &vm, code, e);
     match annotated_e {
         Error::Abort(v) => Err(v),
         Error::Raise(v) => {
@@ -239,9 +248,9 @@ fn handle_error(arena: &Arena, vm: &mut Vm, e: Error) -> Result<(), ValRef> {
     }
 }
 
-fn run_one(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
-    match vm.code.instructions[vm.pc] {
-        Instruction::Constant(v) => vm.value = vm.code.constants[v].vr(),
+fn run_one(arena: &Arena, vm: &mut Vm, code: &mut Code) -> Result<bool, Error> {
+    match code.instructions[vm.pc] {
+        Instruction::Constant(v) => vm.value = code.constants[v].vr(),
         Instruction::JumpFalse(offset) => {
             if !arena.get(vm.value).truthy() {
                 vm.pc += offset;
@@ -269,7 +278,7 @@ fn run_one(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                     arena,
                     format!(
                         "Variable used before definition: {}",
-                        resolve_variable(vm.code, vm.pc, 0, index)
+                        resolve_variable(code, vm.pc, 0, index)
                     ),
                 ));
             }
@@ -294,7 +303,7 @@ fn run_one(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                     arena,
                     format!(
                         "Variable used before definition: {}",
-                        resolve_variable(vm.code, vm.pc, current_depth - depth, index)
+                        resolve_variable(code, vm.pc, current_depth - depth, index)
                     ),
                 ));
             }
@@ -518,12 +527,11 @@ fn raise(arena: &Arena, vm: &Vm, abort: bool) -> Error {
     }
 }
 
-fn error_stack(arena: &Arena, vm: &Vm, error: Error) -> Error {
+fn error_stack(arena: &Arena, vm: &Vm, code: &Code, error: Error) -> Error {
     let mut message = String::new();
     let positions = std::iter::once(&vm.pc).chain(vm.return_stack.iter().rev());
     for ret in positions {
-        let name = vm
-            .code
+        let name = code
             .find_lambda(*ret)
             .clone()
             .unwrap_or_else(|| "<toplevel>".into());

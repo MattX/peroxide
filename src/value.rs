@@ -22,7 +22,7 @@ use num_rational::BigRational;
 use arena::{Arena, ValRef};
 use environment::{ActivationFrame, RcEnv};
 use primitives::{Port, Primitive, SyntacticClosure};
-use vm::Continuation;
+use vm::{Continuation, Vm};
 use {heap, util};
 
 // TODO box some of these, values are currently 56 bytes long oh no
@@ -129,9 +129,8 @@ impl heap::Inventory for Value {
                 v.push(sc.expr.0);
                 v.push(sc.closed_env.borrow().0);
             }
-            Value::Port(p) => {
-                p.inventory(v);
-            }
+            Value::Port(p) => p.inventory(v),
+            Value::Continuation(c) => c.inventory(v),
             _ => (),
         }
     }
@@ -152,6 +151,7 @@ impl Value {
                 free_variables,
                 arena.get(*expr).pretty_print(arena)
             ),
+            Value::Continuation(_) => format!("#<continuation>"),
             _ => format!("{}", self),
         }
     }

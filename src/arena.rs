@@ -23,6 +23,7 @@ use heap;
 use heap::RootPtr;
 use primitives::{Port, SyntacticClosure};
 use value::Value;
+use vm::Vm;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ValRef(pub heap::PoolPtr);
@@ -79,6 +80,14 @@ impl Arena {
 
     pub fn root(&self, at: ValRef) -> RootPtr {
         self.values.root(at.0)
+    }
+
+    pub fn root_vm(&self, vm: &Vm) {
+        self.values.root_vm(vm);
+    }
+
+    pub fn unroot_vm(&self) {
+        self.values.unroot_vm();
     }
 
     pub fn insert_rooted(&self, v: Value) -> RootPtr {
