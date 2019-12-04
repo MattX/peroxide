@@ -22,6 +22,7 @@ use std::rc::{Rc, Weak};
 
 use value::Value;
 
+use arena::ValRef;
 use bitvec::prelude::{BitBox, BitVec};
 
 const POOL_ENTRIES: u16 = 1 << 8;
@@ -143,7 +144,7 @@ impl Pool {
     fn allocate(self: Pin<&mut Self>, value: Value) -> Option<PoolPtr> {
         let selr = unsafe { self.get_unchecked_mut() };
         selr.free_block.map(|old_free_index| {
-            println!("allocating {:?} at {}", &value, old_free_index);
+            // println!("allocating {:?} at {}", &value, old_free_index);
             let next = if let PoolEntry::Free(ref e) = selr.data[usize::from(old_free_index)] {
                 e.next
             } else {
@@ -181,7 +182,7 @@ impl Pool {
             !self.data[usize::from(idx)].is_free(),
             "freeing free entry!"
         );
-        println!("freeing {:?} at {}", self.data[usize::from(idx)], idx);
+        // println!("freeing {:?} at {}", self.data[usize::from(idx)], idx);
         self.data[usize::from(idx)] = PoolEntry::Free(FreePoolEntry {
             prev: None,
             next: if debug { None } else { self.free_block },
@@ -432,7 +433,14 @@ impl Drop for RootPtr {
     fn drop(&mut self) {
         // TODO - another option is do just ignore dead heaps as there's no need to unroot.
         //        however, a destroyed heap can mean that we have other dangling pointers.
-        unsafe { &mut *self.heap.upgrade().expect("heap destroyed").get() }.roots[self.idx] = None
+        unsafe { &mut *self.heap.upgrade().expect("heap destroyed").get() }.roots[self.idx] = None;
+        println!("unrooted idx {}", self.idx);
+    }
+}
+
+impl RootPtr {
+    pub fn vr(&self) -> ValRef {
+        ValRef(self.ptr)
     }
 }
 

@@ -18,7 +18,8 @@ use std::iter::Peekable;
 use num_complex::Complex;
 use num_traits::cast::ToPrimitive;
 
-use arena::{Arena, ValRef};
+use arena::Arena;
+use heap::RootPtr;
 use lex;
 use lex::{NumValue, Token};
 use util::simplify_numeric;
@@ -30,7 +31,7 @@ pub enum ParseResult {
     ParseError(String),
 }
 
-pub fn read_tokens(arena: &mut Arena, tokens: &[Token]) -> Result<ValRef, ParseResult> {
+pub fn read_tokens(arena: &mut Arena, tokens: &[Token]) -> Result<RootPtr, ParseResult> {
     if tokens.is_empty() {
         return Err(ParseResult::Nothing);
     }
@@ -40,16 +41,16 @@ pub fn read_tokens(arena: &mut Arena, tokens: &[Token]) -> Result<ValRef, ParseR
     if let Some(s) = it.peek() {
         Err(ParseResult::ParseError(format!("Unexpected token {:?}", s)))
     } else {
-        Ok(arena.insert(res))
+        Ok(res)
     }
 }
 
-pub fn read(arena: &mut Arena, input: &str) -> Result<ValRef, String> {
+pub fn read(arena: &mut Arena, input: &str) -> Result<RootPtr, String> {
     let tokens = lex::lex(input)?;
     read_tokens(arena, &tokens).map_err(|e| format!("{:?}", e))
 }
 
-pub fn read_many(arena: &mut Arena, code: &str) -> Result<Vec<ValRef>, String> {
+pub fn read_many(arena: &mut Arena, code: &str) -> Result<Vec<RootPtr>, String> {
     let tokens = lex::lex(code)?;
     let segments = lex::segment(tokens)?;
     if !segments.remainder.is_empty() {
@@ -66,19 +67,19 @@ pub fn read_many(arena: &mut Arena, code: &str) -> Result<Vec<ValRef>, String> {
         .map_err(|e| format!("{:?}", e))
 }
 
-fn do_read<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
+fn do_read<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<RootPtr, ParseResult>
 where
     I: Iterator<Item = &'b Token>,
 {
     if let Some(t) = it.next() {
         match t {
-            Token::Num(x) => Ok(read_num_token(x)),
-            Token::Boolean(b) => Ok(Value::Boolean(*b)),
-            Token::Character(c) => Ok(Value::Character(*c)),
-            Token::String(s) => Ok(Value::String(RefCell::new(s.to_string()))),
-            Token::Symbol(s) => Ok(Value::Symbol(s.to_string())),
+            Token::Num(x) => Ok(arena.insert_rooted(read_num_token(x))),
+            Token::Boolean(b) => Ok(arena.insert_rooted(Value::Boolean(*b))),
+            Token::Character(c) => Ok(arena.insert_rooted(Value::Character(*c))),
+            Token::String(s) => Ok(arena.insert_rooted(Value::String(RefCell::new(s.to_string())))),
+            Token::Symbol(s) => Ok(arena.insert_rooted(Value::Symbol(s.to_string()))),
             Token::OpenParen => read_list(arena, it),
-            Token::OpenByteVector => read_bytevec(it),
+            Token::OpenByteVector => read_bytevec(arena, it),
             Token::OpenVector => read_vec(arena, it),
             Token::Quote => read_quote(arena, it, "quote"),
             Token::QuasiQuote => read_quote(arena, it, "quasiquote"),
@@ -125,7 +126,7 @@ pub fn read_num_token(t: &NumValue) -> Value {
     simplify_numeric(equalized)
 }
 
-fn read_list<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
+fn read_list<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<RootPtr, ParseResult>
 where
     I: Iterator<Item = &'b Token>,
 {
@@ -133,7 +134,7 @@ where
         match t {
             Token::ClosingParen => {
                 it.next();
-                Ok(Value::EmptyList)
+                Ok(arena.insert_rooted(Value::EmptyList))
             }
             _ => {
                 let first = do_read(arena, it)?;
@@ -152,9 +153,7 @@ where
                 } else {
                     read_list(arena, it)
                 }?;
-                let first_ptr = arena.insert(first);
-                let second_ptr = arena.insert(second);
-                Ok(Value::Pair(Cell::new(first_ptr), Cell::new(second_ptr)))
+                Ok(arena.insert_rooted(Value::Pair(Cell::new(first.vr()), Cell::new(second.vr()))))
             }
         }
     } else {
@@ -164,7 +163,7 @@ where
     }
 }
 
-fn read_bytevec<'a, 'b, I>(it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
+fn read_bytevec<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<RootPtr, ParseResult>
 where
     I: Iterator<Item = &'b Token>,
 {
@@ -198,13 +197,14 @@ where
         }
     }
 
-    Ok(Value::ByteVector(RefCell::new(result)))
+    Ok(arena.insert_rooted(Value::ByteVector(RefCell::new(result))))
 }
 
-fn read_vec<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<Value, ParseResult>
+fn read_vec<'a, 'b, I>(arena: &mut Arena, it: &'a mut Peekable<I>) -> Result<RootPtr, ParseResult>
 where
     I: Iterator<Item = &'b Token>,
 {
+    let mut roots = Vec::new();
     let mut result = Vec::new();
 
     if None == it.peek() {
@@ -221,33 +221,31 @@ where
             }
             _ => {
                 let elem = do_read(arena, it)?;
-                let elem_ptr = arena.insert(elem);
-                result.push(elem_ptr);
+                result.push(elem.vr());
+                roots.push(elem);
             }
         }
     }
 
-    Ok(Value::Vector(RefCell::new(result)))
+    Ok(arena.insert_rooted(Value::Vector(RefCell::new(result))))
 }
 
 fn read_quote<'a, 'b, I>(
     arena: &mut Arena,
     it: &'a mut Peekable<I>,
     prefix: &'static str,
-) -> Result<Value, ParseResult>
+) -> Result<RootPtr, ParseResult>
 where
     I: Iterator<Item = &'b Token>,
 {
     let quoted = do_read(arena, it)?;
-    let quoted_ptr = arena.insert(quoted);
-    let empty_list_ptr = arena.insert(Value::EmptyList);
     let quoted_list_ptr = arena.insert(Value::Pair(
-        Cell::new(quoted_ptr),
-        Cell::new(empty_list_ptr),
+        Cell::new(quoted.vr()),
+        Cell::new(arena.empty_list),
     ));
     let quote_sym_ptr = arena.insert(Value::Symbol(prefix.to_string()));
-    Ok(Value::Pair(
+    Ok(arena.insert_rooted(Value::Pair(
         Cell::new(quote_sym_ptr),
         Cell::new(quoted_list_ptr),
-    ))
+    )))
 }

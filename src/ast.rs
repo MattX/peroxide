@@ -774,7 +774,8 @@ fn expand_macro(
             })),
         ],
     }));
-    compile_run(arena, vms, &syntax_tree)
+    // TODO remove VR
+    compile_run(arena, vms, &syntax_tree).map(|r| r.vr())
 }
 
 fn get_macro(arena: &Arena, env: &RcEnv, expr: ValRef) -> Option<Macro> {

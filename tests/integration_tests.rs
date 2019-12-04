@@ -23,8 +23,8 @@ use peroxide::VmState;
 
 fn execute(arena: &mut Arena, vm_state: &mut VmState, code: &str) -> Result<Value, String> {
     let mut results: Vec<_> = read_many(arena, code)?
-        .iter()
-        .map(|read| parse_compile_run(arena, vm_state, *read).map(|v| arena.get(v).clone()))
+        .into_iter()
+        .map(|read| parse_compile_run(arena, vm_state, read).map(|v| arena.get(v.vr()).clone()))
         .collect::<Result<Vec<_>, _>>()?;
     results.pop().ok_or("No expressions".into())
 }

@@ -39,8 +39,7 @@ pub struct Arena {
     /// Roots held by the arena. This must come before [`values`], or the `Drop` on `RootPtr`
     /// will panic.
     roots: Vec<RootPtr>,
-    values: heap::RHeap,
-    symbol_map: RefCell<HashMap<String, ValRef>>,
+    symbol_map: RefCell<HashMap<String, RootPtr>>,
     gensym_counter: Cell<usize>,
     pub undefined: ValRef,
     pub unspecific: ValRef,
@@ -48,6 +47,7 @@ pub struct Arena {
     pub empty_list: ValRef,
     pub t: ValRef,
     pub f: ValRef,
+    values: heap::RHeap,
 }
 
 impl Arena {
@@ -63,12 +63,13 @@ impl Arena {
             Value::Symbol(s) => {
                 let res = self.symbol_map.borrow().get(&s).cloned();
                 match res {
-                    Some(u) => u,
+                    Some(u) => u.vr(),
                     None => {
                         let label = s.clone();
-                        let pos = ValRef(self.values.allocate(Value::Symbol(s)));
+                        let pos = self.values.allocate_rooted(Value::Symbol(s));
+                        let ptr = pos.vr();
                         self.symbol_map.borrow_mut().insert(label, pos);
-                        pos
+                        ptr
                     }
                 }
             }

@@ -28,6 +28,7 @@ use std::rc::Rc;
 use arena::{Arena, ValRef};
 use ast::SyntaxElement;
 use environment::{ActivationFrame, ActivationFrameInfo, Environment, RcEnv};
+use heap::RootPtr;
 use read::read_many;
 use value::{pretty_print, Value};
 use vm::{Code, Instruction};
@@ -86,9 +87,9 @@ pub fn initialize(arena: &mut Arena, state: &mut VmState, fname: &str) -> Result
     let contents = fs::read_to_string(fname).map_err(|e| e.to_string())?;
     let values = read_many(arena, &contents)?;
     //println!("Values: {:?}", values);
-    for v in values.iter() {
+    for v in values.into_iter() {
         // println!("> {}", pretty_print(arena, *v));
-        parse_compile_run(arena, state, *v)?;
+        parse_compile_run(arena, state, v)?;
     }
     Ok(())
 }
@@ -97,8 +98,8 @@ pub fn initialize(arena: &mut Arena, state: &mut VmState, fname: &str) -> Result
 pub fn parse_compile_run(
     arena: &mut Arena,
     state: &mut VmState,
-    read: ValRef,
-) -> Result<ValRef, String> {
+    read: RootPtr,
+) -> Result<RootPtr, String> {
     let cloned_env = state.global_environment.clone();
     let global_af_info = Rc::new(RefCell::new(ActivationFrameInfo {
         parent: None,
@@ -109,7 +110,8 @@ pub fn parse_compile_run(
             .values
             .len(),
     }));
-    let syntax_tree = ast::parse(arena, state, &cloned_env, &global_af_info, read)
+    // TODO - make ast take rooted pointer
+    let syntax_tree = ast::parse(arena, state, &cloned_env, &global_af_info, read.vr())
         .map_err(|e| format!("Syntax error: {}", e))?;
     arena
         .get_activation_frame(state.global_frame)
@@ -123,7 +125,7 @@ pub fn compile_run(
     arena: &mut Arena,
     state: &mut VmState,
     syntax_tree: &SyntaxElement,
-) -> Result<ValRef, String> {
+) -> Result<RootPtr, String> {
     let start_pc = state.code.code_size();
     compile::compile(&syntax_tree, &mut state.code, false, true)
         .map_err(|e| format!("Compilation error: {}", e))?;
@@ -136,5 +138,6 @@ pub fn compile_run(
         state.global_frame,
         state.global_frame,
     )
+    .map(|v| arena.root(v))
     .map_err(|e| format!("Runtime error: {}", pretty_print(arena, e)))
 }
