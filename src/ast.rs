@@ -135,6 +135,11 @@ struct Formals {
 ///
 /// Annoyingly enough, we need a full `VmState` passed everywhere here, because macros
 /// need to be executed and can add new code.
+///
+/// **parse() requires `value` to be rooted**, but it won't tell you that because it's sneaky.
+/// `value` isn't a `RootPtr` just because it would be expensive to root and unroot values
+/// constantly during parsing. Since the top-level value representing the expression to parse is
+/// rooted, we can get away with not rooting stuff as we go down the expression.
 pub fn parse(
     arena: &mut Arena,
     vms: &mut VmState,

@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use arena::ValRef;
 use ast::SyntaxElement;
 use vm::{Code, Instruction};
 
+// TODO - I think this can take a SyntaxElement instead of a reference.
 pub fn compile(
     tree: &SyntaxElement,
     code: &mut Code,
@@ -28,7 +28,8 @@ pub fn compile(
     let initial_len = code.code_size();
     match tree {
         SyntaxElement::Quote(q) => {
-            code.push(Instruction::Constant(ValRef(q.quoted.ptr)));
+            let idx = code.push_constant(q.quoted.clone());
+            code.push(Instruction::Constant(idx));
         }
         SyntaxElement::If(i) => {
             compile(&i.cond, code, false, false)?;

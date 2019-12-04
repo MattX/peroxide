@@ -21,6 +21,7 @@ use arena::Arena;
 use arena::ValRef;
 use environment::{ActivationFrame, RcEnv};
 use heap;
+use heap::RootPtr;
 use primitives::PrimitiveImplementation;
 use value::{list_from_vec, pretty_print, vec_from_list, Value};
 
@@ -28,7 +29,7 @@ static MAX_RECURSION_DEPTH: usize = 1000;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Instruction {
-    Constant(ValRef),
+    Constant(usize),
     JumpFalse(usize),
     Jump(usize),
     GlobalArgumentSet { index: usize },
@@ -68,6 +69,7 @@ pub struct Code {
     env_stack: Vec<RcEnv>,
     lambda_map: Vec<(usize, Option<String>)>,
     lambda_stack: Vec<String>,
+    constants: Vec<RootPtr>,
 }
 
 impl Code {
@@ -78,6 +80,7 @@ impl Code {
             env_stack: vec![global_environment.clone()],
             lambda_map: vec![(0, None)],
             lambda_stack: vec![],
+            constants: vec![],
         }
     }
 
@@ -131,6 +134,11 @@ impl Code {
             .binary_search_by_key(&at, |(instr, _env)| *instr)
             .unwrap_or_else(|e| e - 1);
         &self.lambda_map[lambda_index].1
+    }
+
+    pub fn push_constant(&mut self, c: RootPtr) -> usize {
+        self.constants.push(c);
+        self.constants.len() - 1
     }
 }
 
@@ -233,7 +241,7 @@ fn handle_error(arena: &Arena, vm: &mut Vm, e: Error) -> Result<(), ValRef> {
 
 fn run_one(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
     match vm.code.instructions[vm.pc] {
-        Instruction::Constant(v) => vm.value = v,
+        Instruction::Constant(v) => vm.value = vm.code.constants[v].vr(),
         Instruction::JumpFalse(offset) => {
             if !arena.get(vm.value).truthy() {
                 vm.pc += offset;

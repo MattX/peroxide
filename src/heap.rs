@@ -326,15 +326,15 @@ impl Heap {
             .roots
             .iter_mut()
             .enumerate()
-            .find(|(_i, e)| e.is_some());
+            .find(|(_i, e)| e.is_none());
         match empty {
             Some((i_r, r)) => {
-                println!("rooted {:?} at {}", p, i_r);
+                // println!("rooted {:?} at {}", p, i_r);
                 *r = Some(p);
                 i_r
             }
             None => {
-                println!("rooted {:?} at {}", p, self.roots.len());
+                // println!("rooted {:?} at {}", p, self.roots.len());
                 self.roots.push(Some(p));
                 self.roots.len() - 1
             }
@@ -434,7 +434,7 @@ impl Drop for RootPtr {
         // TODO - another option is do just ignore dead heaps as there's no need to unroot.
         //        however, a destroyed heap can mean that we have other dangling pointers.
         unsafe { &mut *self.heap.upgrade().expect("heap destroyed").get() }.roots[self.idx] = None;
-        println!("unrooted idx {}", self.idx);
+        // println!("unrooted idx {}", self.idx);
     }
 }
 
