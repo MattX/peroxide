@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use arena::ValRef;
 use ast::SyntaxElement;
 use vm::{Code, Instruction};
 
@@ -27,7 +28,7 @@ pub fn compile(
     let initial_len = code.code_size();
     match tree {
         SyntaxElement::Quote(q) => {
-            code.push(Instruction::Constant(q.quoted));
+            code.push(Instruction::Constant(ValRef(q.quoted.ptr)));
         }
         SyntaxElement::If(i) => {
             compile(&i.cond, code, false, false)?;

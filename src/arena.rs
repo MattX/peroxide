@@ -80,6 +80,10 @@ impl Arena {
         self.values.root(at.0)
     }
 
+    pub fn insert_rooted(&self, v: Value) -> RootPtr {
+        self.root(self.insert(v))
+    }
+
     /// Given a position in the arena, returns a reference to the value at that location.
     pub fn get<'a>(&'a self, at: ValRef) -> &'a Value {
         unsafe { std::mem::transmute::<&Value, &'a Value>(&*(at.0)) }

@@ -328,10 +328,12 @@ impl Heap {
             .find(|(_i, e)| e.is_some());
         match empty {
             Some((i_r, r)) => {
+                println!("rooted {:?} at {}", p, i_r);
                 *r = Some(p);
                 i_r
             }
             None => {
+                println!("rooted {:?} at {}", p, self.roots.len());
                 self.roots.push(Some(p));
                 self.roots.len() - 1
             }

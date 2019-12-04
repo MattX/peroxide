@@ -35,6 +35,7 @@ use arena::{Arena, ValRef};
 use environment::{
     get_toplevel_afi, ActivationFrame, Environment, EnvironmentValue, Macro, RcAfi, RcEnv,
 };
+use heap::RootPtr;
 use primitives::SyntacticClosure;
 use util::check_len;
 use value::{list_from_vec, pretty_print, vec_from_list, Value};
@@ -65,7 +66,7 @@ pub struct Reference {
 
 #[derive(Debug)]
 pub struct Quote {
-    pub quoted: ValRef,
+    pub quoted: RootPtr,
 }
 
 #[derive(Debug)]
@@ -152,7 +153,9 @@ pub fn parse(
             let cdr = cdr.get();
             parse_pair(arena, vms, &env, af_info, car, cdr)
         }
-        _ => Ok(SyntaxElement::Quote(Box::new(Quote { quoted: value }))),
+        _ => Ok(SyntaxElement::Quote(Box::new(Quote {
+            quoted: arena.root(value),
+        }))),
     }
 }
 
@@ -227,9 +230,11 @@ fn parse_quote(
     if rest.len() != 1 {
         Err(format!("quote expected 1 argument, got {}.", rest.len()))
     } else if syntax {
-        Ok(SyntaxElement::Quote(Box::new(Quote { quoted: rest[0] })))
+        Ok(SyntaxElement::Quote(Box::new(Quote {
+            quoted: arena.root(rest[0]),
+        })))
     } else {
-        let quoted = strip_syntactic_closure(arena, env, rest[0]);
+        let quoted = arena.root(strip_syntactic_closure(arena, env, rest[0]));
         Ok(SyntaxElement::Quote(Box::new(Quote { quoted })))
     }
 }
@@ -614,7 +619,7 @@ fn parse_define_syntax(
 
     // TODO remove this somehow
     Ok(SyntaxElement::Quote(Box::new(Quote {
-        quoted: arena.unspecific,
+        quoted: arena.root(arena.unspecific),
     })))
 }
 
@@ -754,14 +759,18 @@ fn expand_macro(
     let definition_environment = Value::Environment(mac.definition_environment.clone());
     let usage_environment = Value::Environment(env.clone());
     let syntax_tree = SyntaxElement::Application(Box::new(Application {
-        function: SyntaxElement::Quote(Box::new(Quote { quoted: mac.lambda })),
+        function: SyntaxElement::Quote(Box::new(Quote {
+            quoted: arena.root(mac.lambda),
+        })),
         args: vec![
-            SyntaxElement::Quote(Box::new(Quote { quoted: expr })),
             SyntaxElement::Quote(Box::new(Quote {
-                quoted: arena.insert(usage_environment),
+                quoted: arena.root(expr),
             })),
             SyntaxElement::Quote(Box::new(Quote {
-                quoted: arena.insert(definition_environment),
+                quoted: arena.insert_rooted(usage_environment),
+            })),
+            SyntaxElement::Quote(Box::new(Quote {
+                quoted: arena.insert_rooted(definition_environment),
             })),
         ],
     }));
