@@ -36,6 +36,9 @@ impl Deref for ValRef {
 }
 
 pub struct Arena {
+    /// Roots held by the arena. This must come before [`values`], or the `Drop` on `RootPtr`
+    /// will panic.
+    roots: Vec<RootPtr>,
     values: heap::RHeap,
     symbol_map: RefCell<HashMap<String, ValRef>>,
     gensym_counter: Cell<usize>,
@@ -167,13 +170,23 @@ impl Arena {
 
 impl Default for Arena {
     fn default() -> Self {
-        let values = heap::RHeap::default();
-        let undefined = ValRef(values.allocate(Value::Undefined));
-        let unspecific = ValRef(values.allocate(Value::Unspecific));
-        let eof = ValRef(values.allocate(Value::EofObject));
-        let empty_list = ValRef(values.allocate(Value::EmptyList));
-        let f = ValRef(values.allocate(Value::Boolean(false)));
-        let t = ValRef(values.allocate(Value::Boolean(true)));
+        let mut roots = Vec::new();
+        let values = heap::RHeap::with_gc_mode(heap::GcMode::Off);
+
+        macro_rules! root {
+            ($i: ident, $x: expr) => {
+                roots.push(values.allocate_rooted($x));
+                let $i = ValRef(roots.last().unwrap().ptr);
+            };
+        }
+
+        root!(undefined, Value::Undefined);
+        root!(unspecific, Value::Unspecific);
+        root!(eof, Value::EofObject);
+        root!(empty_list, Value::EmptyList);
+        root!(f, Value::Boolean(false));
+        root!(t, Value::Boolean(true));
+
         Arena {
             values,
             symbol_map: RefCell::new(HashMap::new()),
@@ -184,6 +197,7 @@ impl Default for Arena {
             empty_list,
             f,
             t,
+            roots,
         }
     }
 }

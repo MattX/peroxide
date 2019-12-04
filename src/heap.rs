@@ -25,6 +25,26 @@ use value::Value;
 use bitvec::prelude::{BitBox, BitVec};
 
 const POOL_ENTRIES: u16 = 1 << 8;
+const FIRST_GC: usize = 64 * 1024;
+const GC_GROWTH: f32 = 2.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GcMode {
+    Off,
+    DebugHeavy,
+    DebugNormal,
+    Normal,
+}
+
+impl GcMode {
+    fn is_debug(&self) -> bool {
+        *self == GcMode::DebugHeavy || *self == GcMode::DebugNormal
+    }
+
+    fn is_normal(&self) -> bool {
+        *self == GcMode::DebugNormal || *self == GcMode::Normal
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 struct FreePoolEntry {
@@ -123,6 +143,7 @@ impl Pool {
     fn allocate(self: Pin<&mut Self>, value: Value) -> Option<PoolPtr> {
         let selr = unsafe { self.get_unchecked_mut() };
         selr.free_block.map(|old_free_index| {
+            println!("allocating {:?} at {}", &value, old_free_index);
             let next = if let PoolEntry::Free(ref e) = selr.data[usize::from(old_free_index)] {
                 e.next
             } else {
@@ -145,39 +166,50 @@ impl Pool {
         })
     }
 
-    fn free(self: Pin<&mut Self>, idx: u16) {
+    fn free(self: Pin<&mut Self>, idx: u16, debug: bool) {
         let selr = unsafe { self.get_unchecked_mut() };
-        selr.free_ref(idx);
+        selr.free_ref(idx, debug);
     }
 
-    fn free_ref(&mut self, idx: u16) {
+    /// Frees the memory at the specified address by returning the memory to the free list.
+    ///
+    /// If the GC is in debug mode, the memory will be marked free, but not returned to the free
+    /// list. This allows us to get a nice error, instead of a segmentation fault or garbage data,
+    /// when freed memory is accessed again.
+    fn free_ref(&mut self, idx: u16, debug: bool) {
         debug_assert!(
             !self.data[usize::from(idx)].is_free(),
-            "Freeing free entry!"
+            "freeing free entry!"
         );
+        println!("freeing {:?} at {}", self.data[usize::from(idx)], idx);
         self.data[usize::from(idx)] = PoolEntry::Free(FreePoolEntry {
             prev: None,
-            next: self.free_block,
+            next: if debug { None } else { self.free_block },
         });
+
         if let Some(free_index) = self.free_block {
             if let PoolEntry::Free(ref mut f) = self.data[usize::from(free_index)] {
                 debug_assert_eq!(f.prev, None);
-                f.prev = Some(idx);
+                if !debug {
+                    f.prev = Some(idx);
+                }
             } else {
-                panic!("free not pointing at free entry");
+                panic!("free_block not pointing at free entry");
             }
         }
-        self.free_block = Some(idx);
+        if !debug {
+            self.free_block = Some(idx);
+        }
         self.allocated -= 1;
     }
 
     /// Returns the number of freed entries
-    fn sweep(self: Pin<&mut Self>) -> u16 {
+    fn sweep(self: Pin<&mut Self>, debug: bool) -> u16 {
         let mut selr = unsafe { self.get_unchecked_mut() };
         let init = selr.allocated;
         for (i_mark, mark) in selr.marked.clone().iter().enumerate() {
             if !mark && !selr.data[i_mark].is_free() {
-                selr.free_ref(u16::try_from(i_mark).unwrap())
+                selr.free_ref(u16::try_from(i_mark).unwrap(), debug)
             }
         }
         selr.marked = BitVec::from(&[false; POOL_ENTRIES as usize][..]).into_boxed_bitslice();
@@ -242,6 +274,8 @@ struct Heap {
     full_pools: Vec<Pin<Box<Pool>>>,
     roots: Vec<Option<PoolPtr>>,
     allocated_values: usize,
+    next_gc: usize,
+    gc_mode: GcMode,
 }
 
 impl Default for Heap {
@@ -251,16 +285,27 @@ impl Default for Heap {
             full_pools: Vec::new(),
             roots: Vec::new(),
             allocated_values: 0,
+            next_gc: FIRST_GC,
+            gc_mode: GcMode::Off,
         }
     }
 }
 
 impl Heap {
     fn allocate(&mut self, v: Value) -> PoolPtr {
+        if self.gc_mode == GcMode::DebugHeavy {
+            self.gc();
+        } else if self.gc_mode.is_normal() {
+            if self.allocated_values > self.next_gc {
+                self.gc();
+                self.next_gc = (self.allocated_values as f32 * GC_GROWTH) as usize;
+            }
+        }
+
         if self.pools.is_empty() {
-            // TODO: GC, then try again.
             self.pools.push(Pool::new())
         }
+
         let last_pool = self.pools.last_mut().expect("no free pools");
         let ptr = last_pool
             .as_mut()
@@ -303,10 +348,10 @@ impl Heap {
             (*root).inventory(&mut stack);
         }
         for pool in self.pools.iter_mut() {
-            self.allocated_values -= usize::from(pool.as_mut().sweep());
+            self.allocated_values -= usize::from(pool.as_mut().sweep(self.gc_mode.is_debug()));
         }
         for pool in self.full_pools.iter_mut() {
-            self.allocated_values -= usize::from(pool.as_mut().sweep());
+            self.allocated_values -= usize::from(pool.as_mut().sweep(self.gc_mode.is_debug()));
         }
         for i_pool in (0..self.full_pools.len()).rev() {
             if self.full_pools[i_pool].allocated != POOL_ENTRIES {
@@ -327,6 +372,17 @@ impl Default for RHeap {
 }
 
 impl RHeap {
+    pub fn with_gc_mode(gc_mode: GcMode) -> RHeap {
+        RHeap(Rc::new(UnsafeCell::new(Heap {
+            pools: vec![],
+            full_pools: vec![],
+            roots: vec![],
+            allocated_values: 0,
+            next_gc: FIRST_GC,
+            gc_mode,
+        })))
+    }
+
     pub fn allocate(&self, v: Value) -> PoolPtr {
         unsafe { &mut *self.0.get() }.allocate(v)
     }
@@ -338,6 +394,11 @@ impl RHeap {
         RootPtr { ptr: v, heap, idx }
     }
 
+    pub fn allocate_rooted(&self, v: Value) -> RootPtr {
+        let ptr = self.allocate(v);
+        self.root(ptr)
+    }
+
     fn gc(&self) {
         unsafe { &mut *self.0.get() }.gc()
     }
@@ -345,7 +406,7 @@ impl RHeap {
 
 #[derive(Debug)]
 pub struct RootPtr {
-    ptr: PoolPtr,
+    pub ptr: PoolPtr,
     heap: Weak<UnsafeCell<Heap>>,
     idx: usize,
 }
@@ -367,6 +428,8 @@ impl Deref for RootPtr {
 
 impl Drop for RootPtr {
     fn drop(&mut self) {
+        // TODO - another option is do just ignore dead heaps as there's no need to unroot.
+        //        however, a destroyed heap can mean that we have other dangling pointers.
         unsafe { &mut *self.heap.upgrade().expect("heap destroyed").get() }.roots[self.idx] = None
     }
 }
@@ -387,7 +450,7 @@ mod test {
             .expect("should have room");
         assert_eq!(pool.allocated, 1);
         assert_eq!(*ptr, reference);
-        pool.as_mut().free(ptr.idx);
+        pool.as_mut().free(ptr.idx, false);
         assert_eq!(pool.allocated, 0);
     }
 
@@ -406,7 +469,7 @@ mod test {
             .expect("should have room");
         assert_eq!(pool.allocated, 3);
         assert_eq!(*ptr1, Value::Integer(1.into()));
-        pool.as_mut().free(ptr1.idx);
+        pool.as_mut().free(ptr1.idx, false);
         assert_eq!(pool.allocated, 2);
         let ptr1b = pool
             .as_mut()
@@ -425,7 +488,7 @@ mod test {
                 .expect("should have room");
         }
         assert_eq!(pool.as_mut().allocate(val.clone()), None);
-        pool.as_mut().free(POOL_ENTRIES / 2);
+        pool.as_mut().free(POOL_ENTRIES / 2, false);
         assert!(pool.as_mut().allocate(val.clone()).is_some());
     }
 
