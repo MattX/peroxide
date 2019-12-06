@@ -39,12 +39,12 @@ pub enum GcMode {
 }
 
 impl GcMode {
-    fn is_debug(&self) -> bool {
-        *self == GcMode::DebugHeavy || *self == GcMode::DebugNormal
+    fn is_debug(self) -> bool {
+        self == GcMode::DebugHeavy || self == GcMode::DebugNormal
     }
 
-    fn is_normal(&self) -> bool {
-        *self == GcMode::DebugNormal || *self == GcMode::Normal
+    fn is_normal(self) -> bool {
+        self == GcMode::DebugNormal || self == GcMode::Normal
     }
 }
 
@@ -299,11 +299,9 @@ impl Heap {
     fn allocate(&mut self, v: Value) -> PoolPtr {
         if self.gc_mode == GcMode::DebugHeavy {
             self.gc();
-        } else if self.gc_mode.is_normal() {
-            if self.allocated_values > self.next_gc {
-                self.gc();
-                self.next_gc = (self.allocated_values as f32 * GC_GROWTH) as usize;
-            }
+        } else if self.gc_mode.is_normal() && self.allocated_values > self.next_gc {
+            self.gc();
+            self.next_gc = (self.allocated_values as f32 * GC_GROWTH) as usize;
         }
 
         if self.pools.is_empty() {

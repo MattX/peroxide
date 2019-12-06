@@ -25,7 +25,7 @@ use std::cell::RefCell;
 use std::fs;
 use std::rc::Rc;
 
-use arena::{Arena, ValRef};
+use arena::Arena;
 use ast::SyntaxElement;
 use environment::{ActivationFrame, ActivationFrameInfo, Environment, RcEnv};
 use heap::RootPtr;
@@ -51,17 +51,18 @@ pub const ERROR_HANDLER_INDEX: usize = 0;
 /// Structure holding the global state of the interpreter.
 pub struct VmState {
     pub global_environment: RcEnv,
-    pub global_frame: ValRef,
+    pub global_frame: RootPtr,
     pub code: Code,
 }
 
 impl VmState {
     pub fn new(arena: &mut Arena) -> Self {
         let global_environment = Rc::new(RefCell::new(Environment::new(None)));
-        let global_frame = arena.insert(Value::ActivationFrame(RefCell::new(ActivationFrame {
-            parent: None,
-            values: vec![arena.f],
-        })));
+        let global_frame =
+            arena.insert_rooted(Value::ActivationFrame(RefCell::new(ActivationFrame {
+                parent: None,
+                values: vec![arena.f],
+            })));
         let afi = Rc::new(RefCell::new(ActivationFrameInfo {
             parent: None,
             altitude: 0,
@@ -73,7 +74,7 @@ impl VmState {
                 .define("%error-handler", &afi, true),
             ERROR_HANDLER_INDEX
         );
-        primitives::register_primitives(arena, &global_environment, &afi, global_frame);
+        primitives::register_primitives(arena, &global_environment, &afi, &global_frame);
 
         VmState {
             global_environment: global_environment.clone(),
@@ -105,16 +106,15 @@ pub fn parse_compile_run(
         parent: None,
         altitude: 0,
         entries: arena
-            .get_activation_frame(state.global_frame)
+            .get_activation_frame(state.global_frame.vr())
             .borrow()
             .values
             .len(),
     }));
-    // TODO - make ast take rooted pointer
     let syntax_tree = ast::parse(arena, state, &cloned_env, &global_af_info, read.vr())
         .map_err(|e| format!("Syntax error: {}", e))?;
     arena
-        .get_activation_frame(state.global_frame)
+        .get_activation_frame(state.global_frame.vr())
         .borrow_mut()
         .ensure_index(arena, global_af_info.borrow().entries);
     // println!(" => {:?}", syntax_tree);
@@ -135,9 +135,8 @@ pub fn compile_run(
         arena,
         &mut state.code,
         start_pc,
-        state.global_frame,
-        state.global_frame,
+        state.global_frame.vr(),
+        state.global_frame.vr(),
     )
-    .map(|v| arena.root(v))
-    .map_err(|e| format!("Runtime error: {}", pretty_print(arena, e)))
+    .map_err(|e| format!("Runtime error: {}", pretty_print(arena, e.vr())))
 }

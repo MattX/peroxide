@@ -70,6 +70,7 @@ use std::fmt::{Debug, Error, Formatter};
 
 use arena::{Arena, ValRef};
 use environment::{RcAfi, RcEnv};
+use heap::RootPtr;
 use primitives::char::*;
 use primitives::numeric::*;
 use primitives::object::*;
@@ -259,10 +260,10 @@ pub fn register_primitives(
     arena: &mut Arena,
     global_environment: &RcEnv,
     afi: &RcAfi,
-    global_frame: ValRef,
+    global_frame: &RootPtr,
 ) {
     let mut borrowed_env = global_environment.borrow_mut();
-    let mut frame = arena.get_activation_frame(global_frame).borrow_mut();
+    let mut frame = arena.get_activation_frame(global_frame.vr()).borrow_mut();
     for prim in PRIMITIVES.iter() {
         borrowed_env.define(prim.name, &afi, true);
         frame.values.push(arena.insert(Value::Primitive(prim)));

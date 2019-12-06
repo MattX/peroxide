@@ -167,31 +167,38 @@ impl Inventory for Vm {
 }
 
 enum Error {
-    Raise(ValRef),
-    Abort(ValRef),
+    Raise(RootPtr),
+    Abort(RootPtr),
 }
 
 impl Error {
-    fn map_error<F>(&self, f: F) -> Error
+    fn map_error<F>(self, f: F) -> Error
     where
-        F: FnOnce(ValRef) -> ValRef,
+        F: FnOnce(RootPtr) -> RootPtr,
     {
         match self {
-            Error::Raise(v) => Error::Raise(f(*v)),
-            Error::Abort(v) => Error::Abort(f(*v)),
+            Error::Raise(v) => Error::Raise(f(v)),
+            Error::Abort(v) => Error::Abort(f(v)),
         }
     }
 
     fn get_value(&self) -> ValRef {
         match self {
-            Error::Raise(v) => *v,
-            Error::Abort(v) => *v,
+            Error::Raise(v) => v.vr(),
+            Error::Abort(v) => v.vr(),
+        }
+    }
+
+    fn into_value(self) -> RootPtr {
+        match self {
+            Error::Raise(v) => v,
+            Error::Abort(v) => v,
         }
     }
 }
 
 fn raise_string(arena: &Arena, error: String) -> Error {
-    Error::Raise(arena.insert(Value::String(RefCell::new(error))))
+    Error::Raise(arena.insert_rooted(Value::String(RefCell::new(error))))
 }
 
 // TODO rename env around here to frame
@@ -201,7 +208,7 @@ pub fn run(
     pc: usize,
     global_env: ValRef,
     env: ValRef,
-) -> Result<ValRef, ValRef> {
+) -> Result<RootPtr, RootPtr> {
     let mut vm = Vm {
         value: arena.unspecific,
         pc,
@@ -219,11 +226,12 @@ pub fn run(
             Err(e) => handle_error(arena, &mut vm, code, e)?,
         }
     }
+    let ret = arena.root(vm.value);
     arena.unroot_vm();
-    Ok(vm.value)
+    Ok(ret)
 }
 
-fn handle_error(arena: &Arena, vm: &mut Vm, code: &Code, e: Error) -> Result<(), ValRef> {
+fn handle_error(arena: &Arena, vm: &mut Vm, code: &Code, e: Error) -> Result<(), RootPtr> {
     let annotated_e = error_stack(arena, &vm, code, e);
     match annotated_e {
         Error::Abort(v) => Err(v),
@@ -234,15 +242,17 @@ fn handle_error(arena: &Arena, vm: &mut Vm, code: &Code, e: Error) -> Result<(),
                 Value::Lambda { .. } => {
                     let frame = ActivationFrame {
                         parent: None,
-                        values: vec![v],
+                        values: vec![v.vr()],
                     };
                     vm.fun = handler;
                     vm.value = arena.insert(Value::ActivationFrame(RefCell::new(frame)));
-                    invoke(arena, vm, false).map_err(|e| e.get_value())?;
+                    invoke(arena, vm, false).map_err(|e| e.into_value())?;
                     vm.pc += 1;
                     Ok(())
                 }
-                _ => Err(arena.insert(Value::String(RefCell::new("Invalid handler".into())))),
+                _ => {
+                    Err(arena.insert_rooted(Value::String(RefCell::new("Invalid handler".into()))))
+                }
             }
         }
     }
@@ -420,9 +430,9 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
         } => {
             if !tail {
                 if vm.return_stack.len() > MAX_RECURSION_DEPTH {
-                    return Err(Error::Abort(arena.insert(Value::String(RefCell::new(
-                        "Maximum recursion depth exceeded".into(),
-                    )))));
+                    return Err(Error::Abort(arena.insert_rooted(Value::String(
+                        RefCell::new("Maximum recursion depth exceeded".into()),
+                    ))));
                 }
                 vm.return_stack.push(vm.pc);
             }
@@ -521,9 +531,9 @@ fn raise(arena: &Arena, vm: &Vm, abort: bool) -> Error {
     if n_args != 1 {
         raise_string(arena, "raise: expected a single argument".into())
     } else if abort {
-        Error::Abort(af.values[0])
+        Error::Abort(arena.root(af.values[0]))
     } else {
-        Error::Raise(af.values[0])
+        Error::Raise(arena.root(af.values[0]))
     }
 }
 
@@ -538,7 +548,7 @@ fn error_stack(arena: &Arena, vm: &Vm, code: &Code, error: Error) -> Error {
         write!(message, "\n\tat {}", name).unwrap();
     }
     let msg_r = arena.insert(Value::String(RefCell::new(message)));
-    error.map_error(|e| arena.insert(Value::Pair(Cell::new(e), Cell::new(msg_r))))
+    error.map_error(|e| arena.insert_rooted(Value::Pair(Cell::new(e.vr()), Cell::new(msg_r))))
 }
 
 #[derive(Debug, Clone, PartialEq)]

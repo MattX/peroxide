@@ -22,7 +22,7 @@ use num_rational::BigRational;
 use arena::{Arena, ValRef};
 use environment::{ActivationFrame, RcEnv};
 use primitives::{Port, Primitive, SyntacticClosure};
-use vm::{Continuation, Vm};
+use vm::Continuation;
 use {heap, util};
 
 // TODO box some of these, values are currently 56 bytes long oh no
@@ -151,7 +151,7 @@ impl Value {
                 free_variables,
                 arena.get(*expr).pretty_print(arena)
             ),
-            Value::Continuation(_) => format!("#<continuation>"),
+            Value::Continuation(_) => "#<continuation>".to_string(),
             _ => format!("{}", self),
         }
     }

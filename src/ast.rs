@@ -705,19 +705,20 @@ fn parse_compile_run_macro(
     let syntax_tree =
         parse(arena, vms, env, af_info, val).map_err(|e| format!("Syntax error: {}", e))?;
     arena
-        .get_activation_frame(vms.global_frame)
+        .get_activation_frame(vms.global_frame.vr())
         .borrow_mut()
         .ensure_index(arena, get_toplevel_afi(af_info).borrow().entries);
 
-    let frame = make_frame(arena, vms.global_frame, af_info);
+    let frame = make_frame(arena, vms.global_frame.vr(), af_info);
 
     let start_pc = vms.code.code_size();
     compile::compile(&syntax_tree, &mut vms.code, false, true)
         .map_err(|e| format!("Compilation error: {}", e))?;
     vms.code.push(Instruction::Finish);
     // println!(" => {:?}", &state.code[start_pc..state.code.len()]);
-    vm::run(arena, &mut vms.code, start_pc, vms.global_frame, frame)
-        .map_err(|e| format!("Runtime error: {}", pretty_print(arena, e)))
+    vm::run(arena, &mut vms.code, start_pc, vms.global_frame.vr(), frame)
+        .map(|v| v.vr())
+        .map_err(|e| format!("Runtime error: {}", pretty_print(arena, e.vr())))
 }
 
 fn make_frame(arena: &Arena, global_frame: ValRef, af_info: &RcAfi) -> ValRef {
