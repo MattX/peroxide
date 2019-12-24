@@ -246,8 +246,8 @@ pub fn list_from_vec(arena: &Arena, vals: &[ValRef]) -> ValRef {
     if vals.is_empty() {
         arena.empty_list
     } else {
-        let rest = list_from_vec(arena, &vals[1..]);
-        arena.insert(Value::Pair(Cell::new(vals[0]), Cell::new(rest)))
+        let rest = arena.root(list_from_vec(arena, &vals[1..]));
+        arena.insert(Value::Pair(Cell::new(vals[0]), Cell::new(rest.vr())))
     }
 }
 

@@ -682,13 +682,14 @@ fn make_macro(
     af_info: &RcAfi,
     vms: &mut VmState,
     val: ValRef,
-) -> Result<ValRef, String> {
+) -> Result<RootPtr, String> {
     let mac = parse_compile_run_macro(arena, env, af_info, vms, val)?;
-    match arena.get(mac) {
+    let mac = arena.root(mac);
+    match arena.get(mac.vr()) {
         Value::Lambda { .. } => Ok(mac), // TODO check the lambda takes 3 args
         _ => Err(format!(
             "macro must be a lambda, is {}",
-            pretty_print(arena, mac)
+            pretty_print(arena, mac.vr())
         )),
     }
 }
@@ -743,16 +744,17 @@ fn expand_macro_full(
     mac: Macro,
     expr: ValRef,
 ) -> Result<ValRef, String> {
+    let expr = arena.root(expr);
     let mut expanded = expand_macro(arena, vms, env, mac, expr)?;
     let mut macro_count = 0;
-    while let Some(m) = get_macro(arena, env, expanded) {
+    while let Some(m) = get_macro(arena, env, expanded.vr()) {
         macro_count += 1;
         if macro_count > MAX_MACRO_EXPANSION {
             return Err("Maximum macro expansion depth reached.".into());
         }
         expanded = expand_macro(arena, vms, env, m, expanded)?;
     }
-    Ok(expanded)
+    Ok(expanded.vr())
 }
 
 fn expand_macro(
@@ -760,17 +762,18 @@ fn expand_macro(
     vms: &mut VmState,
     env: &RcEnv,
     mac: Macro,
-    expr: ValRef,
-) -> Result<ValRef, String> {
+    expr: RootPtr,
+) -> Result<RootPtr, String> {
     let definition_environment = Value::Environment(mac.definition_environment.clone());
     let usage_environment = Value::Environment(env.clone());
+    arena.insert(Value::Integer(100.into()));
     let syntax_tree = SyntaxElement::Application(Box::new(Application {
         function: SyntaxElement::Quote(Box::new(Quote {
-            quoted: arena.root(mac.lambda),
+            quoted: mac.lambda,
         })),
         args: vec![
             SyntaxElement::Quote(Box::new(Quote {
-                quoted: arena.root(expr),
+                quoted: expr,
             })),
             SyntaxElement::Quote(Box::new(Quote {
                 quoted: arena.insert_rooted(usage_environment),
@@ -780,8 +783,7 @@ fn expand_macro(
             })),
         ],
     }));
-    // TODO remove VR
-    compile_run(arena, vms, &syntax_tree).map(|r| r.vr())
+    compile_run(arena, vms, &syntax_tree)
 }
 
 fn get_macro(arena: &Arena, env: &RcEnv, expr: ValRef) -> Option<Macro> {

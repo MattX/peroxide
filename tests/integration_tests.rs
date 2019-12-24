@@ -20,13 +20,18 @@ use peroxide::parse_compile_run;
 use peroxide::read::read_many;
 use peroxide::value::Value;
 use peroxide::VmState;
+use peroxide::heap::RootPtr;
 
 fn execute(arena: &mut Arena, vm_state: &mut VmState, code: &str) -> Result<Value, String> {
+    execute_rooted(arena, vm_state, code).map(|e| arena.get(e.vr()).clone())
+}
+
+fn execute_rooted(arena: &mut Arena, vm_state: &mut VmState, code: &str) -> Result<RootPtr, String> {
     let mut results: Vec<_> = read_many(arena, code)?
         .into_iter()
-        .map(|read| parse_compile_run(arena, vm_state, read).map(|v| arena.get(v.vr()).clone()))
+        .map(|read| parse_compile_run(arena, vm_state, read))
         .collect::<Result<Vec<_>, _>>()?;
-    results.pop().ok_or("No expressions".into())
+    results.pop().ok_or("no expressions".into())
 }
 
 fn execute_to_vec(
@@ -34,8 +39,9 @@ fn execute_to_vec(
     vm_state: &mut VmState,
     code: &str,
 ) -> Result<Vec<Value>, String> {
-    let val = execute(arena, vm_state, code)?;
-    let vec = val.pair_to_vec(arena)?;
+    let val = execute_rooted(arena, vm_state, code)?;
+    println!("result of exec: {:?}", val);
+    let vec = val.vr().pair_to_vec(arena)?;
     Ok(vec.iter().map(|iv| arena.get(*iv).clone()).collect())
 }
 

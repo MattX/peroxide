@@ -132,7 +132,7 @@ pub fn identifier_equal_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, Stri
         }
         (Some(EnvironmentValue::Macro(m1)), Some(EnvironmentValue::Macro(m2))) => {
             // Lambdas are unique so no need to check environment equality
-            m1.lambda == m2.lambda
+            m1.lambda.vr() == m2.lambda.vr()
         }
         _ => false,
     };

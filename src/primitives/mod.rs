@@ -262,10 +262,10 @@ pub fn register_primitives(
     afi: &RcAfi,
     global_frame: &RootPtr,
 ) {
-    let mut borrowed_env = global_environment.borrow_mut();
-    let mut frame = arena.get_activation_frame(global_frame.vr()).borrow_mut();
+    let frame = arena.get_activation_frame(global_frame.vr());
     for prim in PRIMITIVES.iter() {
-        borrowed_env.define(prim.name, &afi, true);
-        frame.values.push(arena.insert(Value::Primitive(prim)));
+        global_environment.borrow_mut().define(prim.name, &afi, true);
+        let ptr = arena.insert(Value::Primitive(prim));
+        frame.borrow_mut().values.push(ptr);
     }
 }

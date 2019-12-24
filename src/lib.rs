@@ -131,12 +131,14 @@ pub fn compile_run(
         .map_err(|e| format!("Compilation error: {}", e))?;
     state.code.push(Instruction::Finish);
     // println!(" => {:?}", &state.code[start_pc..state.code.len()]);
-    vm::run(
+    let r = vm::run(
         arena,
         &mut state.code,
         start_pc,
         state.global_frame.vr(),
         state.global_frame.vr(),
     )
-    .map_err(|e| format!("Runtime error: {}", pretty_print(arena, e.vr())))
+    .map_err(|e| format!("Runtime error: {}", pretty_print(arena, e.vr())));
+    println!("executed: {:?}", r);
+    r
 }

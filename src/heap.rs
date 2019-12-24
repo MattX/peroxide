@@ -144,7 +144,7 @@ impl Pool {
 impl Pool {
     fn allocate(self: Pin<&mut Self>, value: Value) -> Option<PoolPtr> {
         let selr = unsafe { self.get_unchecked_mut() };
-        selr.free_block.map(|old_free_index| {
+        if let Some(old_free_index) = selr.free_block {
             // println!("allocating {:?} at {}", &value, old_free_index);
             let next = if let PoolEntry::Free(ref e) = selr.data[usize::from(old_free_index)] {
                 e.next
@@ -161,11 +161,14 @@ impl Pool {
             }
             selr.free_block = next;
             selr.allocated += 1;
-            PoolPtr {
+            Some(PoolPtr {
                 pool: selr as *mut Pool,
                 idx: old_free_index,
-            }
-        })
+            })
+        } else {
+            debug_assert_eq!(selr.allocated, POOL_ENTRIES);
+            None
+        }
     }
 
     fn free(self: Pin<&mut Self>, idx: u16, debug: bool) {
@@ -183,7 +186,7 @@ impl Pool {
             !self.data[usize::from(idx)].is_free(),
             "freeing free entry!"
         );
-        // println!("freeing {:?} at {}", self.data[usize::from(idx)], idx);
+        println!("freeing {:?} at {:?} {}", self.data[usize::from(idx)], self as *const Self, idx);
         self.data[usize::from(idx)] = PoolEntry::Free(FreePoolEntry {
             prev: None,
             next: if debug { None } else { self.free_block },
@@ -201,8 +204,8 @@ impl Pool {
         }
         if !debug {
             self.free_block = Some(idx);
+            self.allocated -= 1;
         }
-        self.allocated -= 1;
     }
 
     /// Returns the number of freed entries
@@ -242,7 +245,7 @@ impl Deref for PoolPtr {
         let pool = unsafe { &*self.pool };
         match &pool.data[usize::from(self.idx)] {
             PoolEntry::Used(u) => &u.0,
-            PoolEntry::Free(_) => panic!("dereferencing freed value"),
+            PoolEntry::Free(_) => panic!("dereferencing freed value at {:?}", self),
         }
     }
 }
@@ -300,7 +303,9 @@ impl Heap {
         if self.gc_mode == GcMode::DebugHeavy {
             self.gc();
         } else if self.gc_mode.is_normal() && self.allocated_values > self.next_gc {
+            println!("running GC");
             self.gc();
+            println!("ran GC");
             self.next_gc = (self.allocated_values as f32 * GC_GROWTH) as usize;
         }
 
@@ -312,7 +317,7 @@ impl Heap {
         let ptr = last_pool
             .as_mut()
             .allocate(v)
-            .expect("full pull in non-full list");
+            .expect("full pool in non-full list");
         let last_pool = &*last_pool;
         if last_pool.allocated == POOL_ENTRIES {
             let pool = self.pools.pop().unwrap();
@@ -323,6 +328,7 @@ impl Heap {
     }
 
     fn root(&mut self, p: PoolPtr) -> usize {
+        debug_assert!(!p.maybe_deref().is_free(), format!("rooting freed pointer {:?}", p));
         let empty = self
             .roots
             .iter_mut()
@@ -330,12 +336,12 @@ impl Heap {
             .find(|(_i, e)| e.is_none());
         match empty {
             Some((i_r, r)) => {
-                // println!("rooted {:?} at {}", p, i_r);
+                println!("rooted {:?} at {}", p, i_r);
                 *r = Some(p);
                 i_r
             }
             None => {
-                // println!("rooted {:?} at {}", p, self.roots.len());
+                println!("rooted {:?} at {}", p, self.roots.len());
                 self.roots.push(Some(p));
                 self.roots.len() - 1
             }
@@ -366,8 +372,10 @@ impl Heap {
 
         while let Some(root) = stack.get_vec().pop() {
             let pool = unsafe { &mut *root.pool };
-            pool.marked.set(usize::from(root.idx), true);
-            (*root).inventory(&mut stack);
+            if !pool.marked[usize::from(root.idx)] {
+                pool.marked.set(usize::from(root.idx), true);
+                (*root).inventory(&mut stack);
+            }
         }
         for pool in self.pools.iter_mut() {
             self.allocated_values -= usize::from(pool.as_mut().sweep(self.gc_mode.is_debug()));

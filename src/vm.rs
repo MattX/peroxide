@@ -226,6 +226,7 @@ pub fn run(
             Err(e) => handle_error(arena, &mut vm, code, e)?,
         }
     }
+    println!("rooting return value: {:?}", vm.value);
     let ret = arena.root(vm.value);
     arena.unroot_vm();
     Ok(ret)
@@ -259,6 +260,7 @@ fn handle_error(arena: &Arena, vm: &mut Vm, code: &Code, e: Error) -> Result<(),
 }
 
 fn run_one(arena: &Arena, vm: &mut Vm, code: &mut Code) -> Result<bool, Error> {
+    println!("running {:?}", code.instructions[vm.pc]);
     match code.instructions[vm.pc] {
         Instruction::Constant(v) => vm.value = code.constants[v].vr(),
         Instruction::JumpFalse(offset) => {
@@ -352,11 +354,12 @@ fn run_one(arena: &Arena, vm: &mut Vm, code: &mut Code) -> Result<bool, Error> {
             })
         }
         Instruction::PackFrame(arity) => {
-            let mut borrowed_frame = get_activation_frame(arena, vm.value).borrow_mut();
-            let frame_len = std::cmp::max(arity, borrowed_frame.values.len());
-            let listified = list_from_vec(arena, &borrowed_frame.values[arity..frame_len]);
-            borrowed_frame.values.resize(arity + 1, arena.undefined);
-            borrowed_frame.values[arity] = listified;
+            let frame = get_activation_frame(arena, vm.value);
+            let values = frame.borrow_mut().values.clone();
+            let frame_len = std::cmp::max(arity, values.len());
+            let listified = list_from_vec(arena, &values[arity..frame_len]);
+            frame.borrow_mut().values.resize(arity + 1, arena.undefined);
+            frame.borrow_mut().values[arity] = listified;
         }
         Instruction::ExtendFrame(by) => {
             let mut frame = arena.get_activation_frame(vm.value).borrow_mut();
@@ -405,10 +408,15 @@ fn run_one(arena: &Arena, vm: &mut Vm, code: &mut Code) -> Result<bool, Error> {
                 parent: None,
                 values: vec![arena.unspecific; size],
             };
+            // We could just pop values from the stack as we add them to the frame, but
+            // this causes them to become unrooted, which is bad. So we copy the values,
+            // then truncate the stack.
+            let stack_len = vm.stack.len();
             for i in (0..size).rev() {
-                frame.values[i] = vm.stack.pop().expect("Too few values on stack.");
+                frame.values[i] = *vm.stack.get(stack_len - size + i).expect("too few values on stack.");
             }
             vm.value = arena.insert(Value::ActivationFrame(RefCell::new(frame)));
+            vm.stack.truncate(stack_len - size);
         }
         Instruction::NoOp => panic!("NoOp encountered."),
         Instruction::Finish => return Ok(true),
@@ -547,8 +555,8 @@ fn error_stack(arena: &Arena, vm: &Vm, code: &Code, error: Error) -> Error {
             .unwrap_or_else(|| "<toplevel>".into());
         write!(message, "\n\tat {}", name).unwrap();
     }
-    let msg_r = arena.insert(Value::String(RefCell::new(message)));
-    error.map_error(|e| arena.insert_rooted(Value::Pair(Cell::new(e.vr()), Cell::new(msg_r))))
+    let msg_r = arena.insert_rooted(Value::String(RefCell::new(message)));
+    error.map_error(|e| arena.insert_rooted(Value::Pair(Cell::new(e.vr()), Cell::new(msg_r.vr()))))
 }
 
 #[derive(Debug, Clone, PartialEq)]

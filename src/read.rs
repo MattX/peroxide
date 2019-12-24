@@ -239,13 +239,13 @@ where
     I: Iterator<Item = &'b Token>,
 {
     let quoted = do_read(arena, it)?;
-    let quoted_list_ptr = arena.insert(Value::Pair(
+    let quoted_list_ptr = arena.insert_rooted(Value::Pair(
         Cell::new(quoted.vr()),
         Cell::new(arena.empty_list),
     ));
-    let quote_sym_ptr = arena.insert(Value::Symbol(prefix.to_string()));
+    let quote_sym_ptr = arena.insert_rooted(Value::Symbol(prefix.to_string()));
     Ok(arena.insert_rooted(Value::Pair(
-        Cell::new(quote_sym_ptr),
-        Cell::new(quoted_list_ptr),
+        Cell::new(quote_sym_ptr.vr()),
+        Cell::new(quoted_list_ptr.vr()),
     )))
 }

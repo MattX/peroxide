@@ -29,6 +29,7 @@ use std::option::Option;
 use std::rc::Rc;
 
 use arena::{Arena, ValRef};
+use heap::RootPtr;
 
 pub struct Environment {
     parent: Option<Rc<RefCell<Environment>>>,
@@ -71,7 +72,7 @@ pub struct Variable {
 
 #[derive(Clone)]
 pub struct Macro {
-    pub lambda: ValRef,
+    pub lambda: RootPtr,
     pub definition_environment: RcEnv,
 }
 
@@ -163,7 +164,7 @@ impl Environment {
     /// case, the macro will be replaced.
     ///
     /// TODO: definition environment should be a weak ref to avoid cycles?
-    pub fn define_macro(&mut self, name: &str, lambda: ValRef, definition_environment: RcEnv) {
+    pub fn define_macro(&mut self, name: &str, lambda: RootPtr, definition_environment: RcEnv) {
         self.values.insert(
             name.to_string(),
             Some(EnvironmentValue::Macro(Macro {
