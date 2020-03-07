@@ -21,7 +21,7 @@ use arena::Arena;
 use arena::ValRef;
 use environment::{ActivationFrame, RcEnv};
 use heap;
-use heap::{Inventory, PoolPtr, PushOnlyVec, RootPtr};
+use heap::{Inventory, PoolPtr, PtrVec, RootPtr};
 use primitives::PrimitiveImplementation;
 use value::{list_from_vec, pretty_print, vec_from_list, Value};
 
@@ -144,7 +144,6 @@ impl Code {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Vm {
-    /// The value register
     value: ValRef,
     pc: usize,
     return_stack: Vec<usize>,
@@ -154,8 +153,15 @@ pub struct Vm {
     fun: ValRef,
 }
 
+impl Vm {
+    fn set_value(&mut self, v: ValRef) {
+        debug_assert!(v.0.ok());
+        self.value = v;
+    }
+}
+
 impl Inventory for Vm {
-    fn inventory(&self, v: &mut PushOnlyVec<PoolPtr>) {
+    fn inventory(&self, v: &mut PtrVec) {
         v.push(self.value.0);
         v.push(self.global_env.0);
         v.push(self.env.0);
@@ -246,7 +252,7 @@ fn handle_error(arena: &Arena, vm: &mut Vm, code: &Code, e: Error) -> Result<(),
                         values: vec![v.vr()],
                     };
                     vm.fun = handler;
-                    vm.value = arena.insert(Value::ActivationFrame(RefCell::new(frame)));
+                    vm.set_value(arena.insert(Value::ActivationFrame(RefCell::new(frame))));
                     invoke(arena, vm, false).map_err(|e| e.into_value())?;
                     vm.pc += 1;
                     Ok(())
@@ -262,7 +268,7 @@ fn handle_error(arena: &Arena, vm: &mut Vm, code: &Code, e: Error) -> Result<(),
 fn run_one(arena: &Arena, vm: &mut Vm, code: &mut Code) -> Result<bool, Error> {
     println!("running {:?}", code.instructions[vm.pc]);
     match code.instructions[vm.pc] {
-        Instruction::Constant(v) => vm.value = code.constants[v].vr(),
+        Instruction::Constant(v) => vm.set_value(code.constants[v].vr()),
         Instruction::JumpFalse(offset) => {
             if !arena.get(vm.value).truthy() {
                 vm.pc += offset;
@@ -273,18 +279,18 @@ fn run_one(arena: &Arena, vm: &mut Vm, code: &mut Code) -> Result<bool, Error> {
             get_activation_frame(arena, vm.global_env)
                 .borrow_mut()
                 .set(arena, 0, index, vm.value);
-            vm.value = arena.unspecific;
+            vm.set_value(arena.unspecific);
         }
         Instruction::GlobalArgumentGet { index } => {
-            vm.value = get_activation_frame(arena, vm.global_env)
+            vm.set_value(get_activation_frame(arena, vm.global_env)
                 .borrow()
-                .get(arena, 0, index);
+                .get(arena, 0, index));
         }
         Instruction::CheckedGlobalArgumentGet { index } => {
-            vm.value = arena
+            vm.set_value(arena
                 .get_activation_frame(vm.global_env)
                 .borrow()
-                .get(arena, 0, index);
+                .get(arena, 0, index));
             if vm.value == arena.undefined {
                 return Err(raise_string(
                     arena,
@@ -299,16 +305,16 @@ fn run_one(arena: &Arena, vm: &mut Vm, code: &mut Code) -> Result<bool, Error> {
             get_activation_frame(arena, vm.env)
                 .borrow_mut()
                 .set(arena, depth, index, vm.value);
-            vm.value = arena.unspecific;
+            vm.set_value(arena.unspecific);
         }
         Instruction::LocalArgumentGet { depth, index } => {
-            vm.value = get_activation_frame(arena, vm.env)
+            vm.set_value(get_activation_frame(arena, vm.env)
                 .borrow()
-                .get(arena, depth, index);
+                .get(arena, depth, index));
         }
         Instruction::CheckedLocalArgumentGet { depth, index } => {
             let frame = arena.get_activation_frame(vm.env).borrow();
-            vm.value = frame.get(arena, depth, index);
+            vm.set_value(frame.get(arena, depth, index));
             if vm.value == arena.undefined {
                 let current_depth = frame.depth(arena);
                 return Err(raise_string(
@@ -348,10 +354,10 @@ fn run_one(arena: &Arena, vm: &mut Vm, code: &mut Code) -> Result<bool, Error> {
                 .expect("Returning with no values on return stack.");
         }
         Instruction::CreateClosure(offset) => {
-            vm.value = arena.insert(Value::Lambda {
+            vm.set_value(arena.insert(Value::Lambda {
                 code: vm.pc + offset,
                 environment: vm.env,
-            })
+            }))
         }
         Instruction::PackFrame(arity) => {
             let frame = get_activation_frame(arena, vm.value);
@@ -395,7 +401,7 @@ fn run_one(arena: &Arena, vm: &mut Vm, code: &mut Code) -> Result<bool, Error> {
                 _ => {
                     return Err(raise_string(
                         arena,
-                        format!("cannot pop non-function: {}", pretty_print(arena, fun_r)),
+                        format!("cannot apply non-function: {}", pretty_print(arena, fun_r)),
                     ));
                 }
             }
@@ -415,7 +421,7 @@ fn run_one(arena: &Arena, vm: &mut Vm, code: &mut Code) -> Result<bool, Error> {
             for i in (0..size).rev() {
                 frame.values[i] = *vm.stack.get(stack_len - size + i).expect("too few values on stack.");
             }
-            vm.value = arena.insert(Value::ActivationFrame(RefCell::new(frame)));
+            vm.set_value(arena.insert(Value::ActivationFrame(RefCell::new(frame))));
             vm.stack.truncate(stack_len - size);
         }
         Instruction::NoOp => panic!("NoOp encountered."),
@@ -451,8 +457,8 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
             PrimitiveImplementation::Simple(i) => {
                 let af = arena.get_activation_frame(vm.value);
                 let values = &af.borrow().values;
-                vm.value = i(arena, &values)
-                    .map_err(|e| raise_string(arena, format!("In {:?}: {}", p, e)))?;
+                vm.set_value(i(arena, &values)
+                    .map_err(|e| raise_string(arena, format!("In {:?}: {}", p, e)))?);
             }
             PrimitiveImplementation::Apply => apply(arena, vm, tail)?,
             PrimitiveImplementation::CallCC => call_cc(arena, vm)?,
@@ -474,7 +480,7 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
                 .return_stack
                 .pop()
                 .expect("Popping continuation with no return address");
-            vm.value = af.values[0];
+            vm.set_value(af.values[0]);
         }
         _ => {
             return Err(raise_string(
@@ -499,7 +505,7 @@ fn apply(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
         parent: None,
         values,
     };
-    vm.value = arena.insert(Value::ActivationFrame(RefCell::new(new_af)));
+    vm.set_value(arena.insert(Value::ActivationFrame(RefCell::new(new_af))));
     vm.fun = af.values[0];
     invoke(arena, vm, tail)
 }
@@ -523,7 +529,7 @@ fn call_cc(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
         parent: None,
         values: vec![cont_r],
     };
-    vm.value = arena.insert(Value::ActivationFrame(RefCell::new(new_af)));
+    vm.set_value(arena.insert(Value::ActivationFrame(RefCell::new(new_af))));
     vm.fun = af.values[0];
     invoke(arena, vm, true)
 }
@@ -566,7 +572,7 @@ pub struct Continuation {
 }
 
 impl heap::Inventory for Continuation {
-    fn inventory(&self, v: &mut heap::PushOnlyVec<heap::PoolPtr>) {
+    fn inventory(&self, v: &mut heap::PtrVec) {
         for obj in self.stack.iter() {
             v.push(obj.0);
         }

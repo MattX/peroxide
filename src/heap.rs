@@ -12,9 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+/// General strategy
+///
+/// We maintain a set of pools, each of which contains some number (256 currently) of entries.
+/// Each entry is either empty, or contains a value. Empty entries are part of a linked list.
+///
+/// A Heap object manages pools. When we need to perform an allocation, we take the first pool
+/// we find with at least one free entry, and make that entry occupied. We edit the free entry
+/// linked list accordingly.
+///
+/// Each pool also has a bitvec for the mark phase of GC.
+///
+/// RootedPtrs are special pointers that implement Drop. When they are dropped, they automatically
+/// unroot themselves from the heap. PoolPtrs are regular pointers that do not require roots to
+/// exist.
+///
+/// This means that access through a PoolPtr might cause a segfault if the root has actually already
+/// been dropped.
+
 use std::cell::UnsafeCell;
 use std::convert::{From, TryFrom};
-use std::fmt::{Error, Formatter};
+use std::fmt::{Error, Formatter, Debug, self};
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::pin::Pin;
@@ -54,8 +72,13 @@ struct FreePoolEntry {
     next: Option<u16>,
 }
 
-#[derive(Debug)]
 struct UsedPoolEntry(Value);
+
+impl Debug for UsedPoolEntry {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.0)
+    }
+}
 
 #[derive(Debug)]
 enum PoolEntry {
@@ -250,27 +273,33 @@ impl Deref for PoolPtr {
     }
 }
 
+#[cfg(any(debug_assertions, test))]
 impl PoolPtr {
     fn maybe_deref(&self) -> &PoolEntry {
         let pool = unsafe { &*self.pool };
         &pool.data[usize::from(self.idx)]
     }
+
+    pub fn ok(&self) -> bool {
+        self.idx < POOL_ENTRIES
+    }
 }
 
-pub struct PushOnlyVec<T>(Vec<T>);
+pub struct PtrVec(Vec<PoolPtr>);
 
-impl<T> PushOnlyVec<T> {
-    pub fn push(&mut self, v: T) {
+impl PtrVec {
+    pub fn push(&mut self, v: PoolPtr) {
+        debug_assert!(v.ok());
         self.0.push(v);
     }
 
-    fn get_vec(&mut self) -> &mut Vec<T> {
+    fn get_vec(&mut self) -> &mut Vec<PoolPtr> {
         &mut self.0
     }
 }
 
 pub trait Inventory {
-    fn inventory(&self, v: &mut PushOnlyVec<PoolPtr>);
+    fn inventory(&self, v: &mut PtrVec);
 }
 
 #[derive(Debug)]
@@ -324,6 +353,7 @@ impl Heap {
             self.full_pools.push(pool);
         }
         self.allocated_values += 1;
+        println!("Allocated {:?} for {:?}", ptr, *ptr);
         ptr
     }
 
@@ -362,7 +392,7 @@ impl Heap {
 
     fn gc(&mut self) {
         let stack: Vec<_> = self.roots.iter().filter_map(|s| *s).collect();
-        let mut stack = PushOnlyVec(stack);
+        let mut stack = PtrVec(stack);
 
         if let Some(v) = self.vm {
             unsafe {
@@ -470,7 +500,7 @@ impl Drop for RootPtr {
         // TODO - another option is do just ignore dead heaps as there's no need to unroot.
         //        however, a destroyed heap can mean that we have other dangling pointers.
         unsafe { &mut *self.heap.upgrade().expect("heap destroyed").get() }.roots[self.idx] = None;
-        // println!("unrooted idx {}", self.idx);
+        println!("unrooted {{ pool: {:p}, idx: {} }}", self.heap.upgrade().unwrap(), self.idx);
     }
 }
 

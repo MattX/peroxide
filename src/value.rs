@@ -102,7 +102,7 @@ impl fmt::Display for Value {
 }
 
 impl heap::Inventory for Value {
-    fn inventory(&self, v: &mut heap::PushOnlyVec<heap::PoolPtr>) {
+    fn inventory(&self, v: &mut heap::PtrVec) {
         match self {
             Value::Pair(car, cdr) => {
                 v.push(car.get().0);

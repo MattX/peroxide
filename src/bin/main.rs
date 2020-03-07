@@ -54,7 +54,9 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
 
     let mut arena = Arena::default();
     let mut vm_state = VmState::new(&mut arena);
-    initialize(&mut arena, &mut vm_state, "src/scheme-lib/init.scm")?;
+    if !options.no_std {
+        initialize(&mut arena, &mut vm_state, "src/scheme-lib/init.scm")?;
+    }
     loop {
         if !handle_one_expr_wrap(&mut *repl, &mut arena, &mut vm_state, silent) {
             break;
@@ -155,6 +157,7 @@ fn rep(
 #[derive(Debug)]
 struct Options {
     pub enable_readline: bool,
+    pub no_std: bool,
     pub input_file: Option<String>,
 }
 
@@ -164,6 +167,7 @@ fn parse_args(args: &[&str]) -> Result<Options, String> {
         args.iter().skip(1).partition(|s| !s.starts_with("--"));
 
     let enable_readline = !flags.iter().any(|&x| x == "--no-readline");
+    let no_std = flags.iter().any(|&x| x == "--no-std");
     let input_file = if positional.len() <= 1 {
         positional.pop().map(ToString::to_string)
     } else {
@@ -171,6 +175,7 @@ fn parse_args(args: &[&str]) -> Result<Options, String> {
     };
     Ok(Options {
         enable_readline,
+        no_std,
         input_file,
     })
 }

@@ -210,7 +210,7 @@ impl PartialEq for Port {
 }
 
 impl heap::Inventory for Port {
-    fn inventory(&self, _v: &mut heap::PushOnlyVec<heap::PoolPtr>) {}
+    fn inventory(&self, _v: &mut heap::PtrVec) {}
 }
 
 fn is_port(arena: &Arena, arg: ValRef) -> bool {
