@@ -224,21 +224,21 @@ pub fn run(
         env,
         fun: arena.unspecific,
     };
+    println!("rooting VM");
     arena.root_vm(&vm);
-    loop {
+    let res = loop {
         match run_one(arena, &mut vm, code) {
-            Ok(true) => break,
+            Ok(true) => break Ok(arena.root(vm.value)),
             Ok(_) => (),
-            Err(e) => handle_error(arena, &mut vm, code, e)?,
+            Err(e) => break handle_error(arena, &mut vm, code, e),
         }
-    }
-    println!("rooting return value: {:?}", vm.value);
-    let ret = arena.root(vm.value);
+    };
+    println!("unrooting VM");
     arena.unroot_vm();
-    Ok(ret)
+    res
 }
 
-fn handle_error(arena: &Arena, vm: &mut Vm, code: &Code, e: Error) -> Result<(), RootPtr> {
+fn handle_error(arena: &Arena, vm: &mut Vm, code: &Code, e: Error) -> Result<RootPtr, RootPtr> {
     let annotated_e = error_stack(arena, &vm, code, e);
     match annotated_e {
         Error::Abort(v) => Err(v),
@@ -255,10 +255,10 @@ fn handle_error(arena: &Arena, vm: &mut Vm, code: &Code, e: Error) -> Result<(),
                     vm.set_value(arena.insert(Value::ActivationFrame(RefCell::new(frame))));
                     invoke(arena, vm, false).map_err(|e| e.into_value())?;
                     vm.pc += 1;
-                    Ok(())
+                    Ok(arena.root(arena.unspecific))
                 }
                 _ => {
-                    Err(arena.insert_rooted(Value::String(RefCell::new("Invalid handler".into()))))
+                    Err(arena.insert_rooted(Value::String(RefCell::new("invalid handler".into()))))
                 }
             }
         }

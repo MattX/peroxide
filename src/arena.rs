@@ -185,7 +185,7 @@ impl Arena {
 impl Default for Arena {
     fn default() -> Self {
         let mut roots = Vec::new();
-        let values = heap::RHeap::with_gc_mode(heap::GcMode::DebugHeavy);
+        let values = heap::RHeap::with_gc_mode(heap::GcMode::Off);
 
         macro_rules! root {
             ($i: ident, $x: expr) => {
