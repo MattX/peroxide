@@ -23,7 +23,7 @@
 ///
 /// Each pool also has a bitvec for the mark phase of GC.
 ///
-/// RootedPtrs are special pointers that implement Drop. When they are dropped, they automatically
+/// RootPtrs are special pointers that implement Drop. When they are dropped, they automatically
 /// unroot themselves from the heap. PoolPtrs are regular pointers that do not require roots to
 /// exist.
 ///
@@ -38,7 +38,7 @@ use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::{Rc, Weak};
 
-use value::Value;
+use value::{Value, pretty_print};
 
 use arena::ValRef;
 use bitvec::prelude::{BitBox, BitVec};
@@ -290,6 +290,7 @@ pub struct PtrVec(Vec<PoolPtr>);
 impl PtrVec {
     pub fn push(&mut self, v: PoolPtr) {
         debug_assert!(v.ok());
+        debug_assert!({v.deref(); true});
         self.0.push(v);
     }
 
@@ -403,6 +404,7 @@ impl Heap {
         while let Some(root) = stack.get_vec().pop() {
             let pool = unsafe { &mut *root.pool };
             if !pool.marked[usize::from(root.idx)] {
+                // println!("Inventorying {}", *root);
                 pool.marked.set(usize::from(root.idx), true);
                 (*root).inventory(&mut stack);
             }

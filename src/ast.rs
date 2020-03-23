@@ -216,6 +216,8 @@ fn parse_pair(
             Symbol::LetrecSyntax => parse_let_syntax(arena, vms, &env, af_info, &rest, true),
             Symbol::Macro(m) => {
                 // TODO fix this to avoid reconstructing the pair
+                let car_hold = arena.root(car.clone());
+                let cdr_hold = arena.root(cdr.clone());
                 let expr = arena.insert(Value::Pair(Cell::new(car), Cell::new(cdr)));
                 let expanded = expand_macro_full(arena, vms, &env, m, expr)?;
                 parse(arena, vms, &env, af_info, expanded)

@@ -89,7 +89,7 @@ pub fn initialize(arena: &mut Arena, state: &mut VmState, fname: &str) -> Result
     let values = read_many(arena, &contents)?;
     //println!("Values: {:?}", values);
     for v in values.into_iter() {
-        // println!("> {}", pretty_print(arena, *v));
+        println!("eval> {}", pretty_print(arena, v.vr()));
         parse_compile_run(arena, state, v)?;
     }
     Ok(())

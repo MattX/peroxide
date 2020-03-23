@@ -76,7 +76,7 @@ impl fmt::Display for Value {
             Value::Character(c) => write!(f, "#\\{}", util::escape_char(*c)),
             Value::Symbol(s) => write!(f, "{}", util::escape_symbol(&s)),
             Value::String(s) => write!(f, "\"{}\"", util::escape_string(&s.borrow())),
-            Value::Pair(a, b) => write!(f, "(=>{:?} . =>{:?})", a.get(), b.get()),
+            Value::Pair(a, b) => write!(f, "({} . {})", &*a.get(), &*b.get()),
             Value::ByteVector(bv) => {
                 let contents = bv
                     .borrow()
