@@ -139,6 +139,6 @@ pub fn compile_run(
         state.global_frame.vr(),
     )
     .map_err(|e| format!("Runtime error: {}", pretty_print(arena, e.vr())));
-    println!("executed: {:?}", r);
+    // println!("executed: {:?}", r);
     r
 }

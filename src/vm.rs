@@ -155,7 +155,9 @@ pub struct Vm {
 
 impl Vm {
     fn set_value(&mut self, v: ValRef) {
-        debug_assert!(v.0.ok());
+        #[cfg(debug_assertions)] {
+            debug_assert!(v.0.ok());
+        }
         self.value = v;
     }
 }
@@ -224,7 +226,7 @@ pub fn run(
         env,
         fun: arena.unspecific,
     };
-    println!("rooting VM");
+    // println!("rooting VM");
     arena.root_vm(&vm);
     let res = loop {
         match run_one(arena, &mut vm, code) {
@@ -233,7 +235,7 @@ pub fn run(
             Err(e) => break handle_error(arena, &mut vm, code, e),
         }
     };
-    println!("unrooting VM");
+    // println!("unrooting VM");
     arena.unroot_vm();
     res
 }
@@ -266,7 +268,7 @@ fn handle_error(arena: &Arena, vm: &mut Vm, code: &Code, e: Error) -> Result<Roo
 }
 
 fn run_one(arena: &Arena, vm: &mut Vm, code: &mut Code) -> Result<bool, Error> {
-    println!("running {:?}", code.instructions[vm.pc]);
+    // println!("running {:?}", code.instructions[vm.pc]);
     match code.instructions[vm.pc] {
         Instruction::Constant(v) => vm.set_value(code.constants[v].vr()),
         Instruction::JumpFalse(offset) => {

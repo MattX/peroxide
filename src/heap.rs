@@ -209,7 +209,7 @@ impl Pool {
             !self.data[usize::from(idx)].is_free(),
             "freeing free entry!"
         );
-        println!("freeing {:?} at {:?} {}", self.data[usize::from(idx)], self as *const Self, idx);
+        // println!("freeing {:?} at {:?} {}", self.data[usize::from(idx)], self as *const Self, idx);
         self.data[usize::from(idx)] = PoolEntry::Free(FreePoolEntry {
             prev: None,
             next: if debug { None } else { self.free_block },
@@ -289,8 +289,13 @@ pub struct PtrVec(Vec<PoolPtr>);
 
 impl PtrVec {
     pub fn push(&mut self, v: PoolPtr) {
-        debug_assert!(v.ok());
-        debug_assert!({v.deref(); true});
+        #[cfg(debug_assertions)] {
+            debug_assert!(v.ok());
+            debug_assert!({
+                v.deref();
+                true
+            });
+        }
         self.0.push(v);
     }
 
@@ -333,9 +338,9 @@ impl Heap {
         if self.gc_mode == GcMode::DebugHeavy {
             self.gc();
         } else if self.gc_mode.is_normal() && self.allocated_values > self.next_gc {
-            println!("running GC");
+            // println!("running GC");
             self.gc();
-            println!("ran GC");
+            // println!("ran GC");
             self.next_gc = (self.allocated_values as f32 * GC_GROWTH) as usize;
         }
 
@@ -354,12 +359,14 @@ impl Heap {
             self.full_pools.push(pool);
         }
         self.allocated_values += 1;
-        println!("Allocated {:?} for {:?}", ptr, *ptr);
+        // println!("Allocated {:?} for {:?}", ptr, *ptr);
         ptr
     }
 
     fn root(&mut self, p: PoolPtr) -> usize {
-        debug_assert!(!p.maybe_deref().is_free(), format!("rooting freed pointer {:?}", p));
+        #[cfg(debug_assertions)] {
+            debug_assert!(!p.maybe_deref().is_free(), format!("rooting freed pointer {:?}", p));
+        }
         let empty = self
             .roots
             .iter_mut()
@@ -367,12 +374,12 @@ impl Heap {
             .find(|(_i, e)| e.is_none());
         match empty {
             Some((i_r, r)) => {
-                println!("rooted {:?} at {}", p, i_r);
+                // println!("rooted {:?} at {}", p, i_r);
                 *r = Some(p);
                 i_r
             }
             None => {
-                println!("rooted {:?} at {}", p, self.roots.len());
+                // println!("rooted {:?} at {}", p, self.roots.len());
                 self.roots.push(Some(p));
                 self.roots.len() - 1
             }
@@ -502,7 +509,7 @@ impl Drop for RootPtr {
         // TODO - another option is do just ignore dead heaps as there's no need to unroot.
         //        however, a destroyed heap can mean that we have other dangling pointers.
         unsafe { &mut *self.heap.upgrade().expect("heap destroyed").get() }.roots[self.idx] = None;
-        println!("unrooted {{ pool: {:p}, idx: {} }}", self.heap.upgrade().unwrap(), self.idx);
+        // println!("unrooted {{ pool: {:p}, idx: {} }}", self.heap.upgrade().unwrap(), self.idx);
     }
 }
 

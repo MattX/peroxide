@@ -147,6 +147,7 @@ pub fn parse(
     af_info: &RcAfi,
     value: ValRef,
 ) -> Result<SyntaxElement, String> {
+    let _value_hold = arena.root(value);
     let (env, value) = resolve_syntactic_closure(arena, env, value)?;
     match arena.get(value) {
         Value::Symbol(s) => Ok(SyntaxElement::Reference(Box::new(construct_reference(
