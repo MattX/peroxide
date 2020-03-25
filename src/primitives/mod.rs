@@ -264,7 +264,9 @@ pub fn register_primitives(
 ) {
     let frame = arena.get_activation_frame(global_frame.vr());
     for prim in PRIMITIVES.iter() {
-        global_environment.borrow_mut().define(prim.name, &afi, true);
+        global_environment
+            .borrow_mut()
+            .define(prim.name, &afi, true);
         let ptr = arena.insert(Value::Primitive(prim));
         frame.borrow_mut().values.push(ptr);
     }

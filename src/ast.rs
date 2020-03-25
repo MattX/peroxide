@@ -771,13 +771,9 @@ fn expand_macro(
     let usage_environment = Value::Environment(env.clone());
     arena.insert(Value::Integer(100.into()));
     let syntax_tree = SyntaxElement::Application(Box::new(Application {
-        function: SyntaxElement::Quote(Box::new(Quote {
-            quoted: mac.lambda,
-        })),
+        function: SyntaxElement::Quote(Box::new(Quote { quoted: mac.lambda })),
         args: vec![
-            SyntaxElement::Quote(Box::new(Quote {
-                quoted: expr,
-            })),
+            SyntaxElement::Quote(Box::new(Quote { quoted: expr })),
             SyntaxElement::Quote(Box::new(Quote {
                 quoted: arena.insert_rooted(usage_environment),
             })),

@@ -15,18 +15,22 @@
 extern crate peroxide;
 
 use peroxide::arena::Arena;
+use peroxide::heap::RootPtr;
 use peroxide::initialize;
 use peroxide::parse_compile_run;
 use peroxide::read::read_many;
 use peroxide::value::Value;
 use peroxide::VmState;
-use peroxide::heap::RootPtr;
 
 fn execute(arena: &mut Arena, vm_state: &mut VmState, code: &str) -> Result<Value, String> {
     execute_rooted(arena, vm_state, code).map(|e| arena.get(e.vr()).clone())
 }
 
-fn execute_rooted(arena: &mut Arena, vm_state: &mut VmState, code: &str) -> Result<RootPtr, String> {
+fn execute_rooted(
+    arena: &mut Arena,
+    vm_state: &mut VmState,
+    code: &str,
+) -> Result<RootPtr, String> {
     let mut results: Vec<_> = read_many(arena, code)?
         .into_iter()
         .map(|read| parse_compile_run(arena, vm_state, read))

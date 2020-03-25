@@ -29,16 +29,15 @@
 ///
 /// This means that access through a PoolPtr might cause a segfault if the root has actually already
 /// been dropped.
-
 use std::cell::UnsafeCell;
 use std::convert::{From, TryFrom};
-use std::fmt::{Error, Formatter, Debug, self};
+use std::fmt::{self, Debug, Error, Formatter};
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::{Rc, Weak};
 
-use value::{Value, pretty_print};
+use value::{pretty_print, Value};
 
 use arena::ValRef;
 use bitvec::prelude::{BitBox, BitVec};
@@ -289,7 +288,8 @@ pub struct PtrVec(Vec<PoolPtr>);
 
 impl PtrVec {
     pub fn push(&mut self, v: PoolPtr) {
-        #[cfg(debug_assertions)] {
+        #[cfg(debug_assertions)]
+        {
             debug_assert!(v.ok());
             debug_assert!({
                 v.deref();
@@ -364,8 +364,12 @@ impl Heap {
     }
 
     fn root(&mut self, p: PoolPtr) -> usize {
-        #[cfg(debug_assertions)] {
-            debug_assert!(!p.maybe_deref().is_free(), format!("rooting freed pointer {:?}", p));
+        #[cfg(debug_assertions)]
+        {
+            debug_assert!(
+                !p.maybe_deref().is_free(),
+                format!("rooting freed pointer {:?}", p)
+            );
         }
         let empty = self
             .roots

@@ -155,7 +155,8 @@ pub struct Vm {
 
 impl Vm {
     fn set_value(&mut self, v: ValRef) {
-        #[cfg(debug_assertions)] {
+        #[cfg(debug_assertions)]
+        {
             debug_assert!(v.0.ok());
         }
         self.value = v;
@@ -284,15 +285,19 @@ fn run_one(arena: &Arena, vm: &mut Vm, code: &mut Code) -> Result<bool, Error> {
             vm.set_value(arena.unspecific);
         }
         Instruction::GlobalArgumentGet { index } => {
-            vm.set_value(get_activation_frame(arena, vm.global_env)
-                .borrow()
-                .get(arena, 0, index));
+            vm.set_value(
+                get_activation_frame(arena, vm.global_env)
+                    .borrow()
+                    .get(arena, 0, index),
+            );
         }
         Instruction::CheckedGlobalArgumentGet { index } => {
-            vm.set_value(arena
-                .get_activation_frame(vm.global_env)
-                .borrow()
-                .get(arena, 0, index));
+            vm.set_value(
+                arena
+                    .get_activation_frame(vm.global_env)
+                    .borrow()
+                    .get(arena, 0, index),
+            );
             if vm.value == arena.undefined {
                 return Err(raise_string(
                     arena,
@@ -310,9 +315,11 @@ fn run_one(arena: &Arena, vm: &mut Vm, code: &mut Code) -> Result<bool, Error> {
             vm.set_value(arena.unspecific);
         }
         Instruction::LocalArgumentGet { depth, index } => {
-            vm.set_value(get_activation_frame(arena, vm.env)
-                .borrow()
-                .get(arena, depth, index));
+            vm.set_value(
+                get_activation_frame(arena, vm.env)
+                    .borrow()
+                    .get(arena, depth, index),
+            );
         }
         Instruction::CheckedLocalArgumentGet { depth, index } => {
             let frame = arena.get_activation_frame(vm.env).borrow();
@@ -355,12 +362,10 @@ fn run_one(arena: &Arena, vm: &mut Vm, code: &mut Code) -> Result<bool, Error> {
                 .pop()
                 .expect("Returning with no values on return stack.");
         }
-        Instruction::CreateClosure(offset) => {
-            vm.set_value(arena.insert(Value::Lambda {
-                code: vm.pc + offset,
-                environment: vm.env,
-            }))
-        }
+        Instruction::CreateClosure(offset) => vm.set_value(arena.insert(Value::Lambda {
+            code: vm.pc + offset,
+            environment: vm.env,
+        })),
         Instruction::PackFrame(arity) => {
             let frame = get_activation_frame(arena, vm.value);
             let values = frame.borrow_mut().values.clone();
@@ -421,7 +426,10 @@ fn run_one(arena: &Arena, vm: &mut Vm, code: &mut Code) -> Result<bool, Error> {
             // then truncate the stack.
             let stack_len = vm.stack.len();
             for i in (0..size).rev() {
-                frame.values[i] = *vm.stack.get(stack_len - size + i).expect("too few values on stack.");
+                frame.values[i] = *vm
+                    .stack
+                    .get(stack_len - size + i)
+                    .expect("too few values on stack.");
             }
             vm.set_value(arena.insert(Value::ActivationFrame(RefCell::new(frame))));
             vm.stack.truncate(stack_len - size);
@@ -459,8 +467,10 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
             PrimitiveImplementation::Simple(i) => {
                 let af = arena.get_activation_frame(vm.value);
                 let values = &af.borrow().values;
-                vm.set_value(i(arena, &values)
-                    .map_err(|e| raise_string(arena, format!("In {:?}: {}", p, e)))?);
+                vm.set_value(
+                    i(arena, &values)
+                        .map_err(|e| raise_string(arena, format!("In {:?}: {}", p, e)))?,
+                );
             }
             PrimitiveImplementation::Apply => apply(arena, vm, tail)?,
             PrimitiveImplementation::CallCC => call_cc(arena, vm)?,
