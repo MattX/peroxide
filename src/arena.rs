@@ -39,6 +39,8 @@ impl Deref for ValRef {
 pub struct Arena {
     /// Roots held by the arena. This must come before [`values`], or the `Drop` on `RootPtr`
     /// will panic.
+    /// Clippy thinks this is never used, but just holding it is what's important
+    #[allow(dead_code)]
     roots: Vec<RootPtr>,
     symbol_map: RefCell<HashMap<String, RootPtr>>,
     gensym_counter: Cell<usize>,

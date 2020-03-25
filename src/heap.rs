@@ -37,7 +37,7 @@ use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::{Rc, Weak};
 
-use value::{pretty_print, Value};
+use value::Value;
 
 use arena::ValRef;
 use bitvec::prelude::{BitBox, BitVec};
@@ -193,6 +193,7 @@ impl Pool {
         }
     }
 
+    #[cfg(test)]
     fn free(self: Pin<&mut Self>, idx: u16, debug: bool) {
         let selr = unsafe { self.get_unchecked_mut() };
         selr.free_ref(idx, debug);
@@ -291,10 +292,6 @@ impl PtrVec {
         #[cfg(debug_assertions)]
         {
             debug_assert!(v.ok());
-            debug_assert!({
-                v.deref();
-                true
-            });
         }
         self.0.push(v);
     }
@@ -481,11 +478,13 @@ impl RHeap {
         self.root(ptr)
     }
 
+    #[cfg(test)]
     fn gc(&self) {
         unsafe { &mut *self.0.get() }.gc()
     }
 }
 
+/// A rooted pointer. Will unroot itself when dropped.
 #[derive(Debug)]
 pub struct RootPtr {
     pub ptr: PoolPtr,

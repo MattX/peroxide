@@ -194,6 +194,7 @@ macro_rules! prim_monotonic {
 }
 
 prim_monotonic!(equal, equal2);
+#[allow(clippy::float_cmp)]
 fn equal2(a: &Value, b: &Value) -> bool {
     match cast_same(a, b) {
         (Value::ComplexInteger(a), Value::ComplexInteger(b)) => a == b,

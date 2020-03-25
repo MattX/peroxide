@@ -21,7 +21,7 @@ use arena::Arena;
 use arena::ValRef;
 use environment::{ActivationFrame, RcEnv};
 use heap;
-use heap::{Inventory, PoolPtr, PtrVec, RootPtr};
+use heap::{Inventory, PtrVec, RootPtr};
 use primitives::PrimitiveImplementation;
 use value::{list_from_vec, pretty_print, vec_from_list, Value};
 
@@ -188,13 +188,6 @@ impl Error {
         match self {
             Error::Raise(v) => Error::Raise(f(v)),
             Error::Abort(v) => Error::Abort(f(v)),
-        }
-    }
-
-    fn get_value(&self) -> ValRef {
-        match self {
-            Error::Raise(v) => v.vr(),
-            Error::Abort(v) => v.vr(),
         }
     }
 
