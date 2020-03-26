@@ -56,94 +56,6 @@ pub enum Instruction {
     Finish,
 }
 
-/// A struct to hold the VM instructions and a mapping of instruction to lexical environment.
-///
-/// This is essentially used to provide variable names when an undefined value is accessed.
-///
-/// Any given part of the bytecode corresponds to a statically-known lexical environment. `env_map`
-/// keeps a vec of (bytecode address where an environment starts, environment), which we can
-/// binary-search to get the current environment from the current pc.
-// TODO: we don't need env_stack at runtime, so it should be moved to compile.rs.
-#[derive(Debug)]
-pub struct Code {
-    instructions: Vec<Instruction>,
-    env_map: Vec<(usize, RcEnv)>,
-    env_stack: Vec<RcEnv>,
-    lambda_map: Vec<(usize, Option<String>)>,
-    lambda_stack: Vec<String>,
-    constants: Vec<RootPtr>,
-}
-
-impl Code {
-    pub fn new(global_environment: &RcEnv) -> Self {
-        Code {
-            instructions: vec![],
-            env_map: vec![(0, global_environment.clone())],
-            env_stack: vec![global_environment.clone()],
-            lambda_map: vec![(0, None)],
-            lambda_stack: vec![],
-            constants: vec![],
-        }
-    }
-
-    pub fn push(&mut self, i: Instruction) {
-        self.instructions.push(i);
-    }
-
-    pub fn replace(&mut self, index: usize, new: Instruction) {
-        self.instructions[index] = new;
-    }
-
-    pub fn code_size(&self) -> usize {
-        self.instructions.len()
-    }
-
-    pub fn push_env(&mut self, env: &RcEnv) {
-        self.env_map.push((self.instructions.len(), env.clone()));
-        self.env_stack.push(env.clone());
-    }
-
-    pub fn pop_env(&mut self) {
-        let e = self
-            .env_stack
-            .pop()
-            .expect("Popping environment with no environments on stack.");
-        self.env_map.push((self.instructions.len(), e));
-    }
-
-    pub fn find_env(&self, at: usize) -> &RcEnv {
-        let env_index = self
-            .env_map
-            .binary_search_by_key(&at, |(instr, _env)| *instr)
-            .unwrap_or_else(|e| e - 1);
-        &self.env_map[env_index].1
-    }
-
-    pub fn push_lambda(&mut self, l: &str) {
-        self.lambda_map
-            .push((self.instructions.len(), Some(l.into())));
-        self.lambda_stack.push(l.into());
-    }
-
-    pub fn pop_lambda(&mut self) {
-        let e = self.lambda_stack.pop();
-        self.lambda_map.push((self.instructions.len(), e));
-    }
-
-    pub fn find_lambda(&self, at: usize) -> &Option<String> {
-        let lambda_index = self
-            .lambda_map
-            .binary_search_by_key(&at, |(instr, _env)| *instr)
-            .unwrap_or_else(|e| e - 1);
-        &self.lambda_map[lambda_index].1
-    }
-
-    pub fn push_constant(&mut self, c: RootPtr) -> usize {
-        self.constants.push(c);
-        self.constants.len() - 1
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnPoint {
     pub code_block: PoolPtr,
@@ -263,10 +175,8 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                 return Err(raise_string(
                     arena,
                     format!(
-                        "Variable used before definition: {} . {}",
-                        0,
-                        index,
-                        // resolve_variable(code, vm.pc, 0, index)
+                        "Variable used before definition: {}",
+                        resolve_variable(arena, vm, 0, index)
                     ),
                 ));
             }
@@ -292,10 +202,8 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                 return Err(raise_string(
                     arena,
                     format!(
-                        "Variable used before definition: {} . {}",
-                        current_depth - depth,
-                        index,
-                        //resolve_variable(code, vm.pc, current_depth - depth, index)
+                        "Variable used before definition: {}",
+                        resolve_variable(arena, vm, current_depth - depth, index)
                     ),
                 ));
             }
@@ -544,9 +452,11 @@ fn eval(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
     Ok(())
 }
 
-fn resolve_variable(code: &Code, pc: usize, altitude: usize, index: usize) -> String {
-    let env = code.find_env(pc).borrow();
-    env.get_name(altitude, index)
+fn resolve_variable(arena: &Arena, vm: &Vm, altitude: usize, index: usize) -> String {
+    let env = &arena
+        .get_code_block(ValRef(vm.current_code_block))
+        .environment;
+    env.borrow().get_name(altitude, index)
 }
 
 fn raise(arena: &Arena, vm: &Vm, abort: bool) -> Error {
@@ -561,25 +471,31 @@ fn raise(arena: &Arena, vm: &Vm, abort: bool) -> Error {
     }
 }
 
-/*
-fn error_stack(arena: &Arena, vm: &Vm, code: &Code, error: Error) -> Error {
+fn error_stack(arena: &Arena, vm: &Vm, error: Error) -> Error {
     let mut message = String::new();
-    let positions = std::iter::once(&vm.pc).chain(vm.return_stack.iter().rev());
-    for ret in positions {
-        let name = code
-            .find_lambda(*ret)
-            .clone()
-            .unwrap_or_else(|| "<toplevel>".into());
-        write!(message, "\n\tat {}", name).unwrap();
+    fn write_code_block(arena: &Arena, message: &mut String, cb: PoolPtr) {
+        write!(
+            message,
+            "\tat {}",
+            arena
+                .get_code_block(ValRef(cb))
+                .name
+                .as_deref()
+                .unwrap_or("[anonymous]")
+        )
+        .unwrap();
+    }
+    write_code_block(arena, &mut message, vm.current_code_block);
+    for ReturnPoint { code_block, .. } in vm.return_stack.iter() {
+        write_code_block(arena, &mut message, *code_block);
     }
     let msg_r = arena.insert_rooted(Value::String(RefCell::new(message)));
     error.map_error(|e| arena.insert_rooted(Value::Pair(Cell::new(e.vr()), Cell::new(msg_r.vr()))))
 }
-*/
 
 fn handle_error(arena: &Arena, vm: &mut Vm, e: Error) -> Result<RootPtr, RootPtr> {
-    // let annotated_e = error_stack(arena, &vm, code, e);
-    match e {
+    let annotated_e = error_stack(arena, &vm, e);
+    match annotated_e {
         Error::Abort(v) => Err(v),
         Error::Raise(v) => {
             let handler = arena.get_activation_frame(vm.global_env).borrow().values[0];

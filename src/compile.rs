@@ -18,7 +18,7 @@ use environment::RcEnv;
 use heap::{Inventory, PoolPtr, PtrVec, RootPtr};
 use std::cell::RefCell;
 use value::Value;
-use vm::{Code, Instruction};
+use vm::Instruction;
 
 // TODO in this file -- compilation can't fail so it makes no sense to return Result<> objects.
 
