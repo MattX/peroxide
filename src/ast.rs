@@ -141,7 +141,7 @@ struct Formals {
 /// constantly during parsing. Since the top-level value representing the expression to parse is
 /// rooted, we can get away with not rooting stuff as we go down the expression.
 pub fn parse(
-    arena: &mut Arena,
+    arena: &Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -194,7 +194,7 @@ fn construct_reference(env: &RcEnv, afi: &RcAfi, name: &str) -> Result<Reference
 }
 
 fn parse_pair(
-    arena: &mut Arena,
+    arena: &Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -228,7 +228,7 @@ fn parse_pair(
 }
 
 fn parse_quote(
-    arena: &mut Arena,
+    arena: &Arena,
     env: &RcEnv,
     rest: &[ValRef],
     syntax: bool,
@@ -246,7 +246,7 @@ fn parse_quote(
 }
 
 fn parse_if(
-    arena: &mut Arena,
+    arena: &Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -264,7 +264,7 @@ fn parse_if(
 }
 
 fn parse_begin(
-    arena: &mut Arena,
+    arena: &Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -279,7 +279,7 @@ fn parse_begin(
 }
 
 fn parse_lambda(
-    arena: &mut Arena,
+    arena: &Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -298,7 +298,7 @@ fn parse_lambda(
 }
 
 fn parse_split_lambda(
-    arena: &mut Arena,
+    arena: &Arena,
     vms: &mut VmState,
     outer_env: &RcEnv,
     af_info: &RcAfi,
@@ -377,7 +377,7 @@ fn parse_split_lambda(
 }
 
 fn parse_set(
-    arena: &mut Arena,
+    arena: &Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -413,7 +413,7 @@ fn parse_set(
 /// Parses toplevel defines. Inner defines have different semantics and are parsed differently
 /// (see [collect_internal_defines]).
 fn parse_define(
-    arena: &mut Arena,
+    arena: &Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -483,7 +483,7 @@ enum DefineValue {
 impl DefineValue {
     pub fn parse(
         &self,
-        arena: &mut Arena,
+        arena: &Arena,
         vms: &mut VmState,
         env: &RcEnv,
         af_info: &RcAfi,
@@ -545,7 +545,7 @@ fn get_lambda_define_value(arena: &Arena, rest: &[ValRef]) -> Result<DefineData,
 }
 
 fn parse_application(
-    arena: &mut Arena,
+    arena: &Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -598,7 +598,7 @@ fn parse_formals(arena: &Arena, formals: ValRef) -> Result<Formals, String> {
 }
 
 fn parse_define_syntax(
-    arena: &mut Arena,
+    arena: &Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -630,7 +630,7 @@ fn parse_define_syntax(
 }
 
 fn parse_let_syntax(
-    arena: &mut Arena,
+    arena: &Arena,
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
@@ -678,7 +678,7 @@ fn parse_let_syntax(
 }
 
 fn make_macro(
-    arena: &mut Arena,
+    arena: &Arena,
     env: &RcEnv,
     af_info: &RcAfi,
     vms: &mut VmState,
@@ -698,7 +698,7 @@ fn make_macro(
 /// Like parse_compile_run, but it creates a fake environment to evaluate the macro in.
 // TODO: refactor common code with parse_compile_run
 fn parse_compile_run_macro(
-    arena: &mut Arena,
+    arena: &Arena,
     env: &RcEnv,
     af_info: &RcAfi,
     vms: &mut VmState,
@@ -739,7 +739,7 @@ fn make_frame(arena: &Arena, global_frame: ValRef, af_info: &RcAfi) -> ValRef {
 }
 
 fn expand_macro_full(
-    arena: &mut Arena,
+    arena: &Arena,
     vms: &mut VmState,
     env: &RcEnv,
     mac: Macro,
@@ -759,7 +759,7 @@ fn expand_macro_full(
 }
 
 fn expand_macro(
-    arena: &mut Arena,
+    arena: &Arena,
     vms: &mut VmState,
     env: &RcEnv,
     mac: Macro,
@@ -836,7 +836,7 @@ fn match_symbol(env: &RcEnv, sym: &str) -> Symbol {
 
 #[allow(clippy::type_complexity)]
 fn collect_internal_defines(
-    arena: &mut Arena,
+    arena: &Arena,
     vms: &mut VmState,
     env: &RcEnv,
     body: &[ValRef],

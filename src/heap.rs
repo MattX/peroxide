@@ -313,7 +313,9 @@ struct Heap {
     allocated_values: usize,
     next_gc: usize,
     gc_mode: GcMode,
-    vm: Option<*const Vm>,
+    // `vms` basically acts as additional roots. There can be several rooted VMs at the same
+    // time when `eval` is used.
+    vms: Vec<*const Vm>,
 }
 
 impl Default for Heap {
@@ -325,7 +327,7 @@ impl Default for Heap {
             allocated_values: 0,
             next_gc: FIRST_GC,
             gc_mode: GcMode::Off,
-            vm: None,
+            vms: Vec::new(),
         }
     }
 }
@@ -388,22 +390,18 @@ impl Heap {
     }
 
     fn root_vm(&mut self, vm: &Vm) {
-        if self.vm.replace(vm as *const Vm).is_some() {
-            panic!("rooting VM while a VM is already rooted");
-        }
+        self.vms.push(vm as *const Vm)
     }
 
     fn unroot_vm(&mut self) {
-        if self.vm.take().is_none() {
-            panic!("unrooting nonexistent VM");
-        }
+        self.vms.pop();
     }
 
     fn gc(&mut self) {
         let stack: Vec<_> = self.roots.iter().filter_map(|s| *s).collect();
         let mut stack = PtrVec(stack);
 
-        if let Some(v) = self.vm {
+        for &v in self.vms.iter() {
             unsafe {
                 (*v).inventory(&mut stack);
             }
@@ -450,7 +448,7 @@ impl RHeap {
             allocated_values: 0,
             next_gc: FIRST_GC,
             gc_mode,
-            vm: None,
+            vms: vec![],
         })))
     }
 
@@ -519,6 +517,10 @@ impl Drop for RootPtr {
 impl RootPtr {
     pub fn vr(&self) -> ValRef {
         ValRef(self.ptr)
+    }
+
+    pub fn pp(&self) -> PoolPtr {
+        self.ptr
     }
 }
 

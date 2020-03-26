@@ -20,14 +20,14 @@ use std::fmt::Write;
 use arena::Arena;
 use arena::ValRef;
 use environment::{ActivationFrame, RcEnv};
-use heap;
-use heap::{Inventory, PtrVec, RootPtr};
+use ::{heap, parse_compile_run};
+use heap::{Inventory, PtrVec, RootPtr, PoolPtr};
 use primitives::PrimitiveImplementation;
 use value::{list_from_vec, pretty_print, vec_from_list, Value};
 
 static MAX_RECURSION_DEPTH: usize = 1000;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Instruction {
     Constant(usize),
     JumpFalse(usize),
@@ -175,34 +175,6 @@ impl Inventory for Vm {
     }
 }
 
-enum Error {
-    Raise(RootPtr),
-    Abort(RootPtr),
-}
-
-impl Error {
-    fn map_error<F>(self, f: F) -> Error
-    where
-        F: FnOnce(RootPtr) -> RootPtr,
-    {
-        match self {
-            Error::Raise(v) => Error::Raise(f(v)),
-            Error::Abort(v) => Error::Abort(f(v)),
-        }
-    }
-
-    fn into_value(self) -> RootPtr {
-        match self {
-            Error::Raise(v) => v,
-            Error::Abort(v) => v,
-        }
-    }
-}
-
-fn raise_string(arena: &Arena, error: String) -> Error {
-    Error::Raise(arena.insert_rooted(Value::String(RefCell::new(error))))
-}
-
 // TODO rename env around here to frame
 pub fn run(
     arena: &Arena,
@@ -220,7 +192,6 @@ pub fn run(
         env,
         fun: arena.unspecific,
     };
-    // println!("rooting VM");
     arena.root_vm(&vm);
     let res = loop {
         match run_one(arena, &mut vm, code) {
@@ -229,39 +200,11 @@ pub fn run(
             Err(e) => break handle_error(arena, &mut vm, code, e),
         }
     };
-    // println!("unrooting VM");
     arena.unroot_vm();
     res
 }
 
-fn handle_error(arena: &Arena, vm: &mut Vm, code: &Code, e: Error) -> Result<RootPtr, RootPtr> {
-    let annotated_e = error_stack(arena, &vm, code, e);
-    match annotated_e {
-        Error::Abort(v) => Err(v),
-        Error::Raise(v) => {
-            let handler = arena.get_activation_frame(vm.global_env).borrow().values[0];
-            match arena.get(handler) {
-                Value::Boolean(false) => Err(v),
-                Value::Lambda { .. } => {
-                    let frame = ActivationFrame {
-                        parent: None,
-                        values: vec![v.vr()],
-                    };
-                    vm.fun = handler;
-                    vm.set_value(arena.insert(Value::ActivationFrame(RefCell::new(frame))));
-                    invoke(arena, vm, false).map_err(|e| e.into_value())?;
-                    vm.pc += 1;
-                    Ok(arena.root(arena.unspecific))
-                }
-                _ => {
-                    Err(arena.insert_rooted(Value::String(RefCell::new("invalid handler".into()))))
-                }
-            }
-        }
-    }
-}
-
-fn run_one(arena: &Arena, vm: &mut Vm, code: &mut Code) -> Result<bool, Error> {
+fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
     // println!("running {:?}", code.instructions[vm.pc]);
     match code.instructions[vm.pc] {
         Instruction::Constant(v) => vm.set_value(code.constants[v].vr()),
@@ -469,7 +412,7 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
             PrimitiveImplementation::CallCC => call_cc(arena, vm)?,
             PrimitiveImplementation::Abort => return Err(raise(arena, vm, true)),
             PrimitiveImplementation::Raise => return Err(raise(arena, vm, false)),
-            _ => return Err(raise_string(arena, format!("Unimplemented: {}", p.name))),
+            PrimitiveImplementation::Eval => eval(arena, vm)?,
         },
         Value::Continuation(c) => {
             let af = arena.get_activation_frame(vm.value).borrow();
@@ -501,7 +444,7 @@ fn apply(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
     let af = arena.get_activation_frame(vm.value).borrow();
     let n_args = af.values.len();
     if n_args < 2 {
-        return Err(raise_string(arena, "apply: too few arguments.".into()));
+        return Err(raise_string(arena, "apply: too few arguments".into()));
     }
     let mut values = af.values[1..n_args - 1].to_vec();
     let vec = vec_from_list(arena, af.values[n_args - 1]).map_err(|e| raise_string(arena, e))?;
@@ -539,6 +482,26 @@ fn call_cc(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
     invoke(arena, vm, true)
 }
 
+fn eval(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
+    let af = arena.get_activation_frame(vm.value).borrow();
+    let n_args = af.values.len();
+    if n_args != 2 {
+        return Err(raise_string(arena, "eval: expected 2 arguments".into()));
+    }
+    let expr = af.values[0];
+    let env_descriptor = arena.try_get_string(af.values[1])
+        .ok_or_else(|| raise_string(arena, format!("eval: invalid environment descriptor: {}", &*af.values[1])))?
+        .borrow()
+        .clone();
+
+    // TODO filter environment depending on env descriptor
+
+    let res = parse_compile_run(arena, &mut VmState::new(arena), arena.root(expr))
+        .map_err(|e| raise_string(arena, format!("eval: {}", e)))?;
+    vm.set_value(res.vr());
+    Ok(())
+}
+
 fn resolve_variable(code: &Code, pc: usize, altitude: usize, index: usize) -> String {
     let env = code.find_env(pc).borrow();
     env.get_name(altitude, index)
@@ -570,6 +533,33 @@ fn error_stack(arena: &Arena, vm: &Vm, code: &Code, error: Error) -> Error {
     error.map_error(|e| arena.insert_rooted(Value::Pair(Cell::new(e.vr()), Cell::new(msg_r.vr()))))
 }
 
+fn handle_error(arena: &Arena, vm: &mut Vm, e: Error) -> Result<RootPtr, RootPtr> {
+    // let annotated_e = error_stack(arena, &vm, code, e);
+    match e {
+        Error::Abort(v) => Err(v),
+        Error::Raise(v) => {
+            let handler = arena.get_activation_frame(vm.global_env).borrow().values[0];
+            match arena.get(handler) {
+                Value::Boolean(false) => Err(v),
+                Value::Lambda { .. } => {
+                    let frame = ActivationFrame {
+                        parent: None,
+                        values: vec![v.vr()],
+                    };
+                    vm.fun = handler;
+                    vm.set_value(arena.insert(Value::ActivationFrame(RefCell::new(frame))));
+                    invoke(arena, vm, false).map_err(|e| e.into_value())?;
+                    vm.pc += 1;
+                    Ok(arena.root(arena.unspecific))
+                }
+                _ => {
+                    Err(arena.insert_rooted(Value::String(RefCell::new("invalid handler".into()))))
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Continuation {
     stack: Vec<ValRef>,
@@ -582,4 +572,32 @@ impl heap::Inventory for Continuation {
             v.push(obj.0);
         }
     }
+}
+
+enum Error {
+    Raise(RootPtr),
+    Abort(RootPtr),
+}
+
+impl Error {
+    fn map_error<F>(self, f: F) -> Error
+        where
+            F: FnOnce(RootPtr) -> RootPtr,
+    {
+        match self {
+            Error::Raise(v) => Error::Raise(f(v)),
+            Error::Abort(v) => Error::Abort(f(v)),
+        }
+    }
+
+    fn into_value(self) -> RootPtr {
+        match self {
+            Error::Raise(v) => v,
+            Error::Abort(v) => v,
+        }
+    }
+}
+
+fn raise_string(arena: &Arena, error: String) -> Error {
+    Error::Raise(arena.insert_rooted(Value::String(RefCell::new(error))))
 }

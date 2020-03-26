@@ -3,14 +3,31 @@
 A scheme interpreter in Rust. Aims for R5RS/R7RS compliance. Heavily based
 on the interpreter described in _Lisp in Small Pieces_.
 
+## General implementation notes
+
+This is a bytecode compiling implementation: scheme code is for converted to bytecode, then interpreted by a virtual
+machine. (Right now, the bytecode is not *byte*code in the proper sense as instructions are not 1-byte long, but
+this should be fixed in the future).
+
+The standard library is essentially ripped off [Chibi Scheme](https://github.com/ashinn/chibi-scheme). See
+[init.scm](src/scheme-lib/init.scm) for license details. Credit to Alex Shinn for writing it.
+
+Peroxide is strictly single-threaded.
+
+This comes with a very simple garbage collector. See the comment in [heap.rs](src/heap.rs) for implementation details.
+Unfortunately it meshes poorly with Rust's memory management. The key thing to remember when making changes,
+especially to the AST parser, is that any call to `arena.insert()` (the method used to ask the GC for memory) may
+trigger a garbage-collection pass and destroy anything that isn't rooted. Make sure to hold `RootPtr`s to any
+Scheme data you care about when doing stuff!
+
+The macro system was another important implementation question. I ended up going with a system similar to Chibi
+Scheme's so that I could reuse more of the standard library 🙃. This does mean that, in addition to `syntax-case`,
+Peroxide supports the more general syntactic closure macro paradigm. See [doc/macros.md](doc/macros.md) for details.
 
 ## Todo
 
 ### Concrete
 
-* Fix failing tests
-  * Implement quote and syntax-quote correctly. Quote should strip outermost
-    syntactic closures. 
 * Add ~~apply~~ and eval
 * Implement error handling
   * It can be handled mostly in userspace, but that creates
@@ -20,44 +37,26 @@ on the interpreter described in _Lisp in Small Pieces_.
 * Implement the rest of the stdlib, esp. ports and bytevecs
 * Implement libraries
 * Allow define-syntax in internal defines
-* Implement let (application of lambda) optimization
+* Implement let optimization
 * Inline primitives
 * ~~Implement name lookup on error~~ ⇒ needs to be fixed
 * Assign names to lambdas when possible
-* Turn the GC on (oh noooo)
 * Keep track of which lines map to which tokens, which map to which
 expressions, which map to what bytecode. This will let us have
 much better error messages.
+* Loooots of code cleanup necessary
+* Figure out how to embed init.scm in a reasonable way (probably by precompiling)
+* Allow garbage collection of code like in Python
+* Handle interrupts
 * Allow fully disabling rustyline [using features](
 https://doc.rust-lang.org/cargo/reference/manifest.html#the-features-section).
-
-
-### Done
-
-* ~~Support internal defines~~
-* ~~Support let-syntax and letrec-syntax~~
-* ~~Support syntactic closures~~
-* ~~Implement `dynamic-wind`~~
-* ~~Figure out the `syntax-quote` vs `quote` thing~~
-  * I think this is mostly a chibi-scheme thing.
-    * It is not :) `quote` also strips out the topmost syntactic closure if it exists.
-* ~~Write syntax-rules → done by lifting it from Chibi~~
-* ~~Add `call/cc`.~~
-
 
 ### Vague
 
 #### Medium
 
-* Maybe support exact and inexact numbers, and complexes and rationals
- * Catch overflows or support bigints
- * Idea: Make a `Value::Numeric` that would then contain the numeric
-   subtypes. 
 * Make errors not be strings :)
-* Tie bytecode to AST and AST to input
-* Tie bytecode to environment (sort of done if I do the thing above)
-* Allow commands like `,exit` or `,decompile`
-
+* Allow meta-commands like `,exit` or `,decompile`
 
 ## Useful documentation
 

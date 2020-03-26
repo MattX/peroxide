@@ -103,7 +103,7 @@ macro_rules! simple_primitive {
     };
 }
 
-static PRIMITIVES: [Primitive; 106] = [
+static PRIMITIVES: [Primitive; 107] = [
     simple_primitive!("make-syntactic-closure", make_syntactic_closure),
     simple_primitive!("identifier=?", identifier_equal_p),
     simple_primitive!("identifier?", identifier_p),
@@ -228,6 +228,10 @@ static PRIMITIVES: [Primitive; 106] = [
         name: "abort",
         implementation: PrimitiveImplementation::Abort,
     },
+    Primitive {
+        name: "eval",
+        implementation: PrimitiveImplementation::Eval,
+    },
 ];
 
 pub struct Primitive {
@@ -257,7 +261,7 @@ impl PartialEq for Primitive {
 }
 
 pub fn register_primitives(
-    arena: &mut Arena,
+    arena: &Arena,
     global_environment: &RcEnv,
     afi: &RcAfi,
     global_frame: &RootPtr,

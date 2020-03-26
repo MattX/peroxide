@@ -875,3 +875,12 @@
     (let ((res (get-output-string out)))
       (close-output-port out)
       res)))
+
+
+;; Eval
+
+(define (scheme-report-environment v)
+  (if (= v 5) "r5rs" (raise "invalid environment descriptor")))
+
+(define (null-environment v)
+  (if (= v 5) "null" (raise "invalid environment descriptor")))

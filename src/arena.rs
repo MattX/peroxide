@@ -25,6 +25,8 @@ use primitives::{Port, SyntacticClosure};
 use value::Value;
 use vm::Vm;
 
+/// A wrapper over PoolPtr
+// TODO this is useless and should be removed.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ValRef(pub heap::PoolPtr);
 
@@ -36,8 +38,9 @@ impl Deref for ValRef {
     }
 }
 
+/// A frontend for Heap / RHeap that handles convenience operations.
 pub struct Arena {
-    /// Roots held by the arena. This must come before [`values`], or the `Drop` on `RootPtr`
+    /// Roots held by the arena. This must come before [`heap`], or the `Drop` on `RootPtr`
     /// will panic.
     /// Clippy thinks this is never used, but just holding it is what's important
     #[allow(dead_code)]
@@ -50,7 +53,7 @@ pub struct Arena {
     pub empty_list: ValRef,
     pub t: ValRef,
     pub f: ValRef,
-    values: heap::RHeap,
+    heap: heap::RHeap,
 }
 
 impl Arena {
@@ -69,27 +72,27 @@ impl Arena {
                     Some(u) => u.vr(),
                     None => {
                         let label = s.clone();
-                        let pos = self.values.allocate_rooted(Value::Symbol(s));
+                        let pos = self.heap.allocate_rooted(Value::Symbol(s));
                         let ptr = pos.vr();
                         self.symbol_map.borrow_mut().insert(label, pos);
                         ptr
                     }
                 }
             }
-            _ => ValRef(self.values.allocate(v)),
+            _ => ValRef(self.heap.allocate(v)),
         }
     }
 
     pub fn root(&self, at: ValRef) -> RootPtr {
-        self.values.root(at.0)
+        self.heap.root(at.0)
     }
 
     pub fn root_vm(&self, vm: &Vm) {
-        self.values.root_vm(vm);
+        self.heap.root_vm(vm);
     }
 
     pub fn unroot_vm(&self) {
-        self.values.unroot_vm();
+        self.heap.unroot_vm();
     }
 
     pub fn insert_rooted(&self, v: Value) -> RootPtr {
@@ -105,7 +108,7 @@ impl Arena {
         if let Value::ActivationFrame(ref af) = self.get(at) {
             af
         } else {
-            panic!("Value is not an activation frame.");
+            panic!("value is not an activation frame");
         }
     }
 
@@ -204,7 +207,7 @@ impl Default for Arena {
         root!(t, Value::Boolean(true));
 
         Arena {
-            values,
+            heap: values,
             symbol_map: RefCell::new(HashMap::new()),
             gensym_counter: Cell::new(0),
             undefined,

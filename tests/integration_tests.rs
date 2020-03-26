@@ -502,3 +502,20 @@ fn do_macro() {
         .unwrap()
     );
 }
+
+#[test]
+#[ignore]
+fn eval() {
+    let mut arena = Arena::default();
+    let mut vm_state = VmState::new(&mut arena);
+    initialize(&mut arena, &mut vm_state, "src/scheme-lib/init.scm").unwrap();
+    assert_eq!(
+        Value::Integer(20.into()),
+        execute(
+            &mut arena,
+            &mut vm_state,
+            "(let ((f (eval '(lambda (f x) (f x x)) (null-environment 5)))) (f + 10))"
+        )
+            .unwrap()
+    );
+}

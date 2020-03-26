@@ -32,6 +32,7 @@ use heap::RootPtr;
 use read::read_many;
 use value::{pretty_print, Value};
 use vm::{Code, Instruction};
+use compile::CodeBlock;
 
 pub mod arena;
 pub mod ast;
@@ -56,7 +57,7 @@ pub struct VmState {
 }
 
 impl VmState {
-    pub fn new(arena: &mut Arena) -> Self {
+    pub fn new(arena: &Arena) -> Self {
         let global_environment = Rc::new(RefCell::new(Environment::new(None)));
         let global_frame =
             arena.insert_rooted(Value::ActivationFrame(RefCell::new(ActivationFrame {
@@ -97,7 +98,7 @@ pub fn initialize(arena: &mut Arena, state: &mut VmState, fname: &str) -> Result
 
 /// High-level interface to parse, compile, and run a value that's been read.
 pub fn parse_compile_run(
-    arena: &mut Arena,
+    arena: &Arena,
     state: &mut VmState,
     read: RootPtr,
 ) -> Result<RootPtr, String> {
@@ -122,7 +123,7 @@ pub fn parse_compile_run(
 }
 
 pub fn compile_run(
-    arena: &mut Arena,
+    arena: &Arena,
     state: &mut VmState,
     syntax_tree: &SyntaxElement,
 ) -> Result<RootPtr, String> {
