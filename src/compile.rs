@@ -12,19 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ast::SyntaxElement;
+use ast::{SyntaxElement, Lambda};
 use vm::{Code, Instruction};
 use heap::{RootPtr, Inventory, PtrVec, PoolPtr};
 use environment::RcEnv;
+use value::Value;
+use arena::{Arena, ValRef};
+use std::cell::RefCell;
+
+// TODO in this file -- compilation can't fail so it makes no sense to return Result<> objects.
 
 /// A unit of code corresponding to a function.
 #[derive(Debug, PartialEq, Clone)]
 pub struct CodeBlock {
     pub name: Option<String>,
     pub arity: usize,
-    pub has_rest: bool,
+    pub dotted: bool,
     pub instructions: Vec<Instruction>,
     pub constants: Vec<PoolPtr>,
+    pub code_blocks: Vec<PoolPtr>,
     pub environment: RcEnv,
 }
 
@@ -33,18 +39,22 @@ impl Inventory for CodeBlock {
         for &c in self.constants.iter() {
             v.push(c);
         }
+        for &c in self.code_blocks.iter() {
+            v.push(c);
+        }
     }
 }
 
 impl CodeBlock {
-    pub fn new(name: Option<String>, arity: usize, has_rest: bool, environment: &RcEnv) -> Self {
+    pub fn new(name: Option<String>, arity: usize, dotted: bool, environment: RcEnv) -> Self {
         CodeBlock {
             name,
             arity,
-            has_rest,
+            dotted,
             instructions: vec![],
             constants: vec![],
-            environment: environment.clone(),
+            code_blocks: vec![],
+            environment,
         }
     }
 
@@ -65,78 +75,73 @@ impl CodeBlock {
         self.constants.len() - 1
     }
 }
+
+pub fn compile_toplevel(
+    arena: &Arena,
+    tree: &SyntaxElement,
+    environment: RcEnv
+) -> Result<PoolPtr, String> {
+    let mut code_block = CodeBlock::new(Some("[toplevel]".into()), 0, false, environment);
+
+    // rooted_vec is a bit of a hack to avoid accidentally GCing code blocks.
+    // Why is this needed? CodeBlock objects are immutable once inserted, so we'll have to insert
+    // the toplevel one at the very end of the compilation procedure. This means that any sub-
+    // CodeBlocks aren't rooted even if they are added to the toplevel CodeBlock's code_blocks
+    // array. To alleviate this, we create this additional mutable vector to which we can add
+    // items in progress.
+    let rooted_vec = arena.insert_rooted(Value::Vector(RefCell::new(vec![])));
+
+    compile(arena, tree, &mut code_block, false, rooted_vec.pp())?;
+    code_block.push(Instruction::Finish);
+    Ok(arena.insert(Value::CodeBlock(Box::new(code_block))).0)
+}
+
 pub fn compile(
+    arena: &Arena,
     tree: &SyntaxElement,
     code: &mut CodeBlock,
     tail: bool,
-    toplevel: bool,
-) -> Result<usize, String> {
-    if tail && toplevel {
-        panic!("toplevel expression is not in tail position")
-    }
-    let initial_len = code.code_size();
+    rv: PoolPtr,
+) -> Result<(), String> {
     match tree {
         SyntaxElement::Quote(q) => {
             let idx = code.push_constant(q.quoted.pp());
             code.push(Instruction::Constant(idx));
         }
         SyntaxElement::If(i) => {
-            compile(&i.cond, code, false, false)?;
+            compile(arena, &i.cond, code, false, rv)?;
             let cond_jump = code.code_size();
             code.push(Instruction::NoOp); // Is rewritten as a conditional jump below
-            compile(&i.t, code, tail, false)?;
+            compile(arena, &i.t, code, tail, rv)?;
             let mut true_end = code.code_size();
             if let Some(ref f) = i.f {
                 code.push(Instruction::NoOp);
                 true_end += 1;
-                compile(f, code, tail, false)?;
+                compile(arena, f, code, tail, rv)?;
                 let jump_offset = code.code_size() - true_end;
                 code.replace(true_end - 1, Instruction::Jump(jump_offset));
             }
             code.replace(cond_jump, Instruction::JumpFalse(true_end - cond_jump - 1));
         }
         SyntaxElement::Begin(b) => {
-            compile_sequence(&b.expressions, code, tail)?;
+            compile_sequence(arena, &b.expressions, code, tail, rv)?;
         }
         SyntaxElement::Set(s) => {
-            compile(&s.value, code, false, false)?;
+            compile(arena, &s.value, code, false, rv)?;
             code.push(make_set_instruction(s.altitude, s.depth, s.index));
         }
         SyntaxElement::Reference(r) => {
             code.push(make_get_instruction(r.altitude, r.depth, r.index));
         }
         SyntaxElement::Lambda(l) => {
-            code.push(Instruction::CreateClosure(1));
-            let skip_pos = code.code_size();
-            code.push(Instruction::NoOp); // Will be replaced with over function code
-            code.push(Instruction::CheckArity {
-                arity: l.arity,
-                dotted: l.dotted,
-            });
-            if l.dotted {
-                code.push(Instruction::PackFrame(l.arity));
-            }
-            code.push(Instruction::ExtendFrame(l.defines.len()));
-            code.push(Instruction::ExtendEnv);
-            //code.push_env(&l.env);
-            //code.push_lambda(&l.name.clone().unwrap_or_else(|| "[anonymous]".into()));
-
-            if !l.defines.is_empty() {
-                compile_sequence(&l.defines, code, false)?;
-            }
-            compile_sequence(&l.expressions, code, true)?;
-
-            //code.pop_lambda();
-            //code.pop_env();
-            code.push(Instruction::Return);
-            let jump_offset = code.code_size() - skip_pos - 1;
-            code.replace(skip_pos, Instruction::Jump(jump_offset));
+            code.code_blocks.push(compile_lambda(arena, l, rv)?);
+            code.push(Instruction::CreateClosure(code.code_blocks.len() - 1));
         }
         SyntaxElement::Application(a) => {
-            compile(&a.function, code, false, false)?;
+            compile(arena, &a.function, code, false, rv)?;
             code.push(Instruction::PushValue);
             for instr in a.args.iter() {
-                compile(instr, code, false, false)?;
+                compile(arena, instr, code, false, rv)?;
                 code.push(Instruction::PushValue);
             }
             code.push(Instruction::CreateFrame(a.args.len()));
@@ -150,26 +155,56 @@ pub fn compile(
             }
         }
     }
-    Ok(code.code_size() - initial_len)
+    Ok(())
 }
 
 fn compile_sequence(
+    arena: &Arena,
     expressions: &[SyntaxElement],
     code: &mut CodeBlock,
     tail: bool,
+    rv: PoolPtr,
 ) -> Result<usize, String> {
     let initial_len = code.code_size();
     for instr in expressions[..expressions.len() - 1].iter() {
-        compile(instr, code, false, false)?;
+        compile(arena, instr, code, false, rv)?;
     }
     compile(
+        arena,
         // This should have been caught at the syntax step.
         expressions.last().expect("empty sequence"),
         code,
         tail,
-        false,
+        rv,
     )?;
     Ok(code.code_size() - initial_len)
+}
+
+fn compile_lambda(arena: &Arena, l: &Lambda, rv: PoolPtr) -> Result<PoolPtr, String> {
+    let mut code = CodeBlock::new(l.name.clone(), l.arity, l.dotted, l.env.clone());
+    // See `compile_toplevel` for an explanation of rooted_vec
+    let rooted_vec = arena.insert_rooted(Value::Vector(RefCell::new(vec![])));
+
+    code.push(Instruction::CheckArity {
+        arity: l.arity,
+        dotted: l.dotted,
+    });
+    if l.dotted {
+        code.push(Instruction::PackFrame(l.arity));
+    }
+    code.push(Instruction::ExtendFrame(l.defines.len()));
+    code.push(Instruction::ExtendEnv);
+
+    if !l.defines.is_empty() {
+        compile_sequence(arena, &l.defines, &mut code, false, rooted_vec.pp())?;
+    }
+    compile_sequence(arena, &l.expressions, &mut code, true, rooted_vec.pp())?;
+
+    code.push(Instruction::Return);
+
+    let code_block_ptr = arena.insert(Value::CodeBlock(Box::new(code))).0;
+    arena.try_get_vector(ValRef(rv)).unwrap().borrow_mut().push(ValRef(code_block_ptr));
+    Ok(code_block_ptr)
 }
 
 fn make_get_instruction(altitude: usize, depth: usize, index: usize) -> Instruction {

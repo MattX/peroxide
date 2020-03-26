@@ -705,7 +705,7 @@ fn parse_compile_run_macro(
     val: ValRef,
 ) -> Result<ValRef, String> {
     let syntax_tree =
-        parse(arena, vms, env, af_info, val).map_err(|e| format!("Syntax error: {}", e))?;
+        parse(arena, vms, env, af_info, val).map_err(|e| format!("syntax error: {}", e))?;
     arena
         .get_activation_frame(vms.global_frame.vr())
         .borrow_mut()
@@ -713,15 +713,13 @@ fn parse_compile_run_macro(
 
     let frame = make_frame(arena, vms.global_frame.vr(), af_info);
 
-    let start_pc = vms.code.code_size();
-    compile::compile(&syntax_tree, &mut vms.code, false, true)
-        .map_err(|e| format!("Compilation error: {}", e))?;
-    vms.code.push(Instruction::Finish);
+    let code = compile::compile_toplevel(arena, &syntax_tree, vms.global_environment.clone())
+        .map_err(|e| format!("compilation error: {}", e))?;
     // println!(" => {:?}", &state.code[start_pc..state.code.len()]);
-    let code = arena.insert_rooted(Value::CodeBlock(Box::new(vms.code.clone())));
-    vm::run(arena, code, start_pc, vms.global_frame.vr(), frame)
+    let code = arena.root(ValRef(code));
+    vm::run(arena, code, 0, vms.global_frame.vr(), frame)
         .map(|v| v.vr())
-        .map_err(|e| format!("Runtime error: {}", pretty_print(arena, e.vr())))
+        .map_err(|e| format!("runtime error: {}", pretty_print(arena, e.vr())))
 }
 
 fn make_frame(arena: &Arena, global_frame: ValRef, af_info: &RcAfi) -> ValRef {

@@ -25,6 +25,7 @@ use primitives::{Port, Primitive, SyntacticClosure};
 use vm::Continuation;
 use {heap, util};
 use compile::CodeBlock;
+use heap::PoolPtr;
 
 // TODO box some of these, values are currently 56 bytes long oh no
 // TODO remove PartialEq and Clone. Clone should only be used in the numeric primitives library.
@@ -49,7 +50,7 @@ pub enum Value {
     Pair(Cell<ValRef>, Cell<ValRef>),
     ByteVector(RefCell<Vec<u8>>),
     Vector(RefCell<Vec<ValRef>>),
-    Lambda { code: usize, environment: ValRef },
+    Lambda { code: PoolPtr, frame: PoolPtr },
     Port(Box<Port>),
     Primitive(&'static Primitive),
     ActivationFrame(RefCell<ActivationFrame>),
@@ -115,8 +116,9 @@ impl heap::Inventory for Value {
                     v.push(val.0);
                 }
             }
-            Value::Lambda { environment, .. } => {
-                v.push(environment.0);
+            Value::Lambda { code, frame } => {
+                v.push(*code);
+                v.push(*frame);
             }
             Value::ActivationFrame(af) => {
                 let f = af.borrow();

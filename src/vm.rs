@@ -145,15 +145,22 @@ impl Code {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ReturnPoint {
+    pub code_block: PoolPtr,
+    pub pc: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Vm {
     value: ValRef,
     pc: usize,
-    return_stack: Vec<usize>,
+    return_stack: Vec<ReturnPoint>,
     stack: Vec<ValRef>,
     global_env: ValRef,
     env: ValRef,
     fun: ValRef,
     root_code_block: PoolPtr,
+    current_code_block: PoolPtr,
 }
 
 impl Vm {
@@ -163,6 +170,13 @@ impl Vm {
             debug_assert!(v.0.ok());
         }
         self.value = v;
+    }
+
+    fn get_return_point(&self) -> ReturnPoint {
+        ReturnPoint {
+            code_block: self.current_code_block,
+            pc: self.pc
+        }
     }
 }
 
@@ -175,7 +189,11 @@ impl Inventory for Vm {
         for s in self.stack.iter() {
             v.push(s.0);
         }
-        v.push(self.root_code_block)
+        v.push(self.root_code_block);
+        v.push(self.current_code_block);
+        for rp in self.return_stack.iter() {
+            v.push(rp.code_block);
+        }
     }
 }
 
@@ -196,6 +214,7 @@ pub fn run(
         env,
         fun: arena.unspecific,
         root_code_block: code.pp(),
+        current_code_block: code.pp(),
     };
     arena.root_vm(&vm);
     let res = loop {
@@ -210,8 +229,8 @@ pub fn run(
 }
 
 fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
-    // println!("running {:?}", code.instructions[vm.pc]);
-    let code = arena.get_code_block(ValRef(vm.root_code_block));
+    let code = arena.get_code_block(ValRef(vm.current_code_block));
+    // println!("running {:?}, rst {:?}", code.instructions[vm.pc], vm.return_stack);
     match code.instructions[vm.pc] {
         Instruction::Constant(v) => vm.set_value(ValRef(code.constants[v])),
         Instruction::JumpFalse(offset) => {
@@ -299,15 +318,19 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
             vm.env = vm.value;
         }
         Instruction::Return => {
-            vm.pc = vm
+            let ReturnPoint { code_block, pc } =  vm
                 .return_stack
                 .pop()
                 .expect("Returning with no values on return stack.");
+            vm.current_code_block = code_block;
+            vm.pc = pc;
         }
-        Instruction::CreateClosure(offset) => vm.set_value(arena.insert(Value::Lambda {
-            code: vm.pc + offset,
-            environment: vm.env,
-        })),
+        Instruction::CreateClosure(idx) => {
+            vm.set_value(arena.insert(Value::Lambda {
+                code: code.code_blocks[idx],
+                frame: vm.env.0,
+            }));
+        }
         Instruction::PackFrame(arity) => {
             let frame = get_activation_frame(arena, vm.value);
             let values = frame.borrow_mut().values.clone();
@@ -350,7 +373,7 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                 _ => {
                     return Err(raise_string(
                         arena,
-                        format!("cannot apply non-function: {}", pretty_print(arena, fun_r)),
+                        format!("cannot pop non-function: {}", pretty_print(arena, fun_r)),
                     ));
                 }
             }
@@ -366,6 +389,8 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
             // We could just pop values from the stack as we add them to the frame, but
             // this causes them to become unrooted, which is bad. So we copy the values,
             // then truncate the stack.
+            // Matt from 3 months later - I don't see why the above is true. There's no
+            // allocations in this block so it's fine to temporarily unroot these values.
             let stack_len = vm.stack.len();
             for i in (0..size).rev() {
                 frame.values[i] = *vm
@@ -392,7 +417,7 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
     let fun = arena.get(vm.fun);
     match fun {
         Value::Lambda {
-            code, environment, ..
+            code, frame
         } => {
             if !tail {
                 if vm.return_stack.len() > MAX_RECURSION_DEPTH {
@@ -400,10 +425,11 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
                         RefCell::new("Maximum recursion depth exceeded".into()),
                     ))));
                 }
-                vm.return_stack.push(vm.pc);
+                vm.return_stack.push(vm.get_return_point());
             }
-            vm.env = *environment;
-            vm.pc = *code;
+            vm.env = ValRef(*frame);
+            vm.current_code_block = *code;
+            vm.pc = 0;
         }
         Value::Primitive(p) => match p.implementation {
             PrimitiveImplementation::Simple(i) => {
@@ -430,10 +456,12 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
             }
             vm.stack = c.stack.clone();
             vm.return_stack = c.return_stack.clone();
-            vm.pc = vm
+            let ReturnPoint { code_block, pc } = vm
                 .return_stack
                 .pop()
                 .expect("Popping continuation with no return address");
+            vm.current_code_block = code_block;
+            vm.pc = pc;
             vm.set_value(af.values[0]);
         }
         _ => {
@@ -465,7 +493,7 @@ fn apply(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
 }
 
 fn call_cc(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
-    vm.return_stack.push(vm.pc);
+    vm.return_stack.push(vm.get_return_point());
     let cont = Continuation {
         stack: vm.stack.clone(),
         return_stack: vm.return_stack.clone(),
@@ -525,6 +553,7 @@ fn raise(arena: &Arena, vm: &Vm, abort: bool) -> Error {
     }
 }
 
+/*
 fn error_stack(arena: &Arena, vm: &Vm, code: &Code, error: Error) -> Error {
     let mut message = String::new();
     let positions = std::iter::once(&vm.pc).chain(vm.return_stack.iter().rev());
@@ -538,6 +567,7 @@ fn error_stack(arena: &Arena, vm: &Vm, code: &Code, error: Error) -> Error {
     let msg_r = arena.insert_rooted(Value::String(RefCell::new(message)));
     error.map_error(|e| arena.insert_rooted(Value::Pair(Cell::new(e.vr()), Cell::new(msg_r.vr()))))
 }
+*/
 
 fn handle_error(arena: &Arena, vm: &mut Vm, e: Error) -> Result<RootPtr, RootPtr> {
     // let annotated_e = error_stack(arena, &vm, code, e);
@@ -569,7 +599,7 @@ fn handle_error(arena: &Arena, vm: &mut Vm, e: Error) -> Result<RootPtr, RootPtr
 #[derive(Debug, Clone, PartialEq)]
 pub struct Continuation {
     stack: Vec<ValRef>,
-    return_stack: Vec<usize>,
+    return_stack: Vec<ReturnPoint>,
 }
 
 impl heap::Inventory for Continuation {

@@ -237,6 +237,11 @@ impl Pool {
         let init = selr.allocated;
         for (i_mark, mark) in selr.marked.clone().iter().enumerate() {
             if !mark && !selr.data[i_mark].is_free() {
+                /*
+                if let PoolEntry::Used(UsedPoolEntry(Value::CodeBlock(_))) = &selr.data[i_mark] {
+                    println!("Freeing code block at {:?} / {}", selr as *const Pool, i_mark);
+                }
+                */
                 selr.free_ref(u16::try_from(i_mark).unwrap(), debug)
             }
         }
