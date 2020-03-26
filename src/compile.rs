@@ -15,7 +15,7 @@
 use arena::{Arena, ValRef};
 use ast::{Lambda, SyntaxElement};
 use environment::RcEnv;
-use heap::{Inventory, PoolPtr, PtrVec, RootPtr};
+use heap::{Inventory, PoolPtr, PtrVec};
 use std::cell::RefCell;
 use value::Value;
 use vm::Instruction;

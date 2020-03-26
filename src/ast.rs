@@ -39,7 +39,6 @@ use heap::RootPtr;
 use primitives::SyntacticClosure;
 use util::check_len;
 use value::{list_from_vec, pretty_print, vec_from_list, Value};
-use vm::Instruction;
 use VmState;
 use {compile, vm};
 use {compile_run, environment};

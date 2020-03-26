@@ -27,12 +27,10 @@ use std::rc::Rc;
 
 use arena::{Arena, ValRef};
 use ast::SyntaxElement;
-use compile::CodeBlock;
 use environment::{ActivationFrame, ActivationFrameInfo, Environment, RcEnv};
 use heap::RootPtr;
 use read::read_many;
 use value::{pretty_print, Value};
-use vm::Instruction;
 
 pub mod arena;
 pub mod ast;
@@ -77,7 +75,7 @@ impl VmState {
         primitives::register_primitives(arena, &global_environment, &afi, &global_frame);
 
         VmState {
-            global_environment: global_environment.clone(),
+            global_environment,
             global_frame,
         }
     }

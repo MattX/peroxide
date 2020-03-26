@@ -19,8 +19,7 @@ use std::fmt::Write;
 
 use arena::Arena;
 use arena::ValRef;
-use compile::CodeBlock;
-use environment::{ActivationFrame, RcEnv};
+use environment::ActivationFrame;
 use heap::{Inventory, PoolPtr, PtrVec, RootPtr};
 use primitives::PrimitiveImplementation;
 use value::{list_from_vec, pretty_print, vec_from_list, Value};
