@@ -18,13 +18,13 @@ use std::ops::Deref;
 
 use num_bigint::BigInt;
 
+use compile::CodeBlock;
 use environment::{ActivationFrame, RcEnv};
 use heap;
 use heap::RootPtr;
 use primitives::{Port, SyntacticClosure};
 use value::Value;
 use vm::Vm;
-use compile::CodeBlock;
 
 /// A wrapper over PoolPtr
 // TODO this is useless and should be removed.

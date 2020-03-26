@@ -19,13 +19,13 @@ use std::fmt::Write;
 
 use arena::Arena;
 use arena::ValRef;
+use compile::CodeBlock;
 use environment::{ActivationFrame, RcEnv};
-use ::{heap, parse_compile_run};
-use heap::{Inventory, PtrVec, RootPtr, PoolPtr};
+use heap::{Inventory, PoolPtr, PtrVec, RootPtr};
 use primitives::PrimitiveImplementation;
 use value::{list_from_vec, pretty_print, vec_from_list, Value};
 use VmState;
-use compile::CodeBlock;
+use {heap, parse_compile_run};
 
 static MAX_RECURSION_DEPTH: usize = 1000;
 
@@ -175,7 +175,7 @@ impl Vm {
     fn get_return_point(&self) -> ReturnPoint {
         ReturnPoint {
             code_block: self.current_code_block,
-            pc: self.pc
+            pc: self.pc,
         }
     }
 }
@@ -263,7 +263,9 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                 return Err(raise_string(
                     arena,
                     format!(
-                        "Variable used before definition: {} . {}", 0, index,
+                        "Variable used before definition: {} . {}",
+                        0,
+                        index,
                         // resolve_variable(code, vm.pc, 0, index)
                     ),
                 ));
@@ -290,7 +292,9 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                 return Err(raise_string(
                     arena,
                     format!(
-                        "Variable used before definition: {} . {}", current_depth - depth, index,
+                        "Variable used before definition: {} . {}",
+                        current_depth - depth,
+                        index,
                         //resolve_variable(code, vm.pc, current_depth - depth, index)
                     ),
                 ));
@@ -318,7 +322,7 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
             vm.env = vm.value;
         }
         Instruction::Return => {
-            let ReturnPoint { code_block, pc } =  vm
+            let ReturnPoint { code_block, pc } = vm
                 .return_stack
                 .pop()
                 .expect("Returning with no values on return stack.");
@@ -416,9 +420,7 @@ fn get_activation_frame(arena: &Arena, env: ValRef) -> &RefCell<ActivationFrame>
 fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
     let fun = arena.get(vm.fun);
     match fun {
-        Value::Lambda {
-            code, frame
-        } => {
+        Value::Lambda { code, frame } => {
             if !tail {
                 if vm.return_stack.len() > MAX_RECURSION_DEPTH {
                     return Err(Error::Abort(arena.insert_rooted(Value::String(
@@ -523,8 +525,14 @@ fn eval(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
         return Err(raise_string(arena, "eval: expected 2 arguments".into()));
     }
     let expr = af.values[0];
-    let env_descriptor = arena.try_get_string(af.values[1])
-        .ok_or_else(|| raise_string(arena, format!("eval: invalid environment descriptor: {}", &*af.values[1])))?
+    let env_descriptor = arena
+        .try_get_string(af.values[1])
+        .ok_or_else(|| {
+            raise_string(
+                arena,
+                format!("eval: invalid environment descriptor: {}", &*af.values[1]),
+            )
+        })?
         .borrow()
         .clone();
 
@@ -617,8 +625,8 @@ enum Error {
 
 impl Error {
     fn map_error<F>(self, f: F) -> Error
-        where
-            F: FnOnce(RootPtr) -> RootPtr,
+    where
+        F: FnOnce(RootPtr) -> RootPtr,
     {
         match self {
             Error::Raise(v) => Error::Raise(f(v)),

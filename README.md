@@ -26,7 +26,7 @@ Peroxide supports the more general syntactic closure macro paradigm. See [doc/ma
 
 ## Todo
 
-### Concrete
+(See also the various TODOs sprinkled through the code)
 
 * Add ~~apply~~ and eval
 * Implement error handling
@@ -45,16 +45,16 @@ Peroxide supports the more general syntactic closure macro paradigm. See [doc/ma
 expressions, which map to what bytecode. This will let us have
 much better error messages.
 * Loooots of code cleanup necessary
+  * Remove anything to do with ValRef and many things to do with Arena
+  * I think ideally Arena would be used for inserting only, which would also make it easier to see where
+    values need to be rooted / protected.
 * Figure out how to embed init.scm in a reasonable way (probably by precompiling)
 * Allow garbage collection of code like in Python
 * Handle interrupts
+* Code blocks can (probably?) be refcounted instead of GCd
+* Disallow '%' in symbols after initialization is done?
 * Allow fully disabling rustyline [using features](
 https://doc.rust-lang.org/cargo/reference/manifest.html#the-features-section).
-
-### Vague
-
-#### Medium
-
 * Make errors not be strings :)
 * Allow meta-commands like `,exit` or `,decompile`
 

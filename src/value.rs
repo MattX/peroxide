@@ -20,12 +20,12 @@ use num_complex::Complex;
 use num_rational::BigRational;
 
 use arena::{Arena, ValRef};
+use compile::CodeBlock;
 use environment::{ActivationFrame, RcEnv};
+use heap::PoolPtr;
 use primitives::{Port, Primitive, SyntacticClosure};
 use vm::Continuation;
 use {heap, util};
-use compile::CodeBlock;
-use heap::PoolPtr;
 
 // TODO box some of these, values are currently 56 bytes long oh no
 // TODO remove PartialEq and Clone. Clone should only be used in the numeric primitives library.

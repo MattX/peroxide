@@ -27,12 +27,12 @@ use std::rc::Rc;
 
 use arena::{Arena, ValRef};
 use ast::SyntaxElement;
+use compile::CodeBlock;
 use environment::{ActivationFrame, ActivationFrameInfo, Environment, RcEnv};
 use heap::RootPtr;
 use read::read_many;
 use value::{pretty_print, Value};
 use vm::{Code, Instruction};
-use compile::CodeBlock;
 
 pub mod arena;
 pub mod ast;

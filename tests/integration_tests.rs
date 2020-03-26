@@ -516,6 +516,6 @@ fn eval() {
             &mut vm_state,
             "(let ((f (eval '(lambda (f x) (f x x)) (null-environment 5)))) (f + 10))"
         )
-            .unwrap()
+        .unwrap()
     );
 }

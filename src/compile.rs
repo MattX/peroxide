@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ast::{SyntaxElement, Lambda};
-use vm::{Code, Instruction};
-use heap::{RootPtr, Inventory, PtrVec, PoolPtr};
-use environment::RcEnv;
-use value::Value;
 use arena::{Arena, ValRef};
+use ast::{Lambda, SyntaxElement};
+use environment::RcEnv;
+use heap::{Inventory, PoolPtr, PtrVec, RootPtr};
 use std::cell::RefCell;
+use value::Value;
+use vm::{Code, Instruction};
 
 // TODO in this file -- compilation can't fail so it makes no sense to return Result<> objects.
 
@@ -79,7 +79,7 @@ impl CodeBlock {
 pub fn compile_toplevel(
     arena: &Arena,
     tree: &SyntaxElement,
-    environment: RcEnv
+    environment: RcEnv,
 ) -> Result<PoolPtr, String> {
     let mut code_block = CodeBlock::new(Some("[toplevel]".into()), 0, false, environment);
 
@@ -203,7 +203,11 @@ fn compile_lambda(arena: &Arena, l: &Lambda, rv: PoolPtr) -> Result<PoolPtr, Str
     code.push(Instruction::Return);
 
     let code_block_ptr = arena.insert(Value::CodeBlock(Box::new(code))).0;
-    arena.try_get_vector(ValRef(rv)).unwrap().borrow_mut().push(ValRef(code_block_ptr));
+    arena
+        .try_get_vector(ValRef(rv))
+        .unwrap()
+        .borrow_mut()
+        .push(ValRef(code_block_ptr));
     Ok(code_block_ptr)
 }
 
