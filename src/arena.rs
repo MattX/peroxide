@@ -24,6 +24,7 @@ use heap::RootPtr;
 use primitives::{Port, SyntacticClosure};
 use value::Value;
 use vm::Vm;
+use compile::CodeBlock;
 
 /// A wrapper over PoolPtr
 // TODO this is useless and should be removed.
@@ -109,6 +110,14 @@ impl Arena {
             af
         } else {
             panic!("value is not an activation frame");
+        }
+    }
+
+    pub fn get_code_block(&self, at: ValRef) -> &CodeBlock {
+        if let Value::CodeBlock(c) = self.get(at) {
+            c
+        } else {
+            panic!("value is not a code block");
         }
     }
 

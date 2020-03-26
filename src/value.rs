@@ -24,6 +24,7 @@ use environment::{ActivationFrame, RcEnv};
 use primitives::{Port, Primitive, SyntacticClosure};
 use vm::Continuation;
 use {heap, util};
+use compile::CodeBlock;
 
 // TODO box some of these, values are currently 56 bytes long oh no
 // TODO remove PartialEq and Clone. Clone should only be used in the numeric primitives library.
@@ -55,6 +56,7 @@ pub enum Value {
     Environment(RcEnv),
     SyntacticClosure(SyntacticClosure),
     Continuation(Continuation),
+    CodeBlock(Box<CodeBlock>),
 }
 
 impl fmt::Display for Value {
@@ -131,6 +133,7 @@ impl heap::Inventory for Value {
             }
             Value::Port(p) => p.inventory(v),
             Value::Continuation(c) => c.inventory(v),
+            Value::CodeBlock(c) => c.inventory(v),
             _ => (),
         }
     }

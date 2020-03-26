@@ -718,7 +718,8 @@ fn parse_compile_run_macro(
         .map_err(|e| format!("Compilation error: {}", e))?;
     vms.code.push(Instruction::Finish);
     // println!(" => {:?}", &state.code[start_pc..state.code.len()]);
-    vm::run(arena, &mut vms.code, start_pc, vms.global_frame.vr(), frame)
+    let code = arena.insert_rooted(Value::CodeBlock(Box::new(vms.code.clone())));
+    vm::run(arena, code, start_pc, vms.global_frame.vr(), frame)
         .map(|v| v.vr())
         .map_err(|e| format!("Runtime error: {}", pretty_print(arena, e.vr())))
 }

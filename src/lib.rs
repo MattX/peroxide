@@ -53,7 +53,7 @@ pub const ERROR_HANDLER_INDEX: usize = 0;
 pub struct VmState {
     pub global_environment: RcEnv,
     pub global_frame: RootPtr,
-    pub code: Code,
+    pub code: CodeBlock,
 }
 
 impl VmState {
@@ -80,7 +80,7 @@ impl VmState {
         VmState {
             global_environment: global_environment.clone(),
             global_frame,
-            code: Code::new(&global_environment),
+            code: CodeBlock::new(Some("[toplevel]".into()), 0, false, &global_environment),
         }
     }
 }
@@ -132,9 +132,10 @@ pub fn compile_run(
         .map_err(|e| format!("Compilation error: {}", e))?;
     state.code.push(Instruction::Finish);
     // println!(" => {:?}", &state.code[start_pc..state.code.len()]);
+    let code = arena.insert_rooted(Value::CodeBlock(Box::new(state.code.clone())));
     vm::run(
         arena,
-        &mut state.code,
+        code,
         start_pc,
         state.global_frame.vr(),
         state.global_frame.vr(),

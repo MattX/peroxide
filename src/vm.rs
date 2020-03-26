@@ -24,6 +24,8 @@ use ::{heap, parse_compile_run};
 use heap::{Inventory, PtrVec, RootPtr, PoolPtr};
 use primitives::PrimitiveImplementation;
 use value::{list_from_vec, pretty_print, vec_from_list, Value};
+use VmState;
+use compile::CodeBlock;
 
 static MAX_RECURSION_DEPTH: usize = 1000;
 
@@ -151,6 +153,7 @@ pub struct Vm {
     global_env: ValRef,
     env: ValRef,
     fun: ValRef,
+    root_code_block: PoolPtr,
 }
 
 impl Vm {
@@ -172,13 +175,14 @@ impl Inventory for Vm {
         for s in self.stack.iter() {
             v.push(s.0);
         }
+        v.push(self.root_code_block)
     }
 }
 
 // TODO rename env around here to frame
 pub fn run(
     arena: &Arena,
-    code: &mut Code,
+    code: RootPtr,
     pc: usize,
     global_env: ValRef,
     env: ValRef,
@@ -191,13 +195,14 @@ pub fn run(
         global_env,
         env,
         fun: arena.unspecific,
+        root_code_block: code.pp(),
     };
     arena.root_vm(&vm);
     let res = loop {
-        match run_one(arena, &mut vm, code) {
+        match run_one_instruction(arena, &mut vm) {
             Ok(true) => break Ok(arena.root(vm.value)),
             Ok(_) => (),
-            Err(e) => break handle_error(arena, &mut vm, code, e),
+            Err(e) => break handle_error(arena, &mut vm, e),
         }
     };
     arena.unroot_vm();
@@ -206,8 +211,9 @@ pub fn run(
 
 fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
     // println!("running {:?}", code.instructions[vm.pc]);
+    let code = arena.get_code_block(ValRef(vm.root_code_block));
     match code.instructions[vm.pc] {
-        Instruction::Constant(v) => vm.set_value(code.constants[v].vr()),
+        Instruction::Constant(v) => vm.set_value(ValRef(code.constants[v])),
         Instruction::JumpFalse(offset) => {
             if !arena.get(vm.value).truthy() {
                 vm.pc += offset;
@@ -238,8 +244,8 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                 return Err(raise_string(
                     arena,
                     format!(
-                        "Variable used before definition: {}",
-                        resolve_variable(code, vm.pc, 0, index)
+                        "Variable used before definition: {} . {}", 0, index,
+                        // resolve_variable(code, vm.pc, 0, index)
                     ),
                 ));
             }
@@ -265,8 +271,8 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                 return Err(raise_string(
                     arena,
                     format!(
-                        "Variable used before definition: {}",
-                        resolve_variable(code, vm.pc, current_depth - depth, index)
+                        "Variable used before definition: {} . {}", current_depth - depth, index,
+                        //resolve_variable(code, vm.pc, current_depth - depth, index)
                     ),
                 ));
             }

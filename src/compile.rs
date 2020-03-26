@@ -14,21 +14,70 @@
 
 use ast::SyntaxElement;
 use vm::{Code, Instruction};
+use heap::{RootPtr, Inventory, PtrVec, PoolPtr};
+use environment::RcEnv;
 
-// TODO - I think this can take a SyntaxElement instead of a reference.
+/// A unit of code corresponding to a function.
+#[derive(Debug, PartialEq, Clone)]
+pub struct CodeBlock {
+    pub name: Option<String>,
+    pub arity: usize,
+    pub has_rest: bool,
+    pub instructions: Vec<Instruction>,
+    pub constants: Vec<PoolPtr>,
+    pub environment: RcEnv,
+}
+
+impl Inventory for CodeBlock {
+    fn inventory(&self, v: &mut PtrVec) {
+        for &c in self.constants.iter() {
+            v.push(c);
+        }
+    }
+}
+
+impl CodeBlock {
+    pub fn new(name: Option<String>, arity: usize, has_rest: bool, environment: &RcEnv) -> Self {
+        CodeBlock {
+            name,
+            arity,
+            has_rest,
+            instructions: vec![],
+            constants: vec![],
+            environment: environment.clone(),
+        }
+    }
+
+    pub fn push(&mut self, i: Instruction) {
+        self.instructions.push(i);
+    }
+
+    pub fn replace(&mut self, index: usize, new: Instruction) {
+        self.instructions[index] = new;
+    }
+
+    pub fn code_size(&self) -> usize {
+        self.instructions.len()
+    }
+
+    pub fn push_constant(&mut self, c: PoolPtr) -> usize {
+        self.constants.push(c);
+        self.constants.len() - 1
+    }
+}
 pub fn compile(
     tree: &SyntaxElement,
-    code: &mut Code,
+    code: &mut CodeBlock,
     tail: bool,
     toplevel: bool,
 ) -> Result<usize, String> {
     if tail && toplevel {
-        panic!("Toplevel expression is not in tail position")
+        panic!("toplevel expression is not in tail position")
     }
     let initial_len = code.code_size();
     match tree {
         SyntaxElement::Quote(q) => {
-            let idx = code.push_constant(q.quoted.clone());
+            let idx = code.push_constant(q.quoted.pp());
             code.push(Instruction::Constant(idx));
         }
         SyntaxElement::If(i) => {
@@ -69,16 +118,16 @@ pub fn compile(
             }
             code.push(Instruction::ExtendFrame(l.defines.len()));
             code.push(Instruction::ExtendEnv);
-            code.push_env(&l.env);
-            code.push_lambda(&l.name.clone().unwrap_or_else(|| "[anonymous]".into()));
+            //code.push_env(&l.env);
+            //code.push_lambda(&l.name.clone().unwrap_or_else(|| "[anonymous]".into()));
 
             if !l.defines.is_empty() {
                 compile_sequence(&l.defines, code, false)?;
             }
             compile_sequence(&l.expressions, code, true)?;
 
-            code.pop_lambda();
-            code.pop_env();
+            //code.pop_lambda();
+            //code.pop_env();
             code.push(Instruction::Return);
             let jump_offset = code.code_size() - skip_pos - 1;
             code.replace(skip_pos, Instruction::Jump(jump_offset));
@@ -106,7 +155,7 @@ pub fn compile(
 
 fn compile_sequence(
     expressions: &[SyntaxElement],
-    code: &mut Code,
+    code: &mut CodeBlock,
     tail: bool,
 ) -> Result<usize, String> {
     let initial_len = code.code_size();
@@ -115,7 +164,7 @@ fn compile_sequence(
     }
     compile(
         // This should have been caught at the syntax step.
-        expressions.last().expect("Empty sequence."),
+        expressions.last().expect("empty sequence"),
         code,
         tail,
         false,
