@@ -1,4 +1,4 @@
-// Copyright 2018-2019 Matthieu Felix
+// Copyright 2018-2020 Matthieu Felix
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -504,7 +504,6 @@ fn do_macro() {
 }
 
 #[test]
-#[ignore]
 fn eval() {
     let mut arena = Arena::default();
     let mut vm_state = VmState::new(&mut arena);
