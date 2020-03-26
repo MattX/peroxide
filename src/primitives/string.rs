@@ -17,16 +17,17 @@ use std::cell::{Ref, RefCell};
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
 
-use arena::{Arena, ValRef};
+use arena::Arena;
+use heap::PoolPtr;
 use util::check_len;
 use value::{pretty_print, Value};
 
-pub fn string_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn string_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     Ok(arena.insert(Value::Boolean(arena.try_get_string(args[0]).is_some())))
 }
 
-pub fn make_string(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn make_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(2))?;
     let c = match args.get(1).map(|v| arena.get(*v)) {
         None => 0 as char,
@@ -51,7 +52,7 @@ pub fn make_string(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     Ok(arena.insert(Value::String(RefCell::new(s))))
 }
 
-pub fn string_length(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn string_length(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     let l = arena
         .try_get_string(args[0])
@@ -67,7 +68,7 @@ pub fn string_length(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     Ok(arena.insert(Value::Integer(BigInt::from(l))))
 }
 
-pub fn string_set_b(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn string_set_b(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(3), Some(3))?;
     let mut borrowed_string = arena
         .try_get_string(args[0])
@@ -101,7 +102,7 @@ pub fn string_set_b(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     Ok(arena.unspecific)
 }
 
-pub fn string_ref(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn string_ref(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(2), Some(2))?;
     let borrowed_string = arena
         .try_get_string(args[0])
@@ -128,7 +129,7 @@ pub fn string_ref(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     Ok(arena.insert(Value::Character(chr)))
 }
 
-fn to_string_vec<'a>(arena: &'a Arena, args: &[ValRef]) -> Result<Vec<Ref<'a, String>>, String> {
+fn to_string_vec<'a>(arena: &'a Arena, args: &[PoolPtr]) -> Result<Vec<Ref<'a, String>>, String> {
     args.iter()
         .map(|v| {
             arena
@@ -141,7 +142,7 @@ fn to_string_vec<'a>(arena: &'a Arena, args: &[ValRef]) -> Result<Vec<Ref<'a, St
 
 macro_rules! string_cmp {
     ($fun:ident, $w:ident, $e:expr) => {
-        pub fn $fun(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+        pub fn $fun(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
             let strings = to_string_vec(arena, args)?;
             Ok(arena.insert(Value::Boolean(strings.as_slice().windows(2).all(|$w| $e))))
         }

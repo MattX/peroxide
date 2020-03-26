@@ -31,11 +31,11 @@ use std::cell::{Cell, RefCell};
 use std::fmt;
 use std::rc::Rc;
 
-use arena::{Arena, ValRef};
+use arena::Arena;
 use environment::{
     get_toplevel_afi, ActivationFrame, Environment, EnvironmentValue, Macro, RcAfi, RcEnv,
 };
-use heap::RootPtr;
+use heap::{PoolPtr, RootPtr};
 use primitives::SyntacticClosure;
 use util::check_len;
 use value::{list_from_vec, pretty_print, vec_from_list, Value};
@@ -118,7 +118,7 @@ pub struct Application {
 #[derive(Debug)]
 pub enum Identifier {
     Bare(String),
-    SyntacticClosure(ValRef),
+    SyntacticClosure(PoolPtr),
 }
 
 /// Structure that holds a function's formal argument list.
@@ -144,7 +144,7 @@ pub fn parse(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    value: ValRef,
+    value: PoolPtr,
 ) -> Result<SyntaxElement, String> {
     let _value_hold = arena.root(value);
     let (env, value) = resolve_syntactic_closure(arena, env, value)?;
@@ -197,8 +197,8 @@ fn parse_pair(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    car: ValRef,
-    cdr: ValRef,
+    car: PoolPtr,
+    cdr: PoolPtr,
 ) -> Result<SyntaxElement, String> {
     let rest = vec_from_list(arena, cdr)?;
     let (car_env, resolved_car) = resolve_syntactic_closure(arena, env, car)?;
@@ -229,7 +229,7 @@ fn parse_pair(
 fn parse_quote(
     arena: &Arena,
     env: &RcEnv,
-    rest: &[ValRef],
+    rest: &[PoolPtr],
     syntax: bool,
 ) -> Result<SyntaxElement, String> {
     if rest.len() != 1 {
@@ -249,7 +249,7 @@ fn parse_if(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    rest: &[ValRef],
+    rest: &[PoolPtr],
 ) -> Result<SyntaxElement, String> {
     check_len(rest, Some(2), Some(3))?;
     let cond = parse(arena, vms, env, af_info, rest[0])?;
@@ -267,7 +267,7 @@ fn parse_begin(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    rest: &[ValRef],
+    rest: &[PoolPtr],
 ) -> Result<SyntaxElement, String> {
     check_len(rest, Some(1), None)?;
     let expressions = rest
@@ -282,7 +282,7 @@ fn parse_lambda(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    rest: &[ValRef],
+    rest: &[PoolPtr],
 ) -> Result<SyntaxElement, String> {
     check_len(rest, Some(2), None)?;
     parse_split_lambda(
@@ -301,8 +301,8 @@ fn parse_split_lambda(
     vms: &mut VmState,
     outer_env: &RcEnv,
     af_info: &RcAfi,
-    formals: ValRef,
-    body: &[ValRef],
+    formals: PoolPtr,
+    body: &[PoolPtr],
     name: Option<String>,
 ) -> Result<SyntaxElement, String> {
     let formals = parse_formals(arena, formals)?;
@@ -380,7 +380,7 @@ fn parse_set(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    rest: &[ValRef],
+    rest: &[PoolPtr],
 ) -> Result<SyntaxElement, String> {
     check_len(rest, Some(2), Some(2))?;
     if let Some(dt) = get_define_target(arena, rest[0]) {
@@ -416,7 +416,7 @@ fn parse_define(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    rest: &[ValRef],
+    rest: &[PoolPtr],
 ) -> Result<SyntaxElement, String> {
     // TODO the actual check should not be on activation frame altitude, but on syntactic
     //      toplevelness. (eg `(define x (define y 1))` should not work).
@@ -443,7 +443,7 @@ fn parse_define(
 #[derive(Debug, Clone)]
 enum DefineTarget {
     Bare(String),
-    SyntacticClosure(ValRef),
+    SyntacticClosure(PoolPtr),
 }
 
 impl DefineTarget {
@@ -475,8 +475,11 @@ impl DefineTarget {
 
 #[derive(Debug)]
 enum DefineValue {
-    Value(ValRef),
-    Lambda { formals: ValRef, body: Vec<ValRef> },
+    Value(PoolPtr),
+    Lambda {
+        formals: PoolPtr,
+        body: Vec<PoolPtr>,
+    },
 }
 
 impl DefineValue {
@@ -503,7 +506,7 @@ struct DefineData {
     pub value: DefineValue,
 }
 
-fn get_define_data(arena: &Arena, rest: &[ValRef]) -> Result<DefineData, String> {
+fn get_define_data(arena: &Arena, rest: &[PoolPtr]) -> Result<DefineData, String> {
     let res = if let Some(target) = get_define_target(arena, rest[0]) {
         check_len(rest, Some(2), Some(2))?;
         DefineData {
@@ -517,7 +520,7 @@ fn get_define_data(arena: &Arena, rest: &[ValRef]) -> Result<DefineData, String>
 }
 
 /// Helper method to parse direct lambda defines `(define (x y z) y z)`.
-fn get_lambda_define_value(arena: &Arena, rest: &[ValRef]) -> Result<DefineData, String> {
+fn get_lambda_define_value(arena: &Arena, rest: &[PoolPtr]) -> Result<DefineData, String> {
     check_len(rest, Some(2), None)?;
     if let Value::Pair(car, cdr) = arena.get(rest[0]) {
         if let Value::Symbol(s) = arena.get(car.get()) {
@@ -548,8 +551,8 @@ fn parse_application(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    fun: ValRef,
-    rest: &[ValRef],
+    fun: PoolPtr,
+    rest: &[PoolPtr],
 ) -> Result<SyntaxElement, String> {
     let function = parse(arena, vms, env, af_info, fun)?;
     let args = rest
@@ -562,7 +565,7 @@ fn parse_application(
     })))
 }
 
-fn parse_formals(arena: &Arena, formals: ValRef) -> Result<Formals, String> {
+fn parse_formals(arena: &Arena, formals: PoolPtr) -> Result<Formals, String> {
     let mut values = Vec::new();
     let mut formal = formals;
     loop {
@@ -601,7 +604,7 @@ fn parse_define_syntax(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    rest: &[ValRef],
+    rest: &[PoolPtr],
 ) -> Result<SyntaxElement, String> {
     // TODO the actual check should not be on activation frame altitude, but on syntactic
     //      toplevelness. (eg `(define x (define y 1))` should not work).
@@ -633,7 +636,7 @@ fn parse_let_syntax(
     vms: &mut VmState,
     env: &RcEnv,
     af_info: &RcAfi,
-    rest: &[ValRef],
+    rest: &[PoolPtr],
     rec: bool,
 ) -> Result<SyntaxElement, String> {
     check_len(rest, Some(2), None)?;
@@ -681,15 +684,15 @@ fn make_macro(
     env: &RcEnv,
     af_info: &RcAfi,
     vms: &mut VmState,
-    val: ValRef,
+    val: PoolPtr,
 ) -> Result<RootPtr, String> {
     let mac = parse_compile_run_macro(arena, env, af_info, vms, val)?;
     let mac = arena.root(mac);
-    match arena.get(mac.vr()) {
+    match arena.get(mac.pp()) {
         Value::Lambda { .. } => Ok(mac), // TODO check the lambda takes 3 args
         _ => Err(format!(
             "macro must be a lambda, is {}",
-            pretty_print(arena, mac.vr())
+            pretty_print(arena, mac.pp())
         )),
     }
 }
@@ -701,26 +704,26 @@ fn parse_compile_run_macro(
     env: &RcEnv,
     af_info: &RcAfi,
     vms: &mut VmState,
-    val: ValRef,
-) -> Result<ValRef, String> {
+    val: PoolPtr,
+) -> Result<PoolPtr, String> {
     let syntax_tree =
         parse(arena, vms, env, af_info, val).map_err(|e| format!("syntax error: {}", e))?;
     arena
-        .get_activation_frame(vms.global_frame.vr())
+        .get_activation_frame(vms.global_frame.pp())
         .borrow_mut()
         .ensure_index(arena, get_toplevel_afi(af_info).borrow().entries);
 
-    let frame = make_frame(arena, vms.global_frame.vr(), af_info);
+    let frame = make_frame(arena, vms.global_frame.pp(), af_info);
 
     let code = compile::compile_toplevel(arena, &syntax_tree, vms.global_environment.clone());
     // println!(" => {:?}", &state.code[start_pc..state.code.len()]);
-    let code = arena.root(ValRef(code));
-    vm::run(arena, code, 0, vms.global_frame.vr(), frame)
-        .map(|v| v.vr())
-        .map_err(|e| format!("runtime error: {}", pretty_print(arena, e.vr())))
+    let code = arena.root(code);
+    vm::run(arena, code, 0, vms.global_frame.pp(), frame)
+        .map(|v| v.pp())
+        .map_err(|e| format!("runtime error: {}", pretty_print(arena, e.pp())))
 }
 
-fn make_frame(arena: &Arena, global_frame: ValRef, af_info: &RcAfi) -> ValRef {
+fn make_frame(arena: &Arena, global_frame: PoolPtr, af_info: &RcAfi) -> PoolPtr {
     let parent = if let Some(p) = af_info.borrow().parent.clone() {
         p
     } else {
@@ -740,19 +743,19 @@ fn expand_macro_full(
     vms: &mut VmState,
     env: &RcEnv,
     mac: Macro,
-    expr: ValRef,
-) -> Result<ValRef, String> {
+    expr: PoolPtr,
+) -> Result<PoolPtr, String> {
     let expr = arena.root(expr);
     let mut expanded = expand_macro(arena, vms, env, mac, expr)?;
     let mut macro_count = 0;
-    while let Some(m) = get_macro(arena, env, expanded.vr()) {
+    while let Some(m) = get_macro(arena, env, expanded.pp()) {
         macro_count += 1;
         if macro_count > MAX_MACRO_EXPANSION {
             return Err("Maximum macro expansion depth reached.".into());
         }
         expanded = expand_macro(arena, vms, env, m, expanded)?;
     }
-    Ok(expanded.vr())
+    Ok(expanded.pp())
 }
 
 fn expand_macro(
@@ -780,7 +783,7 @@ fn expand_macro(
     compile_run(arena, vms, &syntax_tree)
 }
 
-fn get_macro(arena: &Arena, env: &RcEnv, expr: ValRef) -> Option<Macro> {
+fn get_macro(arena: &Arena, env: &RcEnv, expr: PoolPtr) -> Option<Macro> {
     match arena.get(expr) {
         Value::Pair(car, _cdr) => {
             let (res_env, res_car) = resolve_syntactic_closure(arena, env, car.get()).unwrap();
@@ -836,8 +839,8 @@ fn collect_internal_defines(
     arena: &Arena,
     vms: &mut VmState,
     env: &RcEnv,
-    body: &[ValRef],
-) -> Result<(Vec<DefineData>, Vec<ValRef>), String> {
+    body: &[PoolPtr],
+) -> Result<(Vec<DefineData>, Vec<PoolPtr>), String> {
     // TODO figure out a nice way to push macro expanded, non-define values. Right know
     //      we'll perform macro expansion both here and at the actual parse site.
     // TODO support internal macro definitions
@@ -892,8 +895,8 @@ fn collect_internal_defines(
 fn resolve_syntactic_closure(
     arena: &Arena,
     env: &RcEnv,
-    value: ValRef,
-) -> Result<(RcEnv, ValRef), String> {
+    value: PoolPtr,
+) -> Result<(RcEnv, PoolPtr), String> {
     if let Value::SyntacticClosure(SyntacticClosure {
         closed_env,
         free_variables,
@@ -910,7 +913,7 @@ fn resolve_syntactic_closure(
     }
 }
 
-fn strip_syntactic_closure(arena: &Arena, env: &RcEnv, value: ValRef) -> ValRef {
+fn strip_syntactic_closure(arena: &Arena, env: &RcEnv, value: PoolPtr) -> PoolPtr {
     if let Value::SyntacticClosure(SyntacticClosure { expr, .. }) = arena.get(value) {
         strip_syntactic_closure(arena, env, *expr)
     } else {
@@ -918,7 +921,7 @@ fn strip_syntactic_closure(arena: &Arena, env: &RcEnv, value: ValRef) -> ValRef 
     }
 }
 
-fn get_define_target(arena: &Arena, value: ValRef) -> Option<DefineTarget> {
+fn get_define_target(arena: &Arena, value: PoolPtr) -> Option<DefineTarget> {
     match arena.get(value) {
         Value::Symbol(s) => Some(DefineTarget::Bare(s.clone())),
         Value::SyntacticClosure(sc) => match arena.get(sc.expr) {

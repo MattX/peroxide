@@ -153,7 +153,7 @@ where
                 } else {
                     read_list(arena, it)
                 }?;
-                Ok(arena.insert_rooted(Value::Pair(Cell::new(first.vr()), Cell::new(second.vr()))))
+                Ok(arena.insert_rooted(Value::Pair(Cell::new(first.pp()), Cell::new(second.pp()))))
             }
         }
     } else {
@@ -221,7 +221,7 @@ where
             }
             _ => {
                 let elem = do_read(arena, it)?;
-                result.push(elem.vr());
+                result.push(elem.pp());
                 roots.push(elem);
             }
         }
@@ -240,12 +240,12 @@ where
 {
     let quoted = do_read(arena, it)?;
     let quoted_list_ptr = arena.insert_rooted(Value::Pair(
-        Cell::new(quoted.vr()),
+        Cell::new(quoted.pp()),
         Cell::new(arena.empty_list),
     ));
     let quote_sym_ptr = arena.insert_rooted(Value::Symbol(prefix.to_string()));
     Ok(arena.insert_rooted(Value::Pair(
-        Cell::new(quote_sym_ptr.vr()),
-        Cell::new(quoted_list_ptr.vr()),
+        Cell::new(quote_sym_ptr.pp()),
+        Cell::new(quoted_list_ptr.pp()),
     )))
 }

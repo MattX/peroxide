@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use arena::{Arena, ValRef};
+use arena::Arena;
 use ast::{Lambda, SyntaxElement};
 use environment::RcEnv;
 use heap::{Inventory, PoolPtr, PtrVec};
@@ -74,11 +74,7 @@ impl CodeBlock {
     }
 }
 
-pub fn compile_toplevel(
-    arena: &Arena,
-    tree: &SyntaxElement,
-    environment: RcEnv,
-) -> PoolPtr {
+pub fn compile_toplevel(arena: &Arena, tree: &SyntaxElement, environment: RcEnv) -> PoolPtr {
     let mut code_block = CodeBlock::new(Some("[toplevel]".into()), 0, false, environment);
 
     // rooted_vec is a bit of a hack to avoid accidentally GCing code blocks.
@@ -91,16 +87,10 @@ pub fn compile_toplevel(
 
     compile(arena, tree, &mut code_block, false, rooted_vec.pp());
     code_block.push(Instruction::Finish);
-    arena.insert(Value::CodeBlock(Box::new(code_block))).0
+    arena.insert(Value::CodeBlock(Box::new(code_block)))
 }
 
-pub fn compile(
-    arena: &Arena,
-    tree: &SyntaxElement,
-    code: &mut CodeBlock,
-    tail: bool,
-    rv: PoolPtr,
-) {
+pub fn compile(arena: &Arena, tree: &SyntaxElement, code: &mut CodeBlock, tail: bool, rv: PoolPtr) {
     match tree {
         SyntaxElement::Quote(q) => {
             let idx = code.push_constant(q.quoted.pp());
@@ -161,7 +151,7 @@ fn compile_sequence(
     code: &mut CodeBlock,
     tail: bool,
     rv: PoolPtr,
-)  {
+) {
     for instr in expressions[..expressions.len() - 1].iter() {
         compile(arena, instr, code, false, rv);
     }
@@ -197,12 +187,12 @@ fn compile_lambda(arena: &Arena, l: &Lambda, rv: PoolPtr) -> PoolPtr {
 
     code.push(Instruction::Return);
 
-    let code_block_ptr = arena.insert(Value::CodeBlock(Box::new(code))).0;
+    let code_block_ptr = arena.insert(Value::CodeBlock(Box::new(code)));
     arena
-        .try_get_vector(ValRef(rv))
+        .try_get_vector(rv)
         .unwrap()
         .borrow_mut()
-        .push(ValRef(code_block_ptr));
+        .push(code_block_ptr);
     code_block_ptr
 }
 

@@ -21,23 +21,10 @@ use num_bigint::BigInt;
 use compile::CodeBlock;
 use environment::{ActivationFrame, RcEnv};
 use heap;
-use heap::RootPtr;
+use heap::{PoolPtr, RootPtr};
 use primitives::{Port, SyntacticClosure};
 use value::Value;
 use vm::Vm;
-
-/// A wrapper over PoolPtr
-// TODO this is useless and should be removed.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct ValRef(pub heap::PoolPtr);
-
-impl Deref for ValRef {
-    type Target = Value;
-
-    fn deref(&self) -> &Self::Target {
-        self.0.deref()
-    }
-}
 
 /// A frontend for Heap / RHeap that handles convenience operations.
 pub struct Arena {
@@ -48,18 +35,18 @@ pub struct Arena {
     roots: Vec<RootPtr>,
     symbol_map: RefCell<HashMap<String, RootPtr>>,
     gensym_counter: Cell<usize>,
-    pub undefined: ValRef,
-    pub unspecific: ValRef,
-    pub eof: ValRef,
-    pub empty_list: ValRef,
-    pub t: ValRef,
-    pub f: ValRef,
+    pub undefined: PoolPtr,
+    pub unspecific: PoolPtr,
+    pub eof: PoolPtr,
+    pub empty_list: PoolPtr,
+    pub t: PoolPtr,
+    pub f: PoolPtr,
     heap: heap::RHeap,
 }
 
 impl Arena {
     /// Moves a value into the arena, and returns a pointer to its new position.
-    pub fn insert(&self, v: Value) -> ValRef {
+    pub fn insert(&self, v: Value) -> PoolPtr {
         match v {
             Value::Undefined => self.undefined,
             Value::Unspecific => self.unspecific,
@@ -70,22 +57,22 @@ impl Arena {
             Value::Symbol(s) => {
                 let res = self.symbol_map.borrow().get(&s).cloned();
                 match res {
-                    Some(u) => u.vr(),
+                    Some(u) => u.pp(),
                     None => {
                         let label = s.clone();
                         let pos = self.heap.allocate_rooted(Value::Symbol(s));
-                        let ptr = pos.vr();
+                        let ptr = pos.pp();
                         self.symbol_map.borrow_mut().insert(label, pos);
                         ptr
                     }
                 }
             }
-            _ => ValRef(self.heap.allocate(v)),
+            _ => self.heap.allocate(v),
         }
     }
 
-    pub fn root(&self, at: ValRef) -> RootPtr {
-        self.heap.root(at.0)
+    pub fn root(&self, at: PoolPtr) -> RootPtr {
+        self.heap.root(at)
     }
 
     pub fn root_vm(&self, vm: &Vm) {
@@ -101,11 +88,11 @@ impl Arena {
     }
 
     /// Given a position in the arena, returns a reference to the value at that location.
-    pub fn get<'a>(&'a self, at: ValRef) -> &'a Value {
-        unsafe { std::mem::transmute::<&Value, &'a Value>(&*(at.0)) }
+    pub fn get<'a>(&'a self, at: PoolPtr) -> &'a Value {
+        unsafe { std::mem::transmute::<&Value, &'a Value>(&*at) }
     }
 
-    pub fn get_activation_frame(&self, at: ValRef) -> &RefCell<ActivationFrame> {
+    pub fn get_activation_frame(&self, at: PoolPtr) -> &RefCell<ActivationFrame> {
         if let Value::ActivationFrame(ref af) = self.get(at) {
             af
         } else {
@@ -113,7 +100,7 @@ impl Arena {
         }
     }
 
-    pub fn get_code_block(&self, at: ValRef) -> &CodeBlock {
+    pub fn get_code_block(&self, at: PoolPtr) -> &CodeBlock {
         if let Value::CodeBlock(c) = self.get(at) {
             c
         } else {
@@ -121,7 +108,7 @@ impl Arena {
         }
     }
 
-    pub fn gensym(&self, base: Option<&str>) -> ValRef {
+    pub fn gensym(&self, base: Option<&str>) -> PoolPtr {
         let base_str = base.map(|s| format!("{}-", s)).unwrap_or_else(|| "".into());
         loop {
             let candidate = format!("--gs-{}{}", base_str, self.gensym_counter.get());
@@ -132,63 +119,63 @@ impl Arena {
         }
     }
 
-    pub fn try_get_integer(&self, at: ValRef) -> Option<&BigInt> {
+    pub fn try_get_integer(&self, at: PoolPtr) -> Option<&BigInt> {
         match self.get(at) {
             Value::Integer(i) => Some(i),
             _ => None,
         }
     }
 
-    pub fn try_get_character(&self, at: ValRef) -> Option<char> {
+    pub fn try_get_character(&self, at: PoolPtr) -> Option<char> {
         match self.get(at) {
             Value::Character(c) => Some(*c),
             _ => None,
         }
     }
 
-    pub fn try_get_string(&self, at: ValRef) -> Option<&RefCell<String>> {
+    pub fn try_get_string(&self, at: PoolPtr) -> Option<&RefCell<String>> {
         match self.get(at) {
             Value::String(s) => Some(s),
             _ => None,
         }
     }
 
-    pub fn try_get_vector(&self, at: ValRef) -> Option<&RefCell<Vec<ValRef>>> {
+    pub fn try_get_vector(&self, at: PoolPtr) -> Option<&RefCell<Vec<PoolPtr>>> {
         match self.get(at) {
             Value::Vector(v) => Some(v),
             _ => None,
         }
     }
 
-    pub fn try_get_symbol(&self, at: ValRef) -> Option<&str> {
+    pub fn try_get_symbol(&self, at: PoolPtr) -> Option<&str> {
         match self.get(at) {
             Value::Symbol(s) => Some(s),
             _ => None,
         }
     }
 
-    pub fn try_get_pair(&self, at: ValRef) -> Option<(&Cell<ValRef>, &Cell<ValRef>)> {
+    pub fn try_get_pair(&self, at: PoolPtr) -> Option<(&Cell<PoolPtr>, &Cell<PoolPtr>)> {
         match self.get(at) {
             Value::Pair(car, cdr) => Some((car, cdr)),
             _ => None,
         }
     }
 
-    pub fn try_get_environment(&self, at: ValRef) -> Option<&RcEnv> {
+    pub fn try_get_environment(&self, at: PoolPtr) -> Option<&RcEnv> {
         match self.get(at) {
             Value::Environment(r) => Some(r),
             _ => None,
         }
     }
 
-    pub fn try_get_syntactic_closure(&self, at: ValRef) -> Option<&SyntacticClosure> {
+    pub fn try_get_syntactic_closure(&self, at: PoolPtr) -> Option<&SyntacticClosure> {
         match self.get(at) {
             Value::SyntacticClosure(sc) => Some(sc),
             _ => None,
         }
     }
 
-    pub fn try_get_port(&self, at: ValRef) -> Option<&Port> {
+    pub fn try_get_port(&self, at: PoolPtr) -> Option<&Port> {
         match self.get(at) {
             Value::Port(p) => Some(p.deref()),
             _ => None,
@@ -204,7 +191,7 @@ impl Default for Arena {
         macro_rules! root {
             ($i: ident, $x: expr) => {
                 roots.push(values.allocate_rooted($x));
-                let $i = ValRef(roots.last().unwrap().ptr);
+                let $i = roots.last().unwrap().ptr;
             };
         }
 

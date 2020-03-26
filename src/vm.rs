@@ -18,7 +18,6 @@ use std::cell::{Cell, RefCell};
 use std::fmt::Write;
 
 use arena::Arena;
-use arena::ValRef;
 use environment::ActivationFrame;
 use heap::{Inventory, PoolPtr, PtrVec, RootPtr};
 use primitives::PrimitiveImplementation;
@@ -63,22 +62,22 @@ pub struct ReturnPoint {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Vm {
-    value: ValRef,
+    value: PoolPtr,
     pc: usize,
     return_stack: Vec<ReturnPoint>,
-    stack: Vec<ValRef>,
-    global_env: ValRef,
-    env: ValRef,
-    fun: ValRef,
+    stack: Vec<PoolPtr>,
+    global_env: PoolPtr,
+    env: PoolPtr,
+    fun: PoolPtr,
     root_code_block: PoolPtr,
     current_code_block: PoolPtr,
 }
 
 impl Vm {
-    fn set_value(&mut self, v: ValRef) {
+    fn set_value(&mut self, v: PoolPtr) {
         #[cfg(debug_assertions)]
         {
-            debug_assert!(v.0.ok());
+            debug_assert!(v.ok());
         }
         self.value = v;
     }
@@ -93,12 +92,12 @@ impl Vm {
 
 impl Inventory for Vm {
     fn inventory(&self, v: &mut PtrVec) {
-        v.push(self.value.0);
-        v.push(self.global_env.0);
-        v.push(self.env.0);
-        v.push(self.fun.0);
+        v.push(self.value);
+        v.push(self.global_env);
+        v.push(self.env);
+        v.push(self.fun);
         for s in self.stack.iter() {
-            v.push(s.0);
+            v.push(*s);
         }
         v.push(self.root_code_block);
         v.push(self.current_code_block);
@@ -113,8 +112,8 @@ pub fn run(
     arena: &Arena,
     code: RootPtr,
     pc: usize,
-    global_env: ValRef,
-    env: ValRef,
+    global_env: PoolPtr,
+    env: PoolPtr,
 ) -> Result<RootPtr, RootPtr> {
     let mut vm = Vm {
         value: arena.unspecific,
@@ -140,10 +139,10 @@ pub fn run(
 }
 
 fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
-    let code = arena.get_code_block(ValRef(vm.current_code_block));
+    let code = arena.get_code_block(vm.current_code_block);
     // println!("running {:?}, rst {:?}", code.instructions[vm.pc], vm.return_stack);
     match code.instructions[vm.pc] {
-        Instruction::Constant(v) => vm.set_value(ValRef(code.constants[v])),
+        Instruction::Constant(v) => vm.set_value(code.constants[v]),
         Instruction::JumpFalse(offset) => {
             if !arena.get(vm.value).truthy() {
                 vm.pc += offset;
@@ -239,7 +238,7 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
         Instruction::CreateClosure(idx) => {
             vm.set_value(arena.insert(Value::Lambda {
                 code: code.code_blocks[idx],
-                frame: vm.env.0,
+                frame: vm.env,
             }));
         }
         Instruction::PackFrame(arity) => {
@@ -320,7 +319,7 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
 }
 
 // TODO remove this
-fn get_activation_frame(arena: &Arena, env: ValRef) -> &RefCell<ActivationFrame> {
+fn get_activation_frame(arena: &Arena, env: PoolPtr) -> &RefCell<ActivationFrame> {
     arena.get_activation_frame(env)
 }
 
@@ -336,7 +335,7 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
                 }
                 vm.return_stack.push(vm.get_return_point());
             }
-            vm.env = ValRef(*frame);
+            vm.env = *frame;
             vm.current_code_block = *code;
             vm.pc = 0;
         }
@@ -447,14 +446,12 @@ fn eval(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
 
     let res = parse_compile_run(arena, &mut VmState::new(arena), arena.root(expr))
         .map_err(|e| raise_string(arena, format!("eval: {}", e)))?;
-    vm.set_value(res.vr());
+    vm.set_value(res.pp());
     Ok(())
 }
 
 fn resolve_variable(arena: &Arena, vm: &Vm, altitude: usize, index: usize) -> String {
-    let env = &arena
-        .get_code_block(ValRef(vm.current_code_block))
-        .environment;
+    let env = &arena.get_code_block(vm.current_code_block).environment;
     env.borrow().get_name(altitude, index)
 }
 
@@ -477,7 +474,7 @@ fn error_stack(arena: &Arena, vm: &Vm, error: Error) -> Error {
             message,
             "\tat {}",
             arena
-                .get_code_block(ValRef(cb))
+                .get_code_block(cb)
                 .name
                 .as_deref()
                 .unwrap_or("[anonymous]")
@@ -489,7 +486,7 @@ fn error_stack(arena: &Arena, vm: &Vm, error: Error) -> Error {
         write_code_block(arena, &mut message, *code_block);
     }
     let msg_r = arena.insert_rooted(Value::String(RefCell::new(message)));
-    error.map_error(|e| arena.insert_rooted(Value::Pair(Cell::new(e.vr()), Cell::new(msg_r.vr()))))
+    error.map_error(|e| arena.insert_rooted(Value::Pair(Cell::new(e.pp()), Cell::new(msg_r.pp()))))
 }
 
 fn handle_error(arena: &Arena, vm: &mut Vm, e: Error) -> Result<RootPtr, RootPtr> {
@@ -503,7 +500,7 @@ fn handle_error(arena: &Arena, vm: &mut Vm, e: Error) -> Result<RootPtr, RootPtr
                 Value::Lambda { .. } => {
                     let frame = ActivationFrame {
                         parent: None,
-                        values: vec![v.vr()],
+                        values: vec![v.pp()],
                     };
                     vm.fun = handler;
                     vm.set_value(arena.insert(Value::ActivationFrame(RefCell::new(frame))));
@@ -521,14 +518,14 @@ fn handle_error(arena: &Arena, vm: &mut Vm, e: Error) -> Result<RootPtr, RootPtr
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Continuation {
-    stack: Vec<ValRef>,
+    stack: Vec<PoolPtr>,
     return_stack: Vec<ReturnPoint>,
 }
 
 impl heap::Inventory for Continuation {
     fn inventory(&self, v: &mut heap::PtrVec) {
         for obj in self.stack.iter() {
-            v.push(obj.0);
+            v.push(*obj);
         }
     }
 }

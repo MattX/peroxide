@@ -14,11 +14,12 @@
 
 use std::cell::RefCell;
 
-use arena::{Arena, ValRef};
+use arena::Arena;
+use heap::PoolPtr;
 use util::check_len;
 use value::{pretty_print, Value};
 
-pub fn symbol_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn symbol_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     Ok(match arena.get(args[0]) {
         Value::Symbol(_) => arena.t,
@@ -26,7 +27,7 @@ pub fn symbol_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     })
 }
 
-pub fn symbol_to_string(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn symbol_to_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     match arena.get(args[0]) {
         Value::Symbol(s) => Ok(arena.insert(Value::String(RefCell::new(s.clone())))),
@@ -37,7 +38,7 @@ pub fn symbol_to_string(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String
     }
 }
 
-pub fn string_to_symbol(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn string_to_symbol(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     match arena.get(args[0]) {
         Value::String(s) => Ok(arena.insert(Value::Symbol(s.borrow().clone()))),

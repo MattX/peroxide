@@ -18,8 +18,9 @@ use std::io::{Error, ErrorKind, Read};
 
 use num_traits::ToPrimitive;
 
-use arena::{Arena, ValRef};
+use arena::Arena;
 use heap;
+use heap::PoolPtr;
 use util::check_len;
 use value::{pretty_print, Value};
 
@@ -213,69 +214,69 @@ impl heap::Inventory for Port {
     fn inventory(&self, _v: &mut heap::PtrVec) {}
 }
 
-fn is_port(arena: &Arena, arg: ValRef) -> bool {
+fn is_port(arena: &Arena, arg: PoolPtr) -> bool {
     arena.try_get_port(arg).is_some()
 }
 
-fn is_input_port(arena: &Arena, arg: ValRef) -> bool {
+fn is_input_port(arena: &Arena, arg: PoolPtr) -> bool {
     match arena.try_get_port(arg).expect("Not a port.") {
         Port::BinaryInputFile(_) | Port::TextInputFile(_) => true,
         _ => false,
     }
 }
 
-fn is_output_port(arena: &Arena, arg: ValRef) -> bool {
+fn is_output_port(arena: &Arena, arg: PoolPtr) -> bool {
     match arena.try_get_port(arg).expect("Not a port.") {
         Port::OutputFile(_) => true,
         _ => false,
     }
 }
 
-fn is_binary_port(arena: &Arena, arg: ValRef) -> bool {
+fn is_binary_port(arena: &Arena, arg: PoolPtr) -> bool {
     match arena.try_get_port(arg).expect("Not a port.") {
         Port::BinaryInputFile(_) | Port::OutputFile(_) => true,
         _ => false,
     }
 }
 
-fn is_textual_port(arena: &Arena, arg: ValRef) -> bool {
+fn is_textual_port(arena: &Arena, arg: PoolPtr) -> bool {
     match arena.try_get_port(arg).expect("Not a port.") {
         Port::TextInputFile(_) | Port::OutputFile(_) => true,
         _ => false,
     }
 }
 
-pub fn port_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn port_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     let res = is_port(arena, args[0]);
     Ok(arena.insert(Value::Boolean(res)))
 }
 
-pub fn input_port_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn input_port_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     let res = is_port(arena, args[0]) && is_input_port(arena, args[0]);
     Ok(arena.insert(Value::Boolean(res)))
 }
 
-pub fn output_port_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn output_port_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     let res = is_port(arena, args[0]) && is_output_port(arena, args[0]);
     Ok(arena.insert(Value::Boolean(res)))
 }
 
-pub fn textual_port_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn textual_port_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     let res = is_port(arena, args[0]) && is_textual_port(arena, args[0]);
     Ok(arena.insert(Value::Boolean(res)))
 }
 
-pub fn binary_port_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn binary_port_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     let res = is_port(arena, args[0]) && is_binary_port(arena, args[0]);
     Ok(arena.insert(Value::Boolean(res)))
 }
 
-pub fn close_port(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn close_port(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     let port = arena
         .try_get_port(args[0])
@@ -290,7 +291,7 @@ pub fn close_port(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     Ok(arena.unspecific)
 }
 
-pub fn port_open_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn port_open_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     let port = arena
         .try_get_port(args[0])
@@ -307,14 +308,14 @@ pub fn port_open_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
 // TODO: paths don't have to be strings on most OSes. We should let the user specify arbitrary
 //       bytes. The issue is that I don't think Rust really provides a way to convert arbitrary
 //       bytes to a path?
-fn get_path(arena: &Arena, val: ValRef) -> Option<std::path::PathBuf> {
+fn get_path(arena: &Arena, val: PoolPtr) -> Option<std::path::PathBuf> {
     match arena.get(val) {
         Value::String(s) => Some(std::path::PathBuf::from(s.borrow().clone())),
         _ => None,
     }
 }
 
-pub fn open_input_file(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn open_input_file(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     let path = get_path(arena, args[0])
         .ok_or_else(|| format!("Not a valid path: {}", pretty_print(arena, args[0])))?;
@@ -323,19 +324,19 @@ pub fn open_input_file(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String>
     Ok(arena.insert(Value::Port(Box::new(port))))
 }
 
-pub fn eof_object(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn eof_object(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(0), Some(0))?;
     Ok(arena.eof)
 }
 
-pub fn eof_object_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn eof_object_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     Ok(arena.insert(Value::Boolean(args[0] == arena.eof)))
 }
 
 fn get_open_text_input_port(
     arena: &Arena,
-    val: ValRef,
+    val: PoolPtr,
 ) -> Result<RefMut<Box<FileTextInputPort>>, String> {
     if let Port::TextInputFile(op) = arena
         .try_get_port(val)
@@ -355,7 +356,7 @@ fn get_open_text_input_port(
     }
 }
 
-pub fn read_char(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn read_char(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     let mut port = get_open_text_input_port(arena, args[0])?;
     match port.read_one() {
@@ -370,7 +371,7 @@ pub fn read_char(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     }
 }
 
-pub fn peek_char(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn peek_char(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     let mut port = get_open_text_input_port(arena, args[0])?;
     match port.peek() {
@@ -385,7 +386,7 @@ pub fn peek_char(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     }
 }
 
-pub fn read_line(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn read_line(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     let mut port = get_open_text_input_port(arena, args[0])?;
     let mut result = String::new();
@@ -414,7 +415,7 @@ pub fn read_line(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     }
 }
 
-pub fn char_ready_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn char_ready_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     let mut port = get_open_text_input_port(arena, args[0])?;
     match port.ready() {
@@ -429,7 +430,7 @@ pub fn char_ready_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     }
 }
 
-pub fn read_string(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn read_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(2), Some(2))?;
     let len = arena
         .try_get_integer(args[0])
@@ -450,7 +451,7 @@ pub fn read_string(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     }
 }
 
-pub fn open_output_string(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn open_output_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(0), Some(0))?;
     Ok(
         arena.insert(Value::Port(Box::new(Port::OutputString(RefCell::new(
@@ -461,7 +462,7 @@ pub fn open_output_string(arena: &Arena, args: &[ValRef]) -> Result<ValRef, Stri
     )
 }
 
-pub fn get_output_string(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn get_output_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     match arena
         .try_get_port(args[0])

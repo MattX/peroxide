@@ -68,9 +68,9 @@
 
 use std::fmt::{Debug, Error, Formatter};
 
-use arena::{Arena, ValRef};
+use arena::Arena;
 use environment::{RcAfi, RcEnv};
-use heap::RootPtr;
+use heap::{PoolPtr, RootPtr};
 use primitives::char::*;
 use primitives::numeric::*;
 use primitives::object::*;
@@ -240,7 +240,7 @@ pub struct Primitive {
 }
 
 pub enum PrimitiveImplementation {
-    Simple(fn(&Arena, &[ValRef]) -> Result<ValRef, String>),
+    Simple(fn(&Arena, &[PoolPtr]) -> Result<PoolPtr, String>),
     Eval,
     Apply,
     CallCC,
@@ -266,7 +266,7 @@ pub fn register_primitives(
     afi: &RcAfi,
     global_frame: &RootPtr,
 ) {
-    let frame = arena.get_activation_frame(global_frame.vr());
+    let frame = arena.get_activation_frame(global_frame.pp());
     for prim in PRIMITIVES.iter() {
         global_environment
             .borrow_mut()

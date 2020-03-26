@@ -19,11 +19,12 @@ use std::cell::RefCell;
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
 
-use arena::{Arena, ValRef};
+use arena::Arena;
+use heap::PoolPtr;
 use util::check_len;
 use value::{pretty_print, Value};
 
-pub fn vector_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn vector_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     Ok(match arena.get(args[0]) {
         Value::Vector(_) => arena.t,
@@ -31,7 +32,7 @@ pub fn vector_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     })
 }
 
-pub fn make_vector(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn make_vector(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(2))?;
     let fill = *args.get(1).unwrap_or(&arena.f);
     let l = arena.try_get_integer(args[0]).ok_or_else(|| {
@@ -43,11 +44,11 @@ pub fn make_vector(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     let l = l
         .to_usize()
         .ok_or_else(|| format!("make-vector: string cannot have negative length: {}.", l))?;
-    let v: Vec<ValRef> = std::iter::repeat(fill).take(l as usize).collect();
+    let v: Vec<PoolPtr> = std::iter::repeat(fill).take(l as usize).collect();
     Ok(arena.insert(Value::Vector(RefCell::new(v))))
 }
 
-pub fn vector_length(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn vector_length(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     let l = arena
         .try_get_vector(args[0])
@@ -62,7 +63,7 @@ pub fn vector_length(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     Ok(arena.insert(Value::Integer(BigInt::from(l))))
 }
 
-pub fn vector_set_b(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn vector_set_b(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(3), Some(3))?;
     let mut borrowed_vec = arena
         .try_get_vector(args[0])
@@ -89,7 +90,7 @@ pub fn vector_set_b(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     Ok(arena.unspecific)
 }
 
-pub fn vector_ref(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn vector_ref(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(2), Some(2))?;
     let borrowed_vec = arena
         .try_get_vector(args[0])

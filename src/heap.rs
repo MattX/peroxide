@@ -39,7 +39,6 @@ use std::rc::{Rc, Weak};
 
 use value::Value;
 
-use arena::ValRef;
 use bitvec::prelude::{BitBox, BitVec};
 use vm::Vm;
 
@@ -520,10 +519,6 @@ impl Drop for RootPtr {
 }
 
 impl RootPtr {
-    pub fn vr(&self) -> ValRef {
-        ValRef(self.ptr)
-    }
-
     pub fn pp(&self) -> PoolPtr {
         self.ptr
     }

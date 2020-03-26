@@ -17,11 +17,12 @@ use std::cell::RefCell;
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
 
-use arena::{Arena, ValRef};
+use arena::Arena;
+use heap::PoolPtr;
 use util::check_len;
 use value::{pretty_print, Value};
 
-fn get_char_arg(arena: &Arena, args: &[ValRef], prim_name: &str) -> Result<char, String> {
+fn get_char_arg(arena: &Arena, args: &[PoolPtr], prim_name: &str) -> Result<char, String> {
     check_len(args, Some(1), Some(1))?;
     arena.try_get_character(args[0]).ok_or_else(|| {
         format!(
@@ -32,7 +33,7 @@ fn get_char_arg(arena: &Arena, args: &[ValRef], prim_name: &str) -> Result<char,
     })
 }
 
-pub fn char_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn char_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     Ok(match arena.get(args[0]) {
         Value::Character(_) => arena.t,
@@ -40,13 +41,13 @@ pub fn char_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     })
 }
 
-pub fn char_to_integer(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn char_to_integer(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     let arg = get_char_arg(arena, args, "char->integer")?;
     let val = Value::Integer(BigInt::from(u32::from(arg)));
     Ok(arena.insert(val))
 }
 
-pub fn integer_to_char(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn integer_to_char(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     let int = arena.try_get_integer(args[0]).ok_or_else(|| {
         format!(
@@ -67,27 +68,27 @@ pub fn integer_to_char(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String>
 // The following methods could be implemented in a library, but they're annoying to implement for
 // Unicode values, so we have them as primitives to leverage Rust's Unicode support.
 
-pub fn char_alphabetic_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn char_alphabetic_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     let arg = get_char_arg(arena, args, "char-alphabetic?")?;
     Ok(arena.insert(Value::Boolean(arg.is_alphabetic())))
 }
 
-pub fn char_numeric_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn char_numeric_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     let arg = get_char_arg(arena, args, "char-numeric?")?;
     Ok(arena.insert(Value::Boolean(arg.is_numeric())))
 }
 
-pub fn char_whitespace_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn char_whitespace_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     let arg = get_char_arg(arena, args, "char-whitespace?")?;
     Ok(arena.insert(Value::Boolean(arg.is_whitespace())))
 }
 
-pub fn char_upper_case_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn char_upper_case_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     let arg = get_char_arg(arena, args, "char-upper-case?")?;
     Ok(arena.insert(Value::Boolean(arg.is_uppercase())))
 }
 
-pub fn char_lower_case_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn char_lower_case_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     let arg = get_char_arg(arena, args, "char-lower-case?")?;
     Ok(arena.insert(Value::Boolean(arg.is_lowercase())))
 }
@@ -96,22 +97,22 @@ pub fn char_lower_case_p(arena: &Arena, args: &[ValRef]) -> Result<ValRef, Strin
 // because corresponding upper/lower case values can be strings, but the R5RS standard does not
 // anticipate this case.
 
-pub fn char_upcase(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn char_upcase(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     let arg = get_char_arg(arena, args, "char-upcase")?;
     Ok(arena.insert(Value::Character(arg.to_ascii_uppercase())))
 }
 
-pub fn char_downcase(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn char_downcase(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     let arg = get_char_arg(arena, args, "char-downcase")?;
     Ok(arena.insert(Value::Character(arg.to_ascii_lowercase())))
 }
 
-pub fn char_upcase_unicode(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn char_upcase_unicode(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     let arg = get_char_arg(arena, args, "char-upcase-unicode")?;
     Ok(arena.insert(Value::String(RefCell::new(arg.to_uppercase().to_string()))))
 }
 
-pub fn char_downcase_unicode(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
+pub fn char_downcase_unicode(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     let arg = get_char_arg(arena, args, "char-downcase-unicode")?;
     Ok(arena.insert(Value::String(RefCell::new(arg.to_lowercase().to_string()))))
 }

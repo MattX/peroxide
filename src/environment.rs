@@ -28,8 +28,8 @@ use std::fmt::{Debug, Error, Formatter};
 use std::option::Option;
 use std::rc::Rc;
 
-use arena::{Arena, ValRef};
-use heap::RootPtr;
+use arena::Arena;
+use heap::{PoolPtr, RootPtr};
 
 pub struct Environment {
     parent: Option<Rc<RefCell<Environment>>>,
@@ -236,8 +236,8 @@ pub fn filter(closed_env: &RcEnv, free_env: &RcEnv, free_vars: &[String]) -> Res
 // TODO make these fields private and have proper accessors
 #[derive(Debug, PartialEq, Clone)]
 pub struct ActivationFrame {
-    pub parent: Option<ValRef>,
-    pub values: Vec<ValRef>,
+    pub parent: Option<PoolPtr>,
+    pub values: Vec<PoolPtr>,
 }
 
 impl ActivationFrame {
@@ -245,7 +245,7 @@ impl ActivationFrame {
         self.parent.map(|p| arena.get_activation_frame(p))
     }
 
-    pub fn get(&self, arena: &Arena, depth: usize, index: usize) -> ValRef {
+    pub fn get(&self, arena: &Arena, depth: usize, index: usize) -> PoolPtr {
         if depth == 0 {
             self.values[index]
         } else if let Some(p) = self.get_parent(arena) {
@@ -276,7 +276,7 @@ impl ActivationFrame {
         }
     }
 
-    pub fn set(&mut self, arena: &Arena, depth: usize, index: usize, value: ValRef) {
+    pub fn set(&mut self, arena: &Arena, depth: usize, index: usize, value: PoolPtr) {
         if depth == 0 {
             self.values[index] = value;
         } else if let Some(p) = self.get_parent(arena) {
