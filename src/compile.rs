@@ -20,8 +20,6 @@ use std::cell::RefCell;
 use value::Value;
 use vm::Instruction;
 
-// TODO in this file -- compilation can't fail so it makes no sense to return Result<> objects.
-
 /// A unit of code corresponding to a function.
 #[derive(Debug, PartialEq, Clone)]
 pub struct CodeBlock {
@@ -80,7 +78,7 @@ pub fn compile_toplevel(
     arena: &Arena,
     tree: &SyntaxElement,
     environment: RcEnv,
-) -> Result<PoolPtr, String> {
+) -> PoolPtr {
     let mut code_block = CodeBlock::new(Some("[toplevel]".into()), 0, false, environment);
 
     // rooted_vec is a bit of a hack to avoid accidentally GCing code blocks.
@@ -91,9 +89,9 @@ pub fn compile_toplevel(
     // items in progress.
     let rooted_vec = arena.insert_rooted(Value::Vector(RefCell::new(vec![])));
 
-    compile(arena, tree, &mut code_block, false, rooted_vec.pp())?;
+    compile(arena, tree, &mut code_block, false, rooted_vec.pp());
     code_block.push(Instruction::Finish);
-    Ok(arena.insert(Value::CodeBlock(Box::new(code_block))).0)
+    arena.insert(Value::CodeBlock(Box::new(code_block))).0
 }
 
 pub fn compile(
@@ -102,46 +100,46 @@ pub fn compile(
     code: &mut CodeBlock,
     tail: bool,
     rv: PoolPtr,
-) -> Result<(), String> {
+) {
     match tree {
         SyntaxElement::Quote(q) => {
             let idx = code.push_constant(q.quoted.pp());
             code.push(Instruction::Constant(idx));
         }
         SyntaxElement::If(i) => {
-            compile(arena, &i.cond, code, false, rv)?;
+            compile(arena, &i.cond, code, false, rv);
             let cond_jump = code.code_size();
             code.push(Instruction::NoOp); // Is rewritten as a conditional jump below
-            compile(arena, &i.t, code, tail, rv)?;
+            compile(arena, &i.t, code, tail, rv);
             let mut true_end = code.code_size();
             if let Some(ref f) = i.f {
                 code.push(Instruction::NoOp);
                 true_end += 1;
-                compile(arena, f, code, tail, rv)?;
+                compile(arena, f, code, tail, rv);
                 let jump_offset = code.code_size() - true_end;
                 code.replace(true_end - 1, Instruction::Jump(jump_offset));
             }
             code.replace(cond_jump, Instruction::JumpFalse(true_end - cond_jump - 1));
         }
         SyntaxElement::Begin(b) => {
-            compile_sequence(arena, &b.expressions, code, tail, rv)?;
+            compile_sequence(arena, &b.expressions, code, tail, rv);
         }
         SyntaxElement::Set(s) => {
-            compile(arena, &s.value, code, false, rv)?;
+            compile(arena, &s.value, code, false, rv);
             code.push(make_set_instruction(s.altitude, s.depth, s.index));
         }
         SyntaxElement::Reference(r) => {
             code.push(make_get_instruction(r.altitude, r.depth, r.index));
         }
         SyntaxElement::Lambda(l) => {
-            code.code_blocks.push(compile_lambda(arena, l, rv)?);
+            code.code_blocks.push(compile_lambda(arena, l, rv));
             code.push(Instruction::CreateClosure(code.code_blocks.len() - 1));
         }
         SyntaxElement::Application(a) => {
-            compile(arena, &a.function, code, false, rv)?;
+            compile(arena, &a.function, code, false, rv);
             code.push(Instruction::PushValue);
             for instr in a.args.iter() {
-                compile(arena, instr, code, false, rv)?;
+                compile(arena, instr, code, false, rv);
                 code.push(Instruction::PushValue);
             }
             code.push(Instruction::CreateFrame(a.args.len()));
@@ -154,8 +152,7 @@ pub fn compile(
                 code.push(Instruction::RestoreEnv);
             }
         }
-    }
-    Ok(())
+    };
 }
 
 fn compile_sequence(
@@ -164,10 +161,9 @@ fn compile_sequence(
     code: &mut CodeBlock,
     tail: bool,
     rv: PoolPtr,
-) -> Result<usize, String> {
-    let initial_len = code.code_size();
+)  {
     for instr in expressions[..expressions.len() - 1].iter() {
-        compile(arena, instr, code, false, rv)?;
+        compile(arena, instr, code, false, rv);
     }
     compile(
         arena,
@@ -176,11 +172,10 @@ fn compile_sequence(
         code,
         tail,
         rv,
-    )?;
-    Ok(code.code_size() - initial_len)
+    );
 }
 
-fn compile_lambda(arena: &Arena, l: &Lambda, rv: PoolPtr) -> Result<PoolPtr, String> {
+fn compile_lambda(arena: &Arena, l: &Lambda, rv: PoolPtr) -> PoolPtr {
     let mut code = CodeBlock::new(l.name.clone(), l.arity, l.dotted, l.env.clone());
     // See `compile_toplevel` for an explanation of rooted_vec
     let rooted_vec = arena.insert_rooted(Value::Vector(RefCell::new(vec![])));
@@ -196,9 +191,9 @@ fn compile_lambda(arena: &Arena, l: &Lambda, rv: PoolPtr) -> Result<PoolPtr, Str
     code.push(Instruction::ExtendEnv);
 
     if !l.defines.is_empty() {
-        compile_sequence(arena, &l.defines, &mut code, false, rooted_vec.pp())?;
+        compile_sequence(arena, &l.defines, &mut code, false, rooted_vec.pp());
     }
-    compile_sequence(arena, &l.expressions, &mut code, true, rooted_vec.pp())?;
+    compile_sequence(arena, &l.expressions, &mut code, true, rooted_vec.pp());
 
     code.push(Instruction::Return);
 
@@ -208,7 +203,7 @@ fn compile_lambda(arena: &Arena, l: &Lambda, rv: PoolPtr) -> Result<PoolPtr, Str
         .unwrap()
         .borrow_mut()
         .push(ValRef(code_block_ptr));
-    Ok(code_block_ptr)
+    code_block_ptr
 }
 
 fn make_get_instruction(altitude: usize, depth: usize, index: usize) -> Instruction {

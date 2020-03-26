@@ -123,8 +123,7 @@ pub fn compile_run(
     state: &mut VmState,
     syntax_tree: &SyntaxElement,
 ) -> Result<RootPtr, String> {
-    let code = compile::compile_toplevel(arena, &syntax_tree, state.global_environment.clone())
-        .map_err(|e| format!("compilation error: {}", e))?;
+    let code = compile::compile_toplevel(arena, &syntax_tree, state.global_environment.clone());
     let code = arena.root(ValRef(code));
     // println!(" => {:?}", arena.get_code_block(code.vr()));
     // println!(" => {:?}", arena.get_code_block(ValRef(arena.get_code_block(code.vr()).code_blocks[0])));

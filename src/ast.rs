@@ -712,8 +712,7 @@ fn parse_compile_run_macro(
 
     let frame = make_frame(arena, vms.global_frame.vr(), af_info);
 
-    let code = compile::compile_toplevel(arena, &syntax_tree, vms.global_environment.clone())
-        .map_err(|e| format!("compilation error: {}", e))?;
+    let code = compile::compile_toplevel(arena, &syntax_tree, vms.global_environment.clone());
     // println!(" => {:?}", &state.code[start_pc..state.code.len()]);
     let code = arena.root(ValRef(code));
     vm::run(arena, code, 0, vms.global_frame.vr(), frame)
