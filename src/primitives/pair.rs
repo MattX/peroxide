@@ -39,7 +39,7 @@ pub fn car(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
         Value::Pair(car, _) => Ok(car.get()),
         _ => Err(format!(
             "called car on a non-pair: {}",
-            arena.get(args[0]).pretty_print(arena)
+            args[0].pretty_print()
         )),
     }
 }
@@ -50,7 +50,7 @@ pub fn cdr(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
         Value::Pair(_, cdr) => Ok(cdr.get()),
         _ => Err(format!(
             "called cdr on a non-pair: {}",
-            arena.get(args[0]).pretty_print(arena)
+            args[0].pretty_print()
         )),
     }
 }
@@ -61,7 +61,7 @@ pub fn set_car_b(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
         Value::Pair(car, _) => Ok(car.replace(args[1])),
         _ => Err(format!(
             "called set-car! on a non-pair: {}",
-            arena.get(args[0]).pretty_print(arena)
+            args[0].pretty_print()
         )),
     }
 }
@@ -72,7 +72,7 @@ pub fn set_cdr_b(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
         Value::Pair(_, cdr) => Ok(cdr.replace(args[1])),
         _ => Err(format!(
             "called set-cdr! on a non-pair: {}",
-            arena.get(args[0]).pretty_print(arena)
+            args[0].pretty_print()
         )),
     }
 }

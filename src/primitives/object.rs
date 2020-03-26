@@ -18,7 +18,7 @@ use arena::Arena;
 use heap::PoolPtr;
 use util::check_len;
 use value;
-use value::{pretty_print, Value};
+use value::{Value};
 
 pub fn eq_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(2), Some(2))?;
@@ -45,16 +45,16 @@ pub fn procedure_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     })
 }
 
-pub fn display_to_string(arena: &Arena, args: &[PoolPtr]) -> String {
+pub fn display_to_string(args: &[PoolPtr]) -> String {
     let mut result = String::new();
     for a in args.iter() {
-        write!(&mut result, "{}", arena.get(*a).pretty_print(arena)).unwrap();
+        write!(&mut result, "{}", a.pretty_print()).unwrap();
     }
     result
 }
 
 pub fn write(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
-    print!("{}", display_to_string(arena, args));
+    print!("{}", display_to_string(args));
     Ok(arena.unspecific)
 }
 
@@ -63,7 +63,7 @@ pub fn display(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
         match arena.get(*arg) {
             Value::String(s) => print!("{}", &s.borrow()),
             Value::Character(c) => print!("{}", c),
-            _ => print!("{}", pretty_print(arena, *arg)),
+            _ => print!("{}", arg.pretty_print()),
         }
     }
     Ok(arena.unspecific)
@@ -74,6 +74,6 @@ pub fn newline(arena: &Arena, _args: &[PoolPtr]) -> Result<PoolPtr, String> {
     Ok(arena.unspecific)
 }
 
-pub fn error(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
-    Err(display_to_string(arena, args))
+pub fn error(_arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
+    Err(display_to_string(args))
 }

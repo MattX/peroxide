@@ -24,7 +24,7 @@ use arena::Arena;
 use heap::PoolPtr;
 use std::cell::RefCell;
 use util::{check_len, rational_to_f64, simplify_numeric};
-use value::{pretty_print, Value};
+use value::{Value};
 use {lex, read};
 
 macro_rules! simple_operator {
@@ -103,7 +103,7 @@ where
 
 pub fn sub(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     if args.len() == 1 {
-        let result = unary_operation!(arena.get(args[0]), pretty_print(arena, args[0]), sub1);
+        let result = unary_operation!(arena.get(args[0]), args[0].pretty_print(), sub1);
         Ok(arena.insert(result))
     } else {
         subn(arena, args)
@@ -169,7 +169,7 @@ pub fn div(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
         if !is_numeric(arg) {
             return Err(format!(
                 "non-numeric argument: {}",
-                pretty_print(arena, args[0])
+                args[0].pretty_print()
             ));
         }
         let result =
@@ -354,7 +354,7 @@ pub fn gcd(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
         } else {
             return Err(format!(
                 "non-integer argument: {}",
-                pretty_print(arena, *arg)
+                arg.pretty_print()
             ));
         }
     }
@@ -369,7 +369,7 @@ pub fn lcm(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
         } else {
             return Err(format!(
                 "non-integer argument: {}",
-                pretty_print(arena, *arg)
+                arg.pretty_print()
             ));
         }
     }
@@ -385,7 +385,7 @@ macro_rules! transcendental {
             if !is_numeric(arg) {
                 return Err(format!(
                     "non-numeric value: {}",
-                    pretty_print(arena, args[0])
+                    args[0].pretty_print()
                 ));
             }
             Ok(arena.insert(match as_real(arena.get(args[0])) {
@@ -411,7 +411,7 @@ fn get_radix(arena: &Arena, v: Option<&PoolPtr>) -> Result<u8, String> {
         Some(r) => arena
             .try_get_integer(*r)
             .map(|x| x.to_u8().unwrap())
-            .ok_or_else(|| format!("invalid radix: {}", pretty_print(arena, *r)))?,
+            .ok_or_else(|| format!("invalid radix: {}", r.pretty_print()))?,
         None => 10u8,
     };
     if ![2u8, 8, 10, 16].contains(&r) {
@@ -425,7 +425,7 @@ pub fn string_to_number(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, Stri
     let radix = get_radix(arena, args.get(1))?;
     let st = arena
         .try_get_string(args[0])
-        .ok_or_else(|| format!("invalid argument: {}", pretty_print(arena, args[0])))?;
+        .ok_or_else(|| format!("invalid argument: {}", args[0].pretty_print()))?;
     let chars = st.borrow().chars().collect::<Vec<_>>();
     let parsed = lex::parse_full_number(&chars, radix)
         .map(|parsed| read::read_num_token(&parsed))
@@ -478,7 +478,7 @@ pub fn number_to_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, Stri
         _ => {
             return Err(format!(
                 "converting non-number: {}",
-                pretty_print(arena, args[0])
+                args[0].pretty_print()
             ))
         }
     };
@@ -492,7 +492,7 @@ pub fn number_to_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, Stri
 fn numeric_vec<'a>(arena: &'a Arena, args: &[PoolPtr]) -> Result<Vec<&'a Value>, String> {
     for arg in args {
         if !is_numeric(arena.get(*arg)) {
-            return Err(format!("{} is not numeric.", pretty_print(arena, *arg)));
+            return Err(format!("{} is not numeric", arg.pretty_print()));
         }
     }
     Ok(args.iter().map(|v| arena.get(*v)).collect())

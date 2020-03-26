@@ -17,7 +17,7 @@ use std::cell::RefCell;
 use arena::Arena;
 use heap::PoolPtr;
 use util::check_len;
-use value::{pretty_print, Value};
+use value::{Value};
 
 pub fn symbol_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
@@ -33,7 +33,7 @@ pub fn symbol_to_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, Stri
         Value::Symbol(s) => Ok(arena.insert(Value::String(RefCell::new(s.clone())))),
         _ => Err(format!(
             "symbol->string: not a symbol: {}",
-            pretty_print(arena, args[0])
+            args[0].pretty_print()
         )),
     }
 }
@@ -44,7 +44,7 @@ pub fn string_to_symbol(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, Stri
         Value::String(s) => Ok(arena.insert(Value::Symbol(s.borrow().clone()))),
         _ => Err(format!(
             "string->symbol: not a string: {}",
-            pretty_print(arena, args[0])
+            args[0].pretty_print()
         )),
     }
 }

@@ -20,7 +20,7 @@ use num_traits::ToPrimitive;
 use arena::Arena;
 use heap::PoolPtr;
 use util::check_len;
-use value::{pretty_print, Value};
+use value::{Value};
 
 fn get_char_arg(arena: &Arena, args: &[PoolPtr], prim_name: &str) -> Result<char, String> {
     check_len(args, Some(1), Some(1))?;
@@ -28,7 +28,7 @@ fn get_char_arg(arena: &Arena, args: &[PoolPtr], prim_name: &str) -> Result<char
         format!(
             "{}: not a char: {}",
             prim_name,
-            pretty_print(arena, args[0])
+            args[0].pretty_print()
         )
     })
 }
@@ -52,7 +52,7 @@ pub fn integer_to_char(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, Strin
     let int = arena.try_get_integer(args[0]).ok_or_else(|| {
         format!(
             "integer->char: not an integer: {}",
-            pretty_print(arena, args[0])
+            args[0].pretty_print()
         )
     })?;
     let u32i = int

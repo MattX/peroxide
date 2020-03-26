@@ -22,7 +22,7 @@ use num_traits::ToPrimitive;
 use arena::Arena;
 use heap::PoolPtr;
 use util::check_len;
-use value::{pretty_print, Value};
+use value::{Value};
 
 pub fn vector_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
@@ -38,7 +38,7 @@ pub fn make_vector(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     let l = arena.try_get_integer(args[0]).ok_or_else(|| {
         format!(
             "make-vector: Invalid length: {}.",
-            pretty_print(arena, args[0])
+            args[0].pretty_print()
         )
     })?;
     let l = l
@@ -55,7 +55,7 @@ pub fn vector_length(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String>
         .ok_or_else(|| {
             format!(
                 "vector-length: Not a vector: {}.",
-                pretty_print(arena, args[0])
+                args[0].pretty_print()
             )
         })?
         .borrow()
@@ -70,14 +70,14 @@ pub fn vector_set_b(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> 
         .ok_or_else(|| {
             format!(
                 "vector-set!: Not a vector: {}.",
-                pretty_print(arena, args[0])
+                args[0].pretty_print()
             )
         })?
         .borrow_mut();
     let idx = arena.try_get_integer(args[1]).ok_or_else(|| {
         format!(
             "vector-set: Invalid index: {}.",
-            pretty_print(arena, args[1])
+            args[1].pretty_print()
         )
     })?;
     let idx = idx
@@ -97,14 +97,14 @@ pub fn vector_ref(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
         .ok_or_else(|| {
             format!(
                 "vector-ref: Not a vector: {}.",
-                pretty_print(arena, args[0])
+                args[0].pretty_print()
             )
         })?
         .borrow();
     let idx = arena.try_get_integer(args[1]).ok_or_else(|| {
         format!(
             "vector-ref: Invalid index: {}.",
-            pretty_print(arena, args[1])
+            args[1].pretty_print()
         )
     })?;
     let idx = idx

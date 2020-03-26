@@ -22,7 +22,7 @@ use arena::Arena;
 use heap;
 use heap::PoolPtr;
 use util::check_len;
-use value::{pretty_print, Value};
+use value::{Value};
 
 pub trait TextInputPort {
     fn ready(&mut self) -> std::io::Result<bool>;
@@ -280,7 +280,7 @@ pub fn close_port(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     let port = arena
         .try_get_port(args[0])
-        .ok_or_else(|| format!("Not a port: {}", pretty_print(arena, args[0])))?;
+        .ok_or_else(|| format!("Not a port: {}", args[0].pretty_print()))?;
     match port {
         Port::BinaryInputFile(s) => s.borrow_mut().close(),
         Port::TextInputFile(s) => s.borrow_mut().close(),
@@ -295,7 +295,7 @@ pub fn port_open_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     let port = arena
         .try_get_port(args[0])
-        .ok_or_else(|| format!("Not a port: {}", pretty_print(arena, args[0])))?;
+        .ok_or_else(|| format!("Not a port: {}", args[0].pretty_print()))?;
     let v = match port {
         Port::BinaryInputFile(s) => s.borrow().is_closed(),
         Port::TextInputFile(s) => s.borrow().is_closed(),
@@ -318,7 +318,7 @@ fn get_path(arena: &Arena, val: PoolPtr) -> Option<std::path::PathBuf> {
 pub fn open_input_file(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     let path = get_path(arena, args[0])
-        .ok_or_else(|| format!("Not a valid path: {}", pretty_print(arena, args[0])))?;
+        .ok_or_else(|| format!("not a valid path: {}", args[0].pretty_print()))?;
     let raw_port = FileTextInputPort::new(&path).map_err(|e| e.to_string())?;
     let port = Port::TextInputFile(RefCell::new(Box::new(raw_port)));
     Ok(arena.insert(Value::Port(Box::new(port))))
@@ -340,18 +340,18 @@ fn get_open_text_input_port(
 ) -> Result<RefMut<Box<FileTextInputPort>>, String> {
     if let Port::TextInputFile(op) = arena
         .try_get_port(val)
-        .ok_or_else(|| format!("Not a port: {}", pretty_print(arena, val)))?
+        .ok_or_else(|| format!("not a port: {}", val.pretty_print()))?
     {
         let port = op.borrow_mut();
         if port.is_closed() {
-            Err(format!("Port is closed: {}", pretty_print(arena, val)))
+            Err(format!("port is closed: {}", val.pretty_print()))
         } else {
             Ok(port)
         }
     } else {
         Err(format!(
-            "Not a text input port: {}",
-            pretty_print(arena, val)
+            "not a text input port: {}",
+            val.pretty_print()
         ))
     }
 }
@@ -434,7 +434,7 @@ pub fn read_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(2), Some(2))?;
     let len = arena
         .try_get_integer(args[0])
-        .ok_or_else(|| format!("Not an integer: {}", pretty_print(arena, args[0])))?;
+        .ok_or_else(|| format!("Not an integer: {}", args[0].pretty_print()))?;
     let len = len
         .to_usize()
         .ok_or_else(|| format!("Not a valid index: {}", len))?;
@@ -466,14 +466,14 @@ pub fn get_output_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, Str
     check_len(args, Some(1), Some(1))?;
     match arena
         .try_get_port(args[0])
-        .ok_or_else(|| format!("not a port: {}", pretty_print(arena, args[0])))?
+        .ok_or_else(|| format!("not a port: {}", args[0].pretty_print()))?
     {
         Port::OutputString(s) => {
             Ok(arena.insert(Value::String(RefCell::new(s.borrow().underlying.clone()))))
         }
         _ => Err(format!(
             "invalid port type: {}",
-            pretty_print(arena, args[0])
+            args[0].pretty_print()
         )),
     }
 }

@@ -38,7 +38,7 @@ use environment::{
 use heap::{PoolPtr, RootPtr};
 use primitives::SyntacticClosure;
 use util::check_len;
-use value::{list_from_vec, pretty_print, vec_from_list, Value};
+use value::{list_from_vec, vec_from_list, Value};
 use VmState;
 use {compile, vm};
 use {compile_run, environment};
@@ -348,7 +348,7 @@ fn parse_split_lambda(
             } else {
                 panic!(
                     "Expected {} in {:?} to be a variable, was {:?}.",
-                    define_data.target.show(arena),
+                    define_data.target.show(),
                     inner_env,
                     get_in_env(arena, &inner_env, &define_data.target)
                 );
@@ -393,18 +393,18 @@ fn parse_set(
                 value,
             }))),
             Some(_) => Err(format!(
-                "Trying to set non-variable `{}`",
+                "trying to set non-variable `{}`",
                 dt.get_name(arena)
             )),
             None => Err(format!(
-                "Trying to set undefined value `{}`",
+                "trying to set undefined value `{}`",
                 dt.get_name(arena)
             )),
         }
     } else {
         Err(format!(
-            "Expected symbol as target of set!, got `{}`",
-            pretty_print(arena, rest[0])
+            "expected symbol as target of set!, got `{}`",
+            rest[0].pretty_print()
         ))
     }
 }
@@ -422,8 +422,8 @@ fn parse_define(
     //      toplevelness. (eg `(define x (define y 1))` should not work).
     if af_info.borrow().altitude != 0 {
         return Err(format!(
-            "Define in illegal position: {}",
-            pretty_print(arena, list_from_vec(arena, rest))
+            "define in illegal position: {}",
+            list_from_vec(arena, rest).pretty_print()
         ));
     }
     let define_data = get_define_data(arena, rest)?;
@@ -465,10 +465,10 @@ impl DefineTarget {
         }
     }
 
-    fn show(&self, arena: &Arena) -> String {
+    fn show(&self) -> String {
         match self {
             DefineTarget::Bare(s) => format!("Bare({})", s),
-            DefineTarget::SyntacticClosure(v) => format!("Sc({})", pretty_print(arena, *v)),
+            DefineTarget::SyntacticClosure(v) => format!("Sc({})", v.pretty_print()),
         }
     }
 }
@@ -535,13 +535,13 @@ fn get_lambda_define_value(arena: &Arena, rest: &[PoolPtr]) -> Result<DefineData
         } else {
             Err(format!(
                 "Expected symbol for method name in define method, got `{}`.",
-                pretty_print(arena, car.get())
+                car.get().pretty_print()
             ))
         }
     } else {
         Err(format!(
             "Expected symbol or formals as target of define, got `{}`.",
-            pretty_print(arena, rest[0])
+            rest[0].pretty_print()
         ))
     }
 }
@@ -583,15 +583,15 @@ fn parse_formals(arena: &Arena, formals: PoolPtr) -> Result<Formals, String> {
                         formal = cdr.get();
                     } else {
                         return Err(format!(
-                            "Malformed formals: {}.",
-                            arena.get(formals).pretty_print(arena)
+                            "malformed formals: {}.",
+                            formals.pretty_print()
                         ));
                     }
                 }
                 _ => {
                     return Err(format!(
-                        "Malformed formals: {}.",
-                        arena.get(formals).pretty_print(arena)
+                        "malformed formals: {}.",
+                        formals.pretty_print()
                     ));
                 }
             }
@@ -618,7 +618,7 @@ fn parse_define_syntax(
         .ok_or_else(|| {
             format!(
                 "define-syntax: target must be symbol, not {}.",
-                pretty_print(arena, rest[0])
+                rest[0].pretty_print()
             )
         })?
         .to_string();
@@ -652,7 +652,7 @@ fn parse_let_syntax(
             .ok_or_else(|| {
                 format!(
                     "let-syntax: target must be symbol, not {}.",
-                    pretty_print(arena, rest[0])
+                    rest[0].pretty_print()
                 )
             })?
             .to_string();
@@ -692,7 +692,7 @@ fn make_macro(
         Value::Lambda { .. } => Ok(mac), // TODO check the lambda takes 3 args
         _ => Err(format!(
             "macro must be a lambda, is {}",
-            pretty_print(arena, mac.pp())
+            mac.pp().pretty_print()
         )),
     }
 }
@@ -720,7 +720,7 @@ fn parse_compile_run_macro(
     let code = arena.root(code);
     vm::run(arena, code, 0, vms.global_frame.pp(), frame)
         .map(|v| v.pp())
-        .map_err(|e| format!("runtime error: {}", pretty_print(arena, e.pp())))
+        .map_err(|e| format!("runtime error: {}", e.pp().pretty_print()))
 }
 
 fn make_frame(arena: &Arena, global_frame: PoolPtr, af_info: &RcAfi) -> PoolPtr {

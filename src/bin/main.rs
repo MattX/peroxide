@@ -145,7 +145,7 @@ fn rep(
         match peroxide::parse_compile_run(arena, vm_state, parse_value) {
             Ok(v) => {
                 if !silent {
-                    println!(" => {}", peroxide::value::pretty_print(arena, v.pp()))
+                    println!(" => {}", v.pp().pretty_print())
                 }
             }
             Err(e) => println!("{}", e),

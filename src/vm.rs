@@ -21,7 +21,7 @@ use arena::Arena;
 use environment::ActivationFrame;
 use heap::{Inventory, PoolPtr, PtrVec, RootPtr};
 use primitives::PrimitiveImplementation;
-use value::{list_from_vec, pretty_print, vec_from_list, Value};
+use value::{list_from_vec, vec_from_list, Value};
 use VmState;
 use {heap, parse_compile_run};
 
@@ -283,7 +283,7 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                 _ => {
                     return Err(raise_string(
                         arena,
-                        format!("cannot pop non-function: {}", pretty_print(arena, fun_r)),
+                        format!("cannot apply non-function: {}", fun_r.pretty_print()),
                     ));
                 }
             }
@@ -375,7 +375,7 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
         _ => {
             return Err(raise_string(
                 arena,
-                format!("Cannot invoke non-function: {}", fun.pretty_print(arena)),
+                format!("Cannot invoke non-function: {}", fun.pretty_print()),
             ));
         }
     }

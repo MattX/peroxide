@@ -20,7 +20,7 @@ use environment;
 use environment::{Environment, EnvironmentValue, RcEnv};
 use heap::PoolPtr;
 use util::check_len;
-use value::{list_from_vec, pretty_print, vec_from_list, Value};
+use value::{list_from_vec, vec_from_list, Value};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SyntacticClosure {
@@ -64,7 +64,7 @@ pub fn make_syntactic_closure(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr
             Value::Symbol(s) => Ok(s.clone()),
             _ => Err(format!(
                 "make-syntactic-closure: not a symbol: {}",
-                pretty_print(arena, *fv)
+                fv.pretty_print()
             )),
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -72,7 +72,7 @@ pub fn make_syntactic_closure(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr
         Value::Environment(_) => Ok(args[0]),
         _ => Err(format!(
             "make-syntactic-closure: not an environment: {}",
-            pretty_print(arena, args[0])
+            args[0].pretty_print()
         )),
     }?;
     Ok(arena.insert(Value::SyntacticClosure(SyntacticClosure {
@@ -104,7 +104,7 @@ fn get_in_env(
             let inner_env = environment::filter(closed_env, env, free_variables)?;
             get_in_env(arena, &inner_env, *expr)
         }
-        _ => Err(format!("Non-identifier: {}", pretty_print(arena, val))),
+        _ => Err(format!("non-identifier: {}", val.pretty_print())),
     }
 }
 
@@ -113,13 +113,13 @@ pub fn identifier_equal_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, St
     let env1 = arena.try_get_environment(args[0]).ok_or_else(|| {
         format!(
             "identifier=?: not an environment: {}",
-            pretty_print(arena, args[0])
+            args[0].pretty_print()
         )
     })?;
     let env2 = arena.try_get_environment(args[2]).ok_or_else(|| {
         format!(
             "identifier=?: not an environment: {}",
-            pretty_print(arena, args[2])
+            args[2].pretty_print()
         )
     })?;
 
@@ -150,7 +150,7 @@ fn coerce_symbol(arena: &Arena, value: PoolPtr) -> String {
         Value::SyntacticClosure(sc) => coerce_symbol(arena, sc.expr),
         _ => panic!(
             "Coercing non-identifier {} to symbol.",
-            pretty_print(arena, value)
+            value.pretty_print()
         ),
     }
 }
@@ -179,7 +179,7 @@ pub fn syntactic_closure_environment(arena: &Arena, args: &[PoolPtr]) -> Result<
     check_len(args, Some(1), Some(1))?;
     let synclos = arena
         .try_get_syntactic_closure(args[0])
-        .ok_or_else(|| format!("not a syntactic closure: {}", pretty_print(arena, args[0])))?;
+        .ok_or_else(|| format!("not a syntactic closure: {}", args[0].pretty_print()))?;
     Ok(*synclos.closed_env.borrow())
 }
 
@@ -190,7 +190,7 @@ pub fn syntactic_closure_free_variables(
     check_len(args, Some(1), Some(1))?;
     let synclos = arena
         .try_get_syntactic_closure(args[0])
-        .ok_or_else(|| format!("not a syntactic closure: {}", pretty_print(arena, args[0])))?;
+        .ok_or_else(|| format!("not a syntactic closure: {}", args[0].pretty_print()))?;
     let symbols = synclos
         .free_variables
         .iter()
@@ -203,7 +203,7 @@ pub fn syntactic_closure_expression(arena: &Arena, args: &[PoolPtr]) -> Result<P
     check_len(args, Some(1), Some(1))?;
     let synclos = arena
         .try_get_syntactic_closure(args[0])
-        .ok_or_else(|| format!("not a syntactic closure: {}", pretty_print(arena, args[0])))?;
+        .ok_or_else(|| format!("not a syntactic closure: {}", args[0].pretty_print()))?;
     Ok(synclos.expr)
 }
 
@@ -214,7 +214,7 @@ pub fn gensym(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
             arena
                 .try_get_string(*v)
                 .map(|s| s.borrow().clone())
-                .ok_or_else(|| format!("not a string: {}", pretty_print(arena, *v)))?,
+                .ok_or_else(|| format!("not a string: {}", v.pretty_print()))?,
         )
     } else {
         None

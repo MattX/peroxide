@@ -30,7 +30,7 @@ use ast::SyntaxElement;
 use environment::{ActivationFrame, ActivationFrameInfo, Environment, RcEnv};
 use heap::RootPtr;
 use read::read_many;
-use value::{pretty_print, Value};
+use value::Value;
 
 pub mod arena;
 pub mod ast;
@@ -86,7 +86,7 @@ pub fn initialize(arena: &mut Arena, state: &mut VmState, fname: &str) -> Result
     let values = read_many(arena, &contents)?;
     //println!("Values: {:?}", values);
     for v in values.into_iter() {
-        println!("eval> {}", pretty_print(arena, v.pp()));
+        // println!("eval> {}", pretty_print(arena, v.pp()));
         parse_compile_run(arena, state, v)?;
     }
     Ok(())
@@ -134,5 +134,5 @@ pub fn compile_run(
         state.global_frame.pp(),
         state.global_frame.pp(),
     )
-    .map_err(|e| format!("runtime error: {}", pretty_print(arena, e.pp())))
+    .map_err(|e| format!("runtime error: {}", e.pp().pretty_print()))
 }

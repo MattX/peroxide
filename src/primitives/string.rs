@@ -20,7 +20,7 @@ use num_traits::ToPrimitive;
 use arena::Arena;
 use heap::PoolPtr;
 use util::check_len;
-use value::{pretty_print, Value};
+use value::{Value};
 
 pub fn string_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
@@ -35,14 +35,14 @@ pub fn make_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
         _ => {
             return Err(format!(
                 "make-string: Invalid initial character: {}.",
-                pretty_print(arena, args[1])
+                args[1].pretty_print()
             ))
         }
     };
     let l = arena.try_get_integer(args[0]).ok_or_else(|| {
         format!(
             "make-string: Invalid length: {}.",
-            pretty_print(arena, args[0])
+            args[0].pretty_print()
         )
     })?;
     let l = l
@@ -59,7 +59,7 @@ pub fn string_length(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String>
         .ok_or_else(|| {
             format!(
                 "string-length: Not a string: {}.",
-                pretty_print(arena, args[0])
+                args[0].pretty_print()
             )
         })?
         .borrow()
@@ -74,30 +74,30 @@ pub fn string_set_b(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> 
         .try_get_string(args[0])
         .ok_or_else(|| {
             format!(
-                "string-set!: Not a string: {}.",
-                pretty_print(arena, args[0])
+                "string-set!: not a string: {}.",
+                args[0].pretty_print()
             )
         })?
         .borrow_mut();
     let idx = arena.try_get_integer(args[1]).ok_or_else(|| {
         format!(
-            "string-set: Invalid index: {}.",
-            pretty_print(arena, args[1])
+            "string-set: invalid index: {}.",
+            args[1].pretty_print()
         )
     })?;
     let chr = arena.try_get_character(args[2]).ok_or_else(|| {
         format!(
-            "string-set: Invalid character: {}.",
-            pretty_print(arena, args[2])
+            "string-set: invalid character: {}.",
+            args[2].pretty_print()
         )
     })?;
     let char_idx = idx
         .to_usize()
-        .ok_or_else(|| format!("string-ref: Invalid index: {}.", idx))?;
+        .ok_or_else(|| format!("string-ref: invalid index: {}.", idx))?;
     let (byte_idx, _) = borrowed_string
         .char_indices()
         .nth(char_idx)
-        .ok_or_else(|| format!("string-ref: Invalid index: {}.", idx))?;
+        .ok_or_else(|| format!("string-ref: invalid index: {}.", idx))?;
     borrowed_string.replace_range(byte_idx..=byte_idx, &chr.to_string());
     Ok(arena.unspecific)
 }
@@ -108,15 +108,15 @@ pub fn string_ref(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
         .try_get_string(args[0])
         .ok_or_else(|| {
             format!(
-                "string-ref: Not a string: {}.",
-                pretty_print(arena, args[0])
+                "string-ref: not a string: {}.",
+                args[0].pretty_print()
             )
         })?
         .borrow();
     let idx = arena.try_get_integer(args[1]).ok_or_else(|| {
         format!(
             "string-ref: Invalid index: {}.",
-            pretty_print(arena, args[1])
+            args[1].pretty_print()
         )
     })?;
     let idx = idx
@@ -135,7 +135,7 @@ fn to_string_vec<'a>(arena: &'a Arena, args: &[PoolPtr]) -> Result<Vec<Ref<'a, S
             arena
                 .try_get_string(*v)
                 .map(|s| s.borrow())
-                .ok_or_else(|| format!("not a string: {}", pretty_print(arena, *v)))
+                .ok_or_else(|| format!("not a string: {}", v.pretty_print()))
         })
         .collect::<Result<Vec<_>, String>>()
 }

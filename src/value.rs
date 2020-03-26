@@ -142,35 +142,35 @@ impl heap::Inventory for Value {
 }
 
 impl Value {
-    pub fn pretty_print(&self, arena: &Arena) -> String {
+    pub fn pretty_print(&self) -> String {
         match self {
-            Value::Pair(_, _) => self.print_pair(arena),
-            Value::Vector(_) => self.print_vector(arena),
+            Value::Pair(_, _) => self.print_pair(),
+            Value::Vector(_) => self.print_vector(),
             Value::SyntacticClosure(SyntacticClosure {
                 closed_env,
                 free_variables,
                 expr,
             }) => format!(
                 "#sc[{} {:?} {}]",
-                pretty_print(arena, *closed_env.borrow()),
+                closed_env.borrow().pretty_print(),
                 free_variables,
-                arena.get(*expr).pretty_print(arena)
+                expr.pretty_print()
             ),
             Value::Continuation(_) => "#<continuation>".to_string(),
             _ => format!("{}", self),
         }
     }
 
-    fn print_pair(&self, arena: &Arena) -> String {
-        fn _print_pair(arena: &Arena, p: &Value, s: &mut String) {
+    fn print_pair(&self) -> String {
+        fn _print_pair(p: &Value, s: &mut String) {
             match p {
                 Value::Pair(a, b) => {
-                    s.push_str(&arena.get(a.get()).pretty_print(arena)[..]);
-                    if let Value::EmptyList = arena.get(b.get()) {
+                    s.push_str(&a.get().pretty_print()[..]);
+                    if let Value::EmptyList = &*b.get() {
                         s.push_str(")");
                     } else {
                         s.push_str(" ");
-                        _print_pair(arena, arena.get(b.get()), s);
+                        _print_pair(&*b.get(), s);
                     }
                 }
                 Value::EmptyList => {
@@ -185,7 +185,7 @@ impl Value {
         match self {
             Value::Pair(_, _) | Value::EmptyList => {
                 let mut s = "(".to_string();
-                _print_pair(arena, self, &mut s);
+                _print_pair(self, &mut s);
                 s
             }
             _ => panic!(
@@ -195,12 +195,12 @@ impl Value {
         }
     }
 
-    fn print_vector(&self, arena: &Arena) -> String {
+    fn print_vector(&self) -> String {
         if let Value::Vector(vals) = self {
             let contents = vals
                 .borrow()
                 .iter()
-                .map(|e| arena.get(*e).pretty_print(arena))
+                .map(|e| e.pretty_print())
                 .collect::<Vec<_>>()
                 .join(" ");
             format!("#({})", contents)
@@ -225,7 +225,7 @@ impl Value {
                 _ => {
                     return Err(format!(
                         "Converting list to vec: {} is not a proper list",
-                        self.pretty_print(arena)
+                        self.pretty_print()
                     ));
                 }
             }
@@ -254,11 +254,6 @@ pub fn list_from_vec(arena: &Arena, vals: &[PoolPtr]) -> PoolPtr {
         let rest = arena.root(list_from_vec(arena, &vals[1..]));
         arena.insert(Value::Pair(Cell::new(vals[0]), Cell::new(rest.pp())))
     }
-}
-
-// TODO phase out inline version
-pub fn pretty_print(arena: &Arena, at: PoolPtr) -> String {
-    arena.get(at).pretty_print(arena)
 }
 
 pub fn eqv(arena: &Arena, left: PoolPtr, right: PoolPtr) -> bool {
