@@ -20,17 +20,13 @@ use num_traits::ToPrimitive;
 use arena::Arena;
 use heap::PoolPtr;
 use util::check_len;
-use value::{Value};
+use value::Value;
 
 fn get_char_arg(arena: &Arena, args: &[PoolPtr], prim_name: &str) -> Result<char, String> {
     check_len(args, Some(1), Some(1))?;
-    arena.try_get_character(args[0]).ok_or_else(|| {
-        format!(
-            "{}: not a char: {}",
-            prim_name,
-            args[0].pretty_print()
-        )
-    })
+    arena
+        .try_get_character(args[0])
+        .ok_or_else(|| format!("{}: not a char: {}", prim_name, args[0].pretty_print()))
 }
 
 pub fn char_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
@@ -49,12 +45,9 @@ pub fn char_to_integer(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, Strin
 
 pub fn integer_to_char(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let int = arena.try_get_integer(args[0]).ok_or_else(|| {
-        format!(
-            "integer->char: not an integer: {}",
-            args[0].pretty_print()
-        )
-    })?;
+    let int = arena
+        .try_get_integer(args[0])
+        .ok_or_else(|| format!("integer->char: not an integer: {}", args[0].pretty_print()))?;
     let u32i = int
         .to_u32()
         .ok_or_else(|| format!("integer->char: not a valid char: {}", int))?;

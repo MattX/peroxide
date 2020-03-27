@@ -44,7 +44,6 @@ fn execute_to_vec(
     code: &str,
 ) -> Result<Vec<Value>, String> {
     let val = execute_rooted(arena, vm_state, code)?;
-    println!("result of exec: {:?}", val);
     let vec = val.pp().pair_to_vec(arena)?;
     Ok(vec.iter().map(|iv| arena.get(*iv).clone()).collect())
 }

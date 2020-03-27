@@ -46,8 +46,10 @@ pub mod value;
 pub mod vm;
 
 pub const ERROR_HANDLER_INDEX: usize = 0;
+pub const INPUT_PORT_INDEX: usize = 1;
+pub const OUTPUT_PORT_INDEX: usize = 2;
 
-/// Structure holding the global state of the interpreter.
+/// Structure holding the global state of the interpreter between effective runs of the VM.
 pub struct VmState {
     pub global_environment: RcEnv,
     pub global_frame: RootPtr,
@@ -59,18 +61,32 @@ impl VmState {
         let global_frame =
             arena.insert_rooted(Value::ActivationFrame(RefCell::new(ActivationFrame {
                 parent: None,
-                values: vec![arena.f],
+                values: vec![arena.f, arena.f, arena.f],
             })));
         let afi = Rc::new(RefCell::new(ActivationFrameInfo {
             parent: None,
             altitude: 0,
             entries: 0,
         }));
+        // If you add any magic values here, make sure to also add them to the actual toplevel
+        // frame above too.
         assert_eq!(
             global_environment
                 .borrow_mut()
                 .define("%error-handler", &afi, true),
             ERROR_HANDLER_INDEX
+        );
+        assert_eq!(
+            global_environment
+                .borrow_mut()
+                .define("%current-input-port", &afi, true),
+            INPUT_PORT_INDEX
+        );
+        assert_eq!(
+            global_environment
+                .borrow_mut()
+                .define("%current-output-port", &afi, true),
+            OUTPUT_PORT_INDEX
         );
         primitives::register_primitives(arena, &global_environment, &afi, &global_frame);
 

@@ -22,8 +22,9 @@ use environment::ActivationFrame;
 use heap::{Inventory, PoolPtr, PtrVec, RootPtr};
 use primitives::PrimitiveImplementation;
 use value::{list_from_vec, vec_from_list, Value};
-use VmState;
+use OUTPUT_PORT_INDEX;
 use {heap, parse_compile_run};
+use {VmState, INPUT_PORT_INDEX};
 
 static MAX_RECURSION_DEPTH: usize = 1000;
 
@@ -173,7 +174,7 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                 return Err(raise_string(
                     arena,
                     format!(
-                        "Variable used before definition: {}",
+                        "variable used before definition: {}",
                         resolve_variable(arena, vm, 0, index)
                     ),
                 ));
@@ -200,7 +201,7 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                 return Err(raise_string(
                     arena,
                     format!(
-                        "Variable used before definition: {}",
+                        "variable used before definition: {}",
                         resolve_variable(arena, vm, current_depth - depth, index)
                     ),
                 ));
@@ -212,14 +213,14 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                 return Err(raise_string(
                     arena,
                     format!(
-                        "Expected at least {} arguments, got {}.",
+                        "expected at least {} arguments, got {}",
                         arity, actual_arity
                     ),
                 ));
             } else if !dotted && actual_arity != arity {
                 return Err(raise_string(
                     arena,
-                    format!("Expected {} arguments, got {}.", arity, actual_arity),
+                    format!("expected {} arguments, got {}", arity, actual_arity),
                 ));
             }
         }
@@ -231,7 +232,7 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
             let ReturnPoint { code_block, pc } = vm
                 .return_stack
                 .pop()
-                .expect("Returning with no values on return stack.");
+                .expect("returning with no values on return stack");
             vm.current_code_block = code_block;
             vm.pc = pc;
         }
@@ -348,6 +349,17 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
                         .map_err(|e| raise_string(arena, format!("In {:?}: {}", p, e)))?,
                 );
             }
+            PrimitiveImplementation::Io(i) => {
+                let af = arena.get_activation_frame(vm.value);
+                let values = &af.borrow().values;
+                let global_env = arena.get_activation_frame(vm.global_env).borrow();
+                let input_port = global_env.values[INPUT_PORT_INDEX];
+                let output_port = global_env.values[OUTPUT_PORT_INDEX];
+                vm.set_value(
+                    i(arena, input_port, output_port, &values)
+                        .map_err(|e| raise_string(arena, format!("In {:?}: {}", p, e)))?,
+                );
+            }
             PrimitiveImplementation::Apply => apply(arena, vm, tail)?,
             PrimitiveImplementation::CallCC => call_cc(arena, vm)?,
             PrimitiveImplementation::Abort => return Err(raise(arena, vm, true)),
@@ -359,7 +371,7 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
             if af.values.len() != 1 {
                 return Err(raise_string(
                     arena,
-                    "Invoking continuation with more than one argument".into(),
+                    "invoking continuation with more than one argument".into(),
                 ));
             }
             vm.stack = c.stack.clone();
@@ -367,7 +379,7 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
             let ReturnPoint { code_block, pc } = vm
                 .return_stack
                 .pop()
-                .expect("Popping continuation with no return address");
+                .expect("popping continuation with no return address");
             vm.current_code_block = code_block;
             vm.pc = pc;
             vm.set_value(af.values[0]);
@@ -375,7 +387,7 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
         _ => {
             return Err(raise_string(
                 arena,
-                format!("Cannot invoke non-function: {}", fun.pretty_print()),
+                format!("cannot invoke non-function: {}", fun.pretty_print()),
             ));
         }
     }

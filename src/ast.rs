@@ -582,17 +582,11 @@ fn parse_formals(arena: &Arena, formals: PoolPtr) -> Result<Formals, String> {
                         values.push(dt);
                         formal = cdr.get();
                     } else {
-                        return Err(format!(
-                            "malformed formals: {}.",
-                            formals.pretty_print()
-                        ));
+                        return Err(format!("malformed formals: {}.", formals.pretty_print()));
                     }
                 }
                 _ => {
-                    return Err(format!(
-                        "malformed formals: {}.",
-                        formals.pretty_print()
-                    ));
+                    return Err(format!("malformed formals: {}.", formals.pretty_print()));
                 }
             }
         }

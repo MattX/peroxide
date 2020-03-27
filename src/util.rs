@@ -24,12 +24,12 @@ use value::Value;
 pub fn check_len<T>(v: &[T], min: Option<usize>, max: Option<usize>) -> Result<(), String> {
     if let Some(m) = min {
         if v.len() < m {
-            return Err(format!("Too few values, expecting at least {}.", m));
+            return Err(format!("too few values, expecting at least {}", m));
         }
     };
     if let Some(m) = max {
         if v.len() > m {
-            return Err(format!("Too many values, expecting at most {}.", m));
+            return Err(format!("too many values, expecting at most {}", m));
         }
     };
     Ok(())

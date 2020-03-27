@@ -17,7 +17,7 @@ use std::cell::RefCell;
 use arena::Arena;
 use heap::PoolPtr;
 use util::check_len;
-use value::{Value};
+use value::Value;
 
 pub fn symbol_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;

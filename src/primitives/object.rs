@@ -18,7 +18,7 @@ use arena::Arena;
 use heap::PoolPtr;
 use util::check_len;
 use value;
-use value::{Value};
+use value::Value;
 
 pub fn eq_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(2), Some(2))?;

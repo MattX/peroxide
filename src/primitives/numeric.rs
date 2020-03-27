@@ -24,7 +24,7 @@ use arena::Arena;
 use heap::PoolPtr;
 use std::cell::RefCell;
 use util::{check_len, rational_to_f64, simplify_numeric};
-use value::{Value};
+use value::Value;
 use {lex, read};
 
 macro_rules! simple_operator {
@@ -167,10 +167,7 @@ pub fn div(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     if args.len() == 1 {
         let arg = arena.get(args[0]);
         if !is_numeric(arg) {
-            return Err(format!(
-                "non-numeric argument: {}",
-                args[0].pretty_print()
-            ));
+            return Err(format!("non-numeric argument: {}", args[0].pretty_print()));
         }
         let result =
             div2(&Value::Integer(BigInt::one()), arg).ok_or_else(|| "division by 0".to_string())?;
@@ -352,10 +349,7 @@ pub fn gcd(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
         if let Value::Integer(i) = arena.get(*arg) {
             acc = acc.gcd(i);
         } else {
-            return Err(format!(
-                "non-integer argument: {}",
-                arg.pretty_print()
-            ));
+            return Err(format!("non-integer argument: {}", arg.pretty_print()));
         }
     }
     Ok(arena.insert(Value::Integer(acc)))
@@ -367,10 +361,7 @@ pub fn lcm(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
         if let Value::Integer(i) = arena.get(*arg) {
             acc = acc.lcm(i);
         } else {
-            return Err(format!(
-                "non-integer argument: {}",
-                arg.pretty_print()
-            ));
+            return Err(format!("non-integer argument: {}", arg.pretty_print()));
         }
     }
     Ok(arena.insert(Value::Integer(acc)))
@@ -383,10 +374,7 @@ macro_rules! transcendental {
             check_len(args, Some(1), Some(1))?;
             let arg = arena.get(args[0]);
             if !is_numeric(arg) {
-                return Err(format!(
-                    "non-numeric value: {}",
-                    args[0].pretty_print()
-                ));
+                return Err(format!("non-numeric value: {}", args[0].pretty_print()));
             }
             Ok(arena.insert(match as_real(arena.get(args[0])) {
                 Value::ComplexReal(c) => Value::ComplexReal(c.$operator()),
@@ -475,12 +463,7 @@ pub fn number_to_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, Stri
             format_rational(&a.re, radix),
             format_rational(&a.im, radix)
         ),
-        _ => {
-            return Err(format!(
-                "converting non-number: {}",
-                args[0].pretty_print()
-            ))
-        }
+        _ => return Err(format!("converting non-number: {}", args[0].pretty_print())),
     };
     Ok(arena.insert(Value::String(RefCell::new(resp))))
 }

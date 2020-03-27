@@ -22,7 +22,7 @@ use arena::Arena;
 use heap;
 use heap::PoolPtr;
 use util::check_len;
-use value::{Value};
+use value::Value;
 
 pub trait TextInputPort {
     fn ready(&mut self) -> std::io::Result<bool>;
@@ -63,13 +63,13 @@ fn read_char_helper(reader: &mut impl Read) -> std::io::Result<char> {
         let maybe_u8 = read_u8_helper(reader);
         match maybe_u8 {
             Err(e) => {
-                if i != 0 && e.kind() == ErrorKind::UnexpectedEof {
-                    return Err(std::io::Error::new(
+                return if i != 0 && e.kind() == ErrorKind::UnexpectedEof {
+                    Err(std::io::Error::new(
                         ErrorKind::InvalidData,
                         "stream does not contain valid UTF-8",
-                    ));
+                    ))
                 } else {
-                    return Err(e);
+                    Err(e)
                 }
             }
             Ok(b) => buf[i] = b,
@@ -200,13 +200,13 @@ impl fmt::Debug for Port {
 
 impl Clone for Port {
     fn clone(&self) -> Self {
-        panic!("Trying to clone a Port.");
+        panic!("trying to clone a port");
     }
 }
 
 impl PartialEq for Port {
     fn eq(&self, _other: &Self) -> bool {
-        panic!("Trying to compare Ports.");
+        panic!("trying to compare ports");
     }
 }
 
@@ -349,10 +349,7 @@ fn get_open_text_input_port(
             Ok(port)
         }
     } else {
-        Err(format!(
-            "not a text input port: {}",
-            val.pretty_print()
-        ))
+        Err(format!("not a text input port: {}", val.pretty_print()))
     }
 }
 
@@ -471,9 +468,6 @@ pub fn get_output_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, Str
         Port::OutputString(s) => {
             Ok(arena.insert(Value::String(RefCell::new(s.borrow().underlying.clone()))))
         }
-        _ => Err(format!(
-            "invalid port type: {}",
-            args[0].pretty_print()
-        )),
+        _ => Err(format!("invalid port type: {}", args[0].pretty_print())),
     }
 }

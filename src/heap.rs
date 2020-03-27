@@ -43,7 +43,7 @@ use bitvec::prelude::{BitBox, BitVec};
 use vm::Vm;
 
 const POOL_ENTRIES: u16 = 1 << 8;
-const FIRST_GC: usize = 64 * 1024;
+const FIRST_GC: usize = 1024 * 1024;
 const GC_GROWTH: f32 = 2.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

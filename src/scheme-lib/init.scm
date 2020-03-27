@@ -876,6 +876,27 @@
       (close-output-port out)
       res)))
 
+(define (call-with-input-file file proc)
+  (let* ((in (open-input-file file))
+         (res (proc in)))
+    (close-input-port in)
+    res))
+
+(define (call-with-output-file file proc)
+  (let* ((out (open-output-file file))
+         (res (proc out)))
+    (close-output-port out)
+    res))
+
+(define (current-output-port . new-port)
+  (cond ((null? new-port) %current-output-port)
+        ((output-port? new-port) (set! %current-output-port new-port))
+        (else (error "current-output-port: not a port" new-port))))
+
+(define (current-input-port . new-port)
+  (cond ((null? new-port) %current-input-port)
+        ((input-port? new-port) (set! %current-input-port new-port))
+        (else (error "current-input-port: not a port" new-port))))
 
 ;; Eval
 

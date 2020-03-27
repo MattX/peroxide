@@ -103,7 +103,7 @@ macro_rules! simple_primitive {
     };
 }
 
-static PRIMITIVES: [Primitive; 107] = [
+static PRIMITIVES: [Primitive; 108] = [
     simple_primitive!("make-syntactic-closure", make_syntactic_closure),
     simple_primitive!("identifier=?", identifier_equal_p),
     simple_primitive!("identifier?", identifier_p),
@@ -178,6 +178,7 @@ static PRIMITIVES: [Primitive; 107] = [
     simple_primitive!("string-length", string_length),
     simple_primitive!("string-set!", string_set_b),
     simple_primitive!("string-ref", string_ref),
+    simple_primitive!("string", string),
     simple_primitive!("string=?", string_equal_p),
     simple_primitive!("string<?", string_less_than_p),
     simple_primitive!("string>?", string_greater_than_p),
@@ -241,6 +242,7 @@ pub struct Primitive {
 
 pub enum PrimitiveImplementation {
     Simple(fn(&Arena, &[PoolPtr]) -> Result<PoolPtr, String>),
+    Io(fn(&Arena, PoolPtr, PoolPtr, &[PoolPtr]) -> Result<PoolPtr, String>),
     Eval,
     Apply,
     CallCC,
