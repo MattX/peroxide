@@ -411,8 +411,8 @@ fn get_radix(v: Option<&PoolPtr>) -> Result<u8, String> {
 pub fn string_to_number(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(2))?;
     let radix = get_radix(args.get(1))?;
-    let st = arena
-        .try_get_string(args[0])
+    let st = args[0]
+        .try_get_string()
         .ok_or_else(|| format!("invalid argument: {}", args[0].pretty_print()))?;
     let chars = st.borrow().chars().collect::<Vec<_>>();
     let parsed = lex::parse_full_number(&chars, radix)

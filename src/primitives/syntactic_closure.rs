@@ -31,22 +31,24 @@ pub struct SyntacticClosure {
 
 impl SyntacticClosure {
     pub fn push_env(&self, arena: &Arena) -> RcEnv {
-        let borrow = self.closed_env.borrow();
-        let env = borrow
+        let env = self
+            .closed_env
+            .borrow()
             .try_get_environment()
-            .expect("syntactic closure created with non-env");
-        let inner_env = Rc::new(RefCell::new(Environment::new(Some(env.clone()))));
+            .expect("syntactic closure created with non-env")
+            .clone();
+        let inner_env = Rc::new(RefCell::new(Environment::new(Some(env))));
         let inner_env_val = Value::Environment(inner_env.clone());
         RefCell::replace(&self.closed_env, arena.insert(inner_env_val));
         inner_env
     }
 
     pub fn pop_env(&self, arena: &Arena) {
-        let borrow = self.closed_env.borrow();
-        let env = borrow
+        let parent_env = self
+            .closed_env
+            .borrow()
             .try_get_environment()
-            .expect("syntactic closure created with non-env");
-        let parent_env = env
+            .expect("syntactic closure created with non-env")
             .borrow()
             .parent()
             .expect("Popping from syntactic closure with no parent env.")
@@ -171,7 +173,7 @@ pub fn identifier_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> 
 pub fn syntactic_closure_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
     Ok(arena.insert(Value::Boolean(
-        arena.try_get_syntactic_closure(args[0]).is_some(),
+        args[0].try_get_syntactic_closure().is_some(),
     )))
 }
 
@@ -211,8 +213,7 @@ pub fn gensym(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(0), Some(1))?;
     let base_name = if let Some(v) = args.get(0) {
         Some(
-            arena
-                .try_get_string(*v)
+            v.try_get_string()
                 .map(|s| s.borrow().clone())
                 .ok_or_else(|| format!("not a string: {}", v.pretty_print()))?,
         )

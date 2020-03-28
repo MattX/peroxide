@@ -35,21 +35,21 @@ pub fn vector_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 pub fn make_vector(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(2))?;
     let fill = *args.get(1).unwrap_or(&arena.f);
-    let l = arena
-        .try_get_integer(args[0])
-        .ok_or_else(|| format!("make-vector: Invalid length: {}.", args[0].pretty_print()))?;
+    let l = args[0]
+        .try_get_integer()
+        .ok_or_else(|| format!("make-vector: invalid length: {}", args[0].pretty_print()))?;
     let l = l
         .to_usize()
-        .ok_or_else(|| format!("make-vector: string cannot have negative length: {}.", l))?;
+        .ok_or_else(|| format!("make-vector: vector cannot have negative length: {}", l))?;
     let v: Vec<PoolPtr> = std::iter::repeat(fill).take(l as usize).collect();
     Ok(arena.insert(Value::Vector(RefCell::new(v))))
 }
 
 pub fn vector_length(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let l = arena
-        .try_get_vector(args[0])
-        .ok_or_else(|| format!("vector-length: Not a vector: {}.", args[0].pretty_print()))?
+    let l = args[0]
+        .try_get_vector()
+        .ok_or_else(|| format!("vector-length: not a vector: {}", args[0].pretty_print()))?
         .borrow()
         .len();
     Ok(arena.insert(Value::Integer(BigInt::from(l))))
@@ -57,12 +57,12 @@ pub fn vector_length(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String>
 
 pub fn vector_set_b(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(3), Some(3))?;
-    let mut borrowed_vec = arena
-        .try_get_vector(args[0])
+    let mut borrowed_vec = args[0]
+        .try_get_vector()
         .ok_or_else(|| format!("vector-set!: Not a vector: {}.", args[0].pretty_print()))?
         .borrow_mut();
-    let idx = arena
-        .try_get_integer(args[1])
+    let idx = args[1]
+        .try_get_integer()
         .ok_or_else(|| format!("vector-set: Invalid index: {}.", args[1].pretty_print()))?;
     let idx = idx
         .to_usize()
@@ -76,12 +76,12 @@ pub fn vector_set_b(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> 
 
 pub fn vector_ref(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(2), Some(2))?;
-    let borrowed_vec = arena
-        .try_get_vector(args[0])
+    let borrowed_vec = args[0]
+        .try_get_vector()
         .ok_or_else(|| format!("vector-ref: Not a vector: {}.", args[0].pretty_print()))?
         .borrow();
-    let idx = arena
-        .try_get_integer(args[1])
+    let idx = args[1]
+        .try_get_integer()
         .ok_or_else(|| format!("vector-ref: Invalid index: {}.", args[1].pretty_print()))?;
     let idx = idx
         .to_usize()

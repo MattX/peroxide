@@ -123,69 +123,6 @@ impl Arena {
             }
         }
     }
-
-    pub fn try_get_integer(&self, at: PoolPtr) -> Option<&BigInt> {
-        match self.get(at) {
-            Value::Integer(i) => Some(i),
-            _ => None,
-        }
-    }
-
-    pub fn try_get_character(&self, at: PoolPtr) -> Option<char> {
-        match self.get(at) {
-            Value::Character(c) => Some(*c),
-            _ => None,
-        }
-    }
-
-    pub fn try_get_string(&self, at: PoolPtr) -> Option<&RefCell<String>> {
-        match self.get(at) {
-            Value::String(s) => Some(s),
-            _ => None,
-        }
-    }
-
-    pub fn try_get_vector(&self, at: PoolPtr) -> Option<&RefCell<Vec<PoolPtr>>> {
-        match self.get(at) {
-            Value::Vector(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn try_get_symbol(&self, at: PoolPtr) -> Option<&str> {
-        match self.get(at) {
-            Value::Symbol(s) => Some(s),
-            _ => None,
-        }
-    }
-
-    pub fn try_get_pair(&self, at: PoolPtr) -> Option<(&Cell<PoolPtr>, &Cell<PoolPtr>)> {
-        match self.get(at) {
-            Value::Pair(car, cdr) => Some((car, cdr)),
-            _ => None,
-        }
-    }
-
-    pub fn try_get_environment(&self, at: PoolPtr) -> Option<&RcEnv> {
-        match self.get(at) {
-            Value::Environment(r) => Some(r),
-            _ => None,
-        }
-    }
-
-    pub fn try_get_syntactic_closure(&self, at: PoolPtr) -> Option<&SyntacticClosure> {
-        match self.get(at) {
-            Value::SyntacticClosure(sc) => Some(sc),
-            _ => None,
-        }
-    }
-
-    pub fn try_get_port(&self, at: PoolPtr) -> Option<&Port> {
-        match self.get(at) {
-            Value::Port(p) => Some(p.deref()),
-            _ => None,
-        }
-    }
 }
 
 impl Default for Arena {

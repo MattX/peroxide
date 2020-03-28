@@ -188,8 +188,7 @@ fn compile_lambda(arena: &Arena, l: &Lambda, rv: PoolPtr) -> PoolPtr {
     code.push(Instruction::Return);
 
     let code_block_ptr = arena.insert(Value::CodeBlock(Box::new(code)));
-    arena
-        .try_get_vector(rv)
+    rv.try_get_vector()
         .unwrap()
         .borrow_mut()
         .push(code_block_ptr);

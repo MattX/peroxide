@@ -214,33 +214,33 @@ impl heap::Inventory for Port {
     fn inventory(&self, _v: &mut heap::PtrVec) {}
 }
 
-fn is_port(arena: &Arena, arg: PoolPtr) -> bool {
-    arena.try_get_port(arg).is_some()
+fn is_port(arg: PoolPtr) -> bool {
+    arg.try_get_port().is_some()
 }
 
-fn is_input_port(arena: &Arena, arg: PoolPtr) -> bool {
-    match arena.try_get_port(arg).expect("Not a port.") {
+fn is_input_port(arg: PoolPtr) -> bool {
+    match arg.try_get_port().expect("not a port") {
         Port::BinaryInputFile(_) | Port::TextInputFile(_) => true,
         _ => false,
     }
 }
 
-fn is_output_port(arena: &Arena, arg: PoolPtr) -> bool {
-    match arena.try_get_port(arg).expect("Not a port.") {
+fn is_output_port(arg: PoolPtr) -> bool {
+    match arg.try_get_port().expect("not a port") {
         Port::OutputFile(_) => true,
         _ => false,
     }
 }
 
-fn is_binary_port(arena: &Arena, arg: PoolPtr) -> bool {
-    match arena.try_get_port(arg).expect("Not a port.") {
+fn is_binary_port(arg: PoolPtr) -> bool {
+    match arg.try_get_port().expect("not a port") {
         Port::BinaryInputFile(_) | Port::OutputFile(_) => true,
         _ => false,
     }
 }
 
-fn is_textual_port(arena: &Arena, arg: PoolPtr) -> bool {
-    match arena.try_get_port(arg).expect("Not a port.") {
+fn is_textual_port(arg: PoolPtr) -> bool {
+    match arg.try_get_port().expect("not a port") {
         Port::TextInputFile(_) | Port::OutputFile(_) => true,
         _ => false,
     }
@@ -248,39 +248,39 @@ fn is_textual_port(arena: &Arena, arg: PoolPtr) -> bool {
 
 pub fn port_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let res = is_port(arena, args[0]);
+    let res = is_port(args[0]);
     Ok(arena.insert(Value::Boolean(res)))
 }
 
 pub fn input_port_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let res = is_port(arena, args[0]) && is_input_port(arena, args[0]);
+    let res = is_port(args[0]) && is_input_port(args[0]);
     Ok(arena.insert(Value::Boolean(res)))
 }
 
 pub fn output_port_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let res = is_port(arena, args[0]) && is_output_port(arena, args[0]);
+    let res = is_port(args[0]) && is_output_port(args[0]);
     Ok(arena.insert(Value::Boolean(res)))
 }
 
 pub fn textual_port_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let res = is_port(arena, args[0]) && is_textual_port(arena, args[0]);
+    let res = is_port(args[0]) && is_textual_port(args[0]);
     Ok(arena.insert(Value::Boolean(res)))
 }
 
 pub fn binary_port_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let res = is_port(arena, args[0]) && is_binary_port(arena, args[0]);
+    let res = is_port(args[0]) && is_binary_port(args[0]);
     Ok(arena.insert(Value::Boolean(res)))
 }
 
 pub fn close_port(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let port = arena
-        .try_get_port(args[0])
-        .ok_or_else(|| format!("Not a port: {}", args[0].pretty_print()))?;
+    let port = args[0]
+        .try_get_port()
+        .ok_or_else(|| format!("not a port: {}", args[0].pretty_print()))?;
     match port {
         Port::BinaryInputFile(s) => s.borrow_mut().close(),
         Port::TextInputFile(s) => s.borrow_mut().close(),
@@ -293,9 +293,9 @@ pub fn close_port(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 
 pub fn port_open_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let port = arena
-        .try_get_port(args[0])
-        .ok_or_else(|| format!("Not a port: {}", args[0].pretty_print()))?;
+    let port = args[0]
+        .try_get_port()
+        .ok_or_else(|| format!("not a port: {}", args[0].pretty_print()))?;
     let v = match port {
         Port::BinaryInputFile(s) => s.borrow().is_closed(),
         Port::TextInputFile(s) => s.borrow().is_closed(),
@@ -334,14 +334,14 @@ pub fn eof_object_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> 
     Ok(arena.insert(Value::Boolean(args[0] == arena.eof)))
 }
 
-fn get_open_text_input_port(
-    arena: &Arena,
+fn get_open_text_input_port<'a>(
     val: PoolPtr,
-) -> Result<RefMut<Box<FileTextInputPort>>, String> {
-    if let Port::TextInputFile(op) = arena
-        .try_get_port(val)
-        .ok_or_else(|| format!("not a port: {}", val.pretty_print()))?
-    {
+) -> Result<RefMut<'a, Box<FileTextInputPort>>, String> {
+    let port: &'a Port = match val.long_lived() {
+        Value::Port(b) => b,
+        _ => return Err(format!("not a port: {}", val.pretty_print())),
+    };
+    if let Port::TextInputFile(op) = port {
         let port = op.borrow_mut();
         if port.is_closed() {
             Err(format!("port is closed: {}", val.pretty_print()))
@@ -355,7 +355,7 @@ fn get_open_text_input_port(
 
 pub fn read_char(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let mut port = get_open_text_input_port(arena, args[0])?;
+    let mut port = get_open_text_input_port(args[0])?;
     match port.read_one() {
         Ok(c) => Ok(arena.insert(Value::Character(c))),
         Err(e) => {
@@ -370,7 +370,7 @@ pub fn read_char(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 
 pub fn peek_char(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let mut port = get_open_text_input_port(arena, args[0])?;
+    let mut port = get_open_text_input_port(args[0])?;
     match port.peek() {
         Ok(c) => Ok(arena.insert(Value::Character(c))),
         Err(e) => {
@@ -385,7 +385,7 @@ pub fn peek_char(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 
 pub fn read_line(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let mut port = get_open_text_input_port(arena, args[0])?;
+    let mut port = get_open_text_input_port(args[0])?;
     let mut result = String::new();
     loop {
         match port.read_one() {
@@ -414,7 +414,7 @@ pub fn read_line(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 
 pub fn char_ready_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let mut port = get_open_text_input_port(arena, args[0])?;
+    let mut port = get_open_text_input_port(args[0])?;
     match port.ready() {
         Ok(ready) => Ok(arena.insert(Value::Boolean(ready))),
         Err(e) => {
@@ -429,13 +429,13 @@ pub fn char_ready_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> 
 
 pub fn read_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(2), Some(2))?;
-    let len = arena
-        .try_get_integer(args[0])
+    let len = args[0]
+        .try_get_integer()
         .ok_or_else(|| format!("Not an integer: {}", args[0].pretty_print()))?;
     let len = len
         .to_usize()
         .ok_or_else(|| format!("Not a valid index: {}", len))?;
-    let mut port = get_open_text_input_port(arena, args[1])?;
+    let mut port = get_open_text_input_port(args[1])?;
     match port.read_string(len) {
         Ok(s) => Ok(arena.insert(Value::String(RefCell::new(s)))),
         Err(e) => {
@@ -461,8 +461,8 @@ pub fn open_output_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, St
 
 pub fn get_output_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    match arena
-        .try_get_port(args[0])
+    match args[0]
+        .try_get_port()
         .ok_or_else(|| format!("not a port: {}", args[0].pretty_print()))?
     {
         Port::OutputString(s) => {
