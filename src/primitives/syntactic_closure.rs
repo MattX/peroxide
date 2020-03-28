@@ -65,7 +65,7 @@ pub fn make_syntactic_closure(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr
     let free_variables = args[1]
         .list_to_vec()?
         .iter()
-        .map(|fv| match arena.get(*fv) {
+        .map(|fv| match &**fv {
             Value::Symbol(s) => Ok(s.clone()),
             _ => Err(format!(
                 "make-syntactic-closure: not a symbol: {}",
@@ -73,7 +73,7 @@ pub fn make_syntactic_closure(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr
             )),
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let closed_env = match arena.get(args[0]) {
+    let closed_env = match &*args[0] {
         Value::Environment(_) => Ok(args[0]),
         _ => Err(format!(
             "make-syntactic-closure: not an environment: {}",

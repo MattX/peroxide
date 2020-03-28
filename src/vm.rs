@@ -145,7 +145,7 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
     match code.instructions[vm.pc] {
         Instruction::Constant(v) => vm.set_value(code.constants[v]),
         Instruction::JumpFalse(offset) => {
-            if !arena.get(vm.value).truthy() {
+            if !vm.value.truthy() {
                 vm.pc += offset;
             }
         }
@@ -180,7 +180,7 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                     arena,
                     format!(
                         "variable used before definition: {}",
-                        resolve_variable(arena, vm, 0, index)
+                        resolve_variable(vm, 0, index)
                     ),
                 ));
             }
@@ -211,7 +211,7 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                     arena,
                     format!(
                         "variable used before definition: {}",
-                        resolve_variable(arena, vm, current_depth - depth, index)
+                        resolve_variable(vm, current_depth - depth, index)
                     ),
                 ));
             }
@@ -282,7 +282,7 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                 .stack
                 .pop()
                 .expect("Restoring env with no values on stack.");
-            if let Value::ActivationFrame(_) = arena.get(env_r) {
+            if let Value::ActivationFrame(_) = &*env_r {
                 vm.env = env_r;
             } else {
                 panic!("Restoring non-activation frame.");
@@ -296,7 +296,7 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
                 .stack
                 .pop()
                 .expect("Popping function with no values on stack.");
-            match arena.get(fun_r) {
+            match &*fun_r {
                 Value::Lambda { .. } | Value::Primitive(_) | Value::Continuation(_) => {
                     vm.fun = fun_r
                 }
@@ -339,8 +339,7 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
 }
 
 fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
-    let fun = arena.get(vm.fun);
-    match fun {
+    match vm.fun.long_lived() {
         Value::Lambda { code, frame } => {
             if !tail {
                 if vm.return_stack.len() > MAX_RECURSION_DEPTH {
@@ -401,7 +400,7 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
         _ => {
             return Err(raise_string(
                 arena,
-                format!("cannot invoke non-function: {}", fun.pretty_print()),
+                format!("cannot invoke non-function: {}", vm.fun.pretty_print()),
             ));
         }
     }
@@ -478,7 +477,7 @@ fn eval(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
     Ok(())
 }
 
-fn resolve_variable(arena: &Arena, vm: &Vm, altitude: usize, index: usize) -> String {
+fn resolve_variable(vm: &Vm, altitude: usize, index: usize) -> String {
     let env = &vm.current_code_block.get_code_block().environment;
     env.borrow().get_name(altitude, index)
 }
@@ -497,7 +496,7 @@ fn raise(arena: &Arena, vm: &Vm, abort: bool) -> Error {
 
 fn error_stack(arena: &Arena, vm: &Vm, error: Error) -> Error {
     let mut message = String::new();
-    fn write_code_block(arena: &Arena, message: &mut String, cb: PoolPtr) {
+    fn write_code_block(message: &mut String, cb: PoolPtr) {
         write!(
             message,
             "\tat {}",
@@ -505,9 +504,9 @@ fn error_stack(arena: &Arena, vm: &Vm, error: Error) -> Error {
         )
         .unwrap();
     }
-    write_code_block(arena, &mut message, vm.current_code_block);
+    write_code_block(&mut message, vm.current_code_block);
     for ReturnPoint { code_block, .. } in vm.return_stack.iter() {
-        write_code_block(arena, &mut message, *code_block);
+        write_code_block(&mut message, *code_block);
     }
     let msg_r = arena.insert_rooted(Value::String(RefCell::new(message)));
     error.map_error(|e| arena.insert_rooted(Value::Pair(Cell::new(e.pp()), Cell::new(msg_r.pp()))))
@@ -519,7 +518,7 @@ fn handle_error(arena: &Arena, vm: &mut Vm, e: Error) -> Result<RootPtr, RootPtr
         Error::Abort(v) => Err(v),
         Error::Raise(v) => {
             let handler = vm.global_env.get_activation_frame().borrow().values[0];
-            match arena.get(handler) {
+            match &*handler {
                 Value::Boolean(false) => Err(v),
                 Value::Lambda { .. } => {
                     let frame = ActivationFrame {

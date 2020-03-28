@@ -23,7 +23,7 @@ use peroxide::value::Value;
 use peroxide::VmState;
 
 fn execute(arena: &Arena, vm_state: &mut VmState, code: &str) -> Result<Value, String> {
-    execute_rooted(arena, vm_state, code).map(|e| arena.get(e.pp()).clone())
+    execute_rooted(arena, vm_state, code).map(|e| (*e.pp()).clone())
 }
 
 fn execute_rooted(arena: &Arena, vm_state: &mut VmState, code: &str) -> Result<RootPtr, String> {
@@ -37,7 +37,7 @@ fn execute_rooted(arena: &Arena, vm_state: &mut VmState, code: &str) -> Result<R
 fn execute_to_vec(arena: &Arena, vm_state: &mut VmState, code: &str) -> Result<Vec<Value>, String> {
     let val = execute_rooted(arena, vm_state, code)?;
     let vec = val.pp().list_to_vec()?;
-    Ok(vec.iter().map(|iv| arena.get(*iv).clone()).collect())
+    Ok(vec.iter().map(|&iv| (*iv).clone()).collect())
 }
 
 #[test]

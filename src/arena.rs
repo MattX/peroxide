@@ -14,15 +14,9 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::ops::Deref;
 
-use num_bigint::BigInt;
-
-use compile::CodeBlock;
-use environment::{ActivationFrame, RcEnv};
 use heap;
 use heap::{PoolPtr, RootPtr};
-use primitives::{Port, SyntacticClosure};
 use value::Value;
 use vm::Vm;
 
@@ -89,14 +83,6 @@ impl Arena {
         self.root(self.insert(v))
     }
 
-    /// Given a PoolPtr, returns a reference to the value at that location.
-    ///
-    /// The magic is to make rust believe that the reference lasts for any possible lifetime.
-    /// In most places in the code, this can be replaced with just &*at.
-    pub fn get<'a>(&'a self, at: PoolPtr) -> &'a Value {
-        unsafe { std::mem::transmute::<&Value, &'a Value>(&*at) }
-    }
-
     pub fn gensym(&self, base: Option<&str>) -> PoolPtr {
         let base_str = base.map(|s| format!("{}-", s)).unwrap_or_else(|| "".into());
         loop {
@@ -154,13 +140,13 @@ mod tests {
         let r = Value::Symbol("abc".into());
         let arena = Arena::default();
         let vr = arena.insert(r.clone());
-        assert_eq!(arena.get(vr), &r);
+        assert_eq!(&*vr, &r);
     }
 
     #[test]
     fn get_number() {
         let arena = Arena::default();
         let vr = arena.insert(Value::Real(0.1));
-        assert_eq!(arena.get(vr), &Value::Real(0.1));
+        assert_eq!(&*vr, &Value::Real(0.1));
     }
 }

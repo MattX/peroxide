@@ -21,7 +21,7 @@ use value::Value;
 
 pub fn pair_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let ans = match arena.get(args[0]) {
+    let ans = match &*args[0] {
         Value::Pair(_, _) => true,
         _ => false,
     };
@@ -33,9 +33,9 @@ pub fn cons(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     Ok(arena.insert(Value::Pair(Cell::new(args[0]), Cell::new(args[1]))))
 }
 
-pub fn car(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
+pub fn car(_arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    match arena.get(args[0]) {
+    match &*args[0] {
         Value::Pair(car, _) => Ok(car.get()),
         _ => Err(format!(
             "called car on a non-pair: {}",
@@ -44,9 +44,9 @@ pub fn car(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     }
 }
 
-pub fn cdr(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
+pub fn cdr(_arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    match arena.get(args[0]) {
+    match &*args[0] {
         Value::Pair(_, cdr) => Ok(cdr.get()),
         _ => Err(format!(
             "called cdr on a non-pair: {}",
@@ -55,9 +55,9 @@ pub fn cdr(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     }
 }
 
-pub fn set_car_b(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
+pub fn set_car_b(_arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(2), Some(2))?;
-    match arena.get(args[0]) {
+    match &*args[0] {
         Value::Pair(car, _) => Ok(car.replace(args[1])),
         _ => Err(format!(
             "called set-car! on a non-pair: {}",
@@ -66,9 +66,9 @@ pub fn set_car_b(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     }
 }
 
-pub fn set_cdr_b(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
+pub fn set_cdr_b(_arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(2), Some(2))?;
-    match arena.get(args[0]) {
+    match &*args[0] {
         Value::Pair(_, cdr) => Ok(cdr.replace(args[1])),
         _ => Err(format!(
             "called set-cdr! on a non-pair: {}",
@@ -86,7 +86,7 @@ enum ListType {
 }
 
 fn next(arena: &Arena, pair: usize) -> ListType {
-    match arena.get(pair[0]) {
+    match &*pair[0] {
         Value::EmptyList => ListType::Empty,
         Value::Pair(car, cdr) => ListType::Some(cdr.borrow().clone()),
         _ => ListType::Invalid
@@ -108,7 +108,7 @@ pub fn length(arena: &Arena, args: &[ValRef]) -> Result<ValRef, String> {
     let mut len = 0usize;
 
     loop {
-        match arena.get(slow) {
+        match &*slow {
             Value::EmptyList => Ok(arena.insert(Value::Integer(len.into()))),
             Value::Pair(car, cdr) => {
                 loop {}

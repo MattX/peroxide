@@ -103,7 +103,7 @@ macro_rules! simple_primitive {
     };
 }
 
-static PRIMITIVES: [Primitive; 108] = [
+static PRIMITIVES: [Primitive; 109] = [
     simple_primitive!("make-syntactic-closure", make_syntactic_closure),
     simple_primitive!("identifier=?", identifier_equal_p),
     simple_primitive!("identifier?", identifier_p),
@@ -121,6 +121,7 @@ static PRIMITIVES: [Primitive; 108] = [
     simple_primitive!("eq?", eq_p),
     simple_primitive!("eqv?", eqv_p),
     simple_primitive!("equal?", equal_p),
+    simple_primitive!("number?", number_p),
     simple_primitive!("=", equal),
     simple_primitive!("<", less_than),
     simple_primitive!(">", greater_than),

@@ -21,7 +21,7 @@ use value::Value;
 
 pub fn symbol_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    Ok(match arena.get(args[0]) {
+    Ok(match &*args[0] {
         Value::Symbol(_) => arena.t,
         _ => arena.f,
     })
@@ -29,7 +29,7 @@ pub fn symbol_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 
 pub fn symbol_to_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    match arena.get(args[0]) {
+    match &*args[0] {
         Value::Symbol(s) => Ok(arena.insert(Value::String(RefCell::new(s.clone())))),
         _ => Err(format!(
             "symbol->string: not a symbol: {}",
@@ -40,7 +40,7 @@ pub fn symbol_to_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, Stri
 
 pub fn string_to_symbol(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    match arena.get(args[0]) {
+    match &*args[0] {
         Value::String(s) => Ok(arena.insert(Value::Symbol(s.borrow().clone()))),
         _ => Err(format!(
             "string->symbol: not a string: {}",

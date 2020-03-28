@@ -71,7 +71,7 @@ macro_rules! unary_operation {
 macro_rules! prim_fold_0 {
     ($name:ident, $folder:ident, $fold_initial:expr) => {
         pub fn $name(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
-            let values = numeric_vec(arena, args)?;
+            let values = numeric_vec(args)?;
             let result = values.iter().fold($fold_initial, |a, b| $folder(&a, &b));
             Ok(arena.insert(simplify_numeric(result)))
         }
@@ -87,7 +87,7 @@ prim_fold_0!(mul, mul2, Value::Integer(BigInt::one()));
 simple_operator!(sub2, -);
 
 fn subn(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
-    let values = numeric_vec(arena, args)?;
+    let values = numeric_vec(args)?;
     check_len(&values, Some(1), None).map_err(|e| format!("(-): {}", e))?;
     let first = (*values.first().expect("check_len is broken my bois")).clone();
     let result = values[1..].iter().fold(first, |a, b| sub2(&a, &b));
@@ -103,7 +103,7 @@ where
 
 pub fn sub(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     if args.len() == 1 {
-        let result = unary_operation!(arena.get(args[0]), args[0].pretty_print(), sub1);
+        let result = unary_operation!(&*args[0], args[0].pretty_print(), sub1);
         Ok(arena.insert(result))
     } else {
         subn(arena, args)
@@ -111,7 +111,7 @@ pub fn sub(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 }
 
 fn divn(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
-    let values = numeric_vec(arena, args)?;
+    let values = numeric_vec(args)?;
     check_len(&values, Some(1), None).map_err(|e| format!("(/): {}", e))?;
     let mut result = (*values.first().expect("check_len is broken my bois")).clone();
     for v in values[1..].iter() {
@@ -165,7 +165,7 @@ fn div2(a: &Value, b: &Value) -> Option<Value> {
 
 pub fn div(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     if args.len() == 1 {
-        let arg = arena.get(args[0]);
+        let arg = &*args[0];
         if !is_numeric(arg) {
             return Err(format!("non-numeric argument: {}", args[0].pretty_print()));
         }
@@ -182,7 +182,7 @@ pub fn div(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 macro_rules! prim_monotonic {
     ($name:ident, $pair:ident) => {
         pub fn $name(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
-            let values = numeric_vec(arena, args)?;
+            let values = numeric_vec(args)?;
             check_len(&values, Some(2), None)
                 .map_err(|e| format!("{}: {}", stringify!($name), e))?;
             let ans = values.windows(2).all(|x| $pair(&x[0], &x[1]));
@@ -259,12 +259,12 @@ fn imag_part(v: &Value) -> Value {
 
 pub fn number_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    Ok(arena.insert(Value::Boolean(is_numeric(arena.get(args[0])))))
+    Ok(arena.insert(Value::Boolean(is_numeric(&*args[0]))))
 }
 
 pub fn real_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    Ok(match arena.get(args[0]) {
+    Ok(match &*args[0] {
         Value::Real(_) | Value::Rational(_) | Value::Integer(_) => arena.t,
         _ => arena.f,
     })
@@ -272,7 +272,7 @@ pub fn real_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 
 pub fn exact_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let resp = match arena.get(args[0]) {
+    let resp = match &*args[0] {
         Value::ComplexRational(_)
         | Value::ComplexInteger(_)
         | Value::Rational(_)
@@ -284,7 +284,7 @@ pub fn exact_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 
 pub fn nan_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let resp = match arena.get(args[0]) {
+    let resp = match &*args[0] {
         Value::ComplexReal(c) => c.is_nan(),
         Value::Real(r) => r.is_nan(),
         _ => false,
@@ -294,7 +294,7 @@ pub fn nan_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 
 pub fn infinite_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let resp = match arena.get(args[0]) {
+    let resp = match &*args[0] {
         Value::ComplexReal(c) => c.is_infinite(),
         Value::Real(r) => r.is_infinite(),
         _ => false,
@@ -304,12 +304,12 @@ pub fn infinite_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 
 pub fn inexact(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    Ok(arena.insert(as_real(arena.get(args[0]))))
+    Ok(arena.insert(as_real(&*args[0])))
 }
 
 pub fn expt(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(2), Some(2))?;
-    let result = match (arena.get(args[0]), arena.get(args[1])) {
+    let result = match (&*args[0], &*args[1]) {
         (Value::Integer(base), Value::Integer(exponent)) => {
             let realistic_exponent = exponent.to_u64();
             realistic_exponent
@@ -323,7 +323,7 @@ pub fn expt(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 
 pub fn modulo(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(2), Some(2))?;
-    let result = match (arena.get(args[0]), arena.get(args[1])) {
+    let result = match (&*args[0], &*args[1]) {
         (Value::Integer(dividend), Value::Integer(divisor)) => {
             Value::Integer(dividend.mod_floor(divisor))
         }
@@ -334,7 +334,7 @@ pub fn modulo(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 
 pub fn remainder(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(2), Some(2))?;
-    let result = match (arena.get(args[0]), arena.get(args[1])) {
+    let result = match (&*args[0], &*args[1]) {
         (Value::Integer(dividend), Value::Integer(divisor)) => {
             Value::Integer(dividend.rem(divisor))
         }
@@ -346,7 +346,7 @@ pub fn remainder(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 pub fn gcd(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     let mut acc = BigInt::zero();
     for arg in args {
-        if let Value::Integer(i) = arena.get(*arg) {
+        if let Value::Integer(i) = &**arg {
             acc = acc.gcd(i);
         } else {
             return Err(format!("non-integer argument: {}", arg.pretty_print()));
@@ -358,7 +358,7 @@ pub fn gcd(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 pub fn lcm(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     let mut acc = BigInt::one();
     for arg in args {
-        if let Value::Integer(i) = arena.get(*arg) {
+        if let Value::Integer(i) = &**arg {
             acc = acc.lcm(i);
         } else {
             return Err(format!("non-integer argument: {}", arg.pretty_print()));
@@ -372,11 +372,11 @@ macro_rules! transcendental {
     ($inner_name:ident, $operator:tt) => {
         pub fn $inner_name(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
             check_len(args, Some(1), Some(1))?;
-            let arg = arena.get(args[0]);
+            let arg = &*args[0];
             if !is_numeric(arg) {
                 return Err(format!("non-numeric value: {}", args[0].pretty_print()));
             }
-            Ok(arena.insert(match as_real(arena.get(args[0])) {
+            Ok(arena.insert(match as_real(&*args[0]) {
                 Value::ComplexReal(c) => Value::ComplexReal(c.$operator()),
                 Value::Real(c) => Value::Real(c.$operator()),
                 _ => panic!("conversion to real failed."),
@@ -446,7 +446,7 @@ pub fn number_to_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, Stri
         )
     }
 
-    let resp = match arena.get(args[0]) {
+    let resp = match &*args[0] {
         Value::Integer(a) => format_int(a, radix),
         Value::Real(a) => format_real(*a, radix)?,
         Value::Rational(a) => format_rational(a, radix),
@@ -472,13 +472,13 @@ pub fn number_to_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, Stri
 /// an error.
 ///
 /// TODO: we probably shouldn't collect into a vector because it makes basic math slow af.
-fn numeric_vec<'a>(arena: &'a Arena, args: &[PoolPtr]) -> Result<Vec<&'a Value>, String> {
+fn numeric_vec(args: &[PoolPtr]) -> Result<Vec<&Value>, String> {
     for arg in args {
-        if !is_numeric(arena.get(*arg)) {
+        if !is_numeric(&**arg) {
             return Err(format!("{} is not numeric", arg.pretty_print()));
         }
     }
-    Ok(args.iter().map(|v| arena.get(*v)).collect())
+    Ok(args.iter().map(|v| &**v).collect())
 }
 
 /// Checks that a value is numeric

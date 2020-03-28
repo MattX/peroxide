@@ -308,8 +308,8 @@ pub fn port_open_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 // TODO: paths don't have to be strings on most OSes. We should let the user specify arbitrary
 //       bytes. The issue is that I don't think Rust really provides a way to convert arbitrary
 //       bytes to a path?
-fn get_path(arena: &Arena, val: PoolPtr) -> Option<std::path::PathBuf> {
-    match arena.get(val) {
+fn get_path(val: PoolPtr) -> Option<std::path::PathBuf> {
+    match &*val {
         Value::String(s) => Some(std::path::PathBuf::from(s.borrow().clone())),
         _ => None,
     }
@@ -317,8 +317,8 @@ fn get_path(arena: &Arena, val: PoolPtr) -> Option<std::path::PathBuf> {
 
 pub fn open_input_file(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let path = get_path(arena, args[0])
-        .ok_or_else(|| format!("not a valid path: {}", args[0].pretty_print()))?;
+    let path =
+        get_path(args[0]).ok_or_else(|| format!("not a valid path: {}", args[0].pretty_print()))?;
     let raw_port = FileTextInputPort::new(&path).map_err(|e| e.to_string())?;
     let port = Port::TextInputFile(RefCell::new(Box::new(raw_port)));
     Ok(arena.insert(Value::Port(Box::new(port))))

@@ -29,7 +29,7 @@ pub fn string_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 
 pub fn make_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(2))?;
-    let c = match args.get(1).map(|v| arena.get(*v)) {
+    let c = match args.get(1).map(|v| &**v) {
         None => 0 as char,
         Some(Value::Character(c)) => *c,
         _ => {

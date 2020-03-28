@@ -60,7 +60,7 @@ pub fn write(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 
 pub fn display(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     for arg in args {
-        match arena.get(*arg) {
+        match &**arg {
             Value::String(s) => print!("{}", &s.borrow()),
             Value::Character(c) => print!("{}", c),
             _ => print!("{}", arg.pretty_print()),
