@@ -394,10 +394,10 @@ transcendental!(acos, acos);
 transcendental!(asin, asin);
 transcendental!(atan, atan);
 
-fn get_radix(arena: &Arena, v: Option<&PoolPtr>) -> Result<u8, String> {
+fn get_radix(v: Option<&PoolPtr>) -> Result<u8, String> {
     let r = match v {
-        Some(r) => arena
-            .try_get_integer(*r)
+        Some(r) => r
+            .try_get_integer()
             .map(|x| x.to_u8().unwrap())
             .ok_or_else(|| format!("invalid radix: {}", r.pretty_print()))?,
         None => 10u8,
@@ -410,7 +410,7 @@ fn get_radix(arena: &Arena, v: Option<&PoolPtr>) -> Result<u8, String> {
 
 pub fn string_to_number(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(2))?;
-    let radix = get_radix(arena, args.get(1))?;
+    let radix = get_radix(args.get(1))?;
     let st = arena
         .try_get_string(args[0])
         .ok_or_else(|| format!("invalid argument: {}", args[0].pretty_print()))?;
@@ -424,7 +424,7 @@ pub fn string_to_number(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, Stri
 
 pub fn number_to_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(2))?;
-    let radix = get_radix(arena, args.get(1))? as u32;
+    let radix = get_radix(args.get(1))? as u32;
 
     fn format_int(n: &BigInt, r: u32) -> String {
         n.to_str_radix(r)

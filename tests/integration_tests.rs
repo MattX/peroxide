@@ -22,15 +22,11 @@ use peroxide::read::read_many;
 use peroxide::value::Value;
 use peroxide::VmState;
 
-fn execute(arena: &mut Arena, vm_state: &mut VmState, code: &str) -> Result<Value, String> {
+fn execute(arena: &Arena, vm_state: &mut VmState, code: &str) -> Result<Value, String> {
     execute_rooted(arena, vm_state, code).map(|e| arena.get(e.pp()).clone())
 }
 
-fn execute_rooted(
-    arena: &mut Arena,
-    vm_state: &mut VmState,
-    code: &str,
-) -> Result<RootPtr, String> {
+fn execute_rooted(arena: &Arena, vm_state: &mut VmState, code: &str) -> Result<RootPtr, String> {
     let mut results: Vec<_> = read_many(arena, code)?
         .into_iter()
         .map(|read| parse_compile_run(arena, vm_state, read))
@@ -38,13 +34,9 @@ fn execute_rooted(
     results.pop().ok_or("no expressions".into())
 }
 
-fn execute_to_vec(
-    arena: &mut Arena,
-    vm_state: &mut VmState,
-    code: &str,
-) -> Result<Vec<Value>, String> {
+fn execute_to_vec(arena: &Arena, vm_state: &mut VmState, code: &str) -> Result<Vec<Value>, String> {
     let val = execute_rooted(arena, vm_state, code)?;
-    let vec = val.pp().pair_to_vec(arena)?;
+    let vec = val.pp().list_to_vec()?;
     Ok(vec.iter().map(|iv| arena.get(*iv).clone()).collect())
 }
 

@@ -277,6 +277,17 @@ impl Deref for PoolPtr {
     }
 }
 
+impl PoolPtr {
+    /// Normally, you go from a PoolPtr to an &Value using deref() (or implicitly). However,
+    /// in that case, Rust assumes that the &Value lives for as long as the PoolPtr. This is
+    /// not true; unless there is a rooting issue, the &Value will likely live for much longer.
+    ///
+    /// This method just makes Rust understand the &Value lasts for as long as needed.
+    pub fn long_lived<'a, 'b>(&'a self) -> &'b Value {
+        unsafe { std::mem::transmute::<&Value, &'b Value>(&*self) }
+    }
+}
+
 #[cfg(any(debug_assertions, test))]
 impl PoolPtr {
     fn maybe_deref(&self) -> &PoolEntry {

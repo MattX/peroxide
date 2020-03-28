@@ -21,7 +21,7 @@ use arena::Arena;
 use environment::ActivationFrame;
 use heap::{Inventory, PoolPtr, PtrVec, RootPtr};
 use primitives::PrimitiveImplementation;
-use value::{list_from_vec, vec_from_list, Value};
+use value::{list_from_vec, Value};
 use OUTPUT_PORT_INDEX;
 use {heap, parse_compile_run};
 use {VmState, INPUT_PORT_INDEX};
@@ -401,7 +401,9 @@ fn apply(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
         return Err(raise_string(arena, "apply: too few arguments".into()));
     }
     let mut values = af.values[1..n_args - 1].to_vec();
-    let vec = vec_from_list(arena, af.values[n_args - 1]).map_err(|e| raise_string(arena, e))?;
+    let vec = af.values[n_args - 1]
+        .list_to_vec()
+        .map_err(|e| raise_string(arena, e))?;
     values.extend(vec.into_iter());
     let new_af = ActivationFrame {
         parent: None,
@@ -443,8 +445,8 @@ fn eval(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
         return Err(raise_string(arena, "eval: expected 2 arguments".into()));
     }
     let expr = af.values[0];
-    let env_descriptor = arena
-        .try_get_string(af.values[1])
+    let env_descriptor = af.values[1]
+        .try_get_string()
         .ok_or_else(|| {
             raise_string(
                 arena,

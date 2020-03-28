@@ -38,7 +38,7 @@ use environment::{
 use heap::{PoolPtr, RootPtr};
 use primitives::SyntacticClosure;
 use util::check_len;
-use value::{list_from_vec, vec_from_list, Value};
+use value::{list_from_vec, Value};
 use VmState;
 use {compile, vm};
 use {compile_run, environment};
@@ -200,7 +200,7 @@ fn parse_pair(
     car: PoolPtr,
     cdr: PoolPtr,
 ) -> Result<SyntaxElement, String> {
-    let rest = vec_from_list(arena, cdr)?;
+    let rest = cdr.list_to_vec()?;
     let (car_env, resolved_car) = resolve_syntactic_closure(arena, env, car)?;
     match &*resolved_car {
         Value::Symbol(s) => match match_symbol(&car_env, s) {
@@ -336,8 +336,7 @@ fn parse_split_lambda(
                 &inner_afi,
                 define_data.target.get_name(),
             )?;
-            if let Some(EnvironmentValue::Variable(v)) =
-                get_in_env(arena, &inner_env, &define_data.target)
+            if let Some(EnvironmentValue::Variable(v)) = get_in_env(&inner_env, &define_data.target)
             {
                 Ok(SyntaxElement::Set(Box::new(Set {
                     altitude: v.altitude,
@@ -350,7 +349,7 @@ fn parse_split_lambda(
                     "Expected {} in {:?} to be a variable, was {:?}.",
                     define_data.target.show(),
                     inner_env,
-                    get_in_env(arena, &inner_env, &define_data.target)
+                    get_in_env(&inner_env, &define_data.target)
                 );
             }
         })
@@ -385,7 +384,7 @@ fn parse_set(
     check_len(rest, Some(2), Some(2))?;
     if let Some(dt) = get_define_target(rest[0]) {
         let value = parse(arena, vms, env, af_info, rest[1])?;
-        match get_in_env(arena, env, &dt) {
+        match get_in_env(env, &dt) {
             Some(EnvironmentValue::Variable(v)) => Ok(SyntaxElement::Set(Box::new(Set {
                 altitude: v.altitude,
                 depth: af_info.borrow().altitude - v.altitude,
@@ -601,8 +600,8 @@ fn parse_define_syntax(
     }
     check_len(rest, Some(2), Some(2))?;
 
-    let symbol = arena
-        .try_get_symbol(rest[0])
+    let symbol = rest[0]
+        .try_get_symbol()
         .ok_or_else(|| {
             format!(
                 "define-syntax: target must be symbol, not {}.",
@@ -628,15 +627,15 @@ fn parse_let_syntax(
     rec: bool,
 ) -> Result<SyntaxElement, String> {
     check_len(rest, Some(2), None)?;
-    let bindings = vec_from_list(arena, rest[0])?;
+    let bindings = rest[0].list_to_vec()?;
     let inner_env = Rc::new(RefCell::new(Environment::new(Some(env.clone()))));
     let definition_env = if rec { env } else { &inner_env };
     for b in bindings.iter() {
-        let binding = vec_from_list(arena, *b)?;
+        let binding = b.list_to_vec()?;
         check_len(&binding, Some(2), Some(2))?;
 
-        let symbol = arena
-            .try_get_symbol(binding[0])
+        let symbol = binding[0]
+            .try_get_symbol()
             .ok_or_else(|| {
                 format!(
                     "let-syntax: target must be symbol, not {}.",
@@ -848,12 +847,12 @@ fn collect_internal_defines(
             if let Value::Symbol(s) = &*res_car {
                 match match_symbol(&res_env, s) {
                     Symbol::Define => {
-                        let rest = vec_from_list(arena, cdr.get())?;
+                        let rest = cdr.get().list_to_vec()?;
                         let dv = get_define_data(&rest)?;
                         defines.push(dv);
                     }
                     Symbol::Begin => {
-                        let expressions = vec_from_list(arena, cdr.get())?;
+                        let expressions = cdr.get().list_to_vec()?;
                         let (d, rest) = collect_internal_defines(arena, vms, env, &expressions)?;
                         if !rest.is_empty() {
                             return Err(
@@ -934,22 +933,23 @@ fn define_in_env(
             env.borrow_mut().define(s, afi, initialized);
         }
         DefineTarget::SyntacticClosure(val) => {
-            let sc = arena.try_get_syntactic_closure(*val).unwrap();
-            let name = arena.try_get_symbol(sc.expr).unwrap();
+            let sc = val.try_get_syntactic_closure().unwrap();
+            let name = sc.expr.try_get_symbol().unwrap();
             let new_env = sc.push_env(arena);
             new_env.borrow_mut().define(name, afi, initialized);
         }
     }
 }
 
-fn get_in_env(arena: &Arena, env: &RcEnv, target: &DefineTarget) -> Option<EnvironmentValue> {
+fn get_in_env(env: &RcEnv, target: &DefineTarget) -> Option<EnvironmentValue> {
     match target {
         DefineTarget::Bare(s) => env.borrow().get(s),
         DefineTarget::SyntacticClosure(val) => {
-            let sc = arena.try_get_syntactic_closure(*val).unwrap();
-            let name = arena.try_get_symbol(sc.expr).unwrap();
-            let closed_env = arena.try_get_environment(*sc.closed_env.borrow()).unwrap();
-            closed_env.borrow().get(name)
+            let sc = val.try_get_syntactic_closure().unwrap();
+            let name = sc.expr.try_get_symbol().unwrap();
+            let borrow = sc.closed_env.borrow();
+            let closed_env = borrow.try_get_environment().unwrap().borrow();
+            closed_env.get(name)
         }
     }
 }
@@ -957,8 +957,7 @@ fn get_in_env(arena: &Arena, env: &RcEnv, target: &DefineTarget) -> Option<Envir
 fn pop_envs(arena: &Arena, targets: &[DefineTarget]) {
     for target in targets {
         if let DefineTarget::SyntacticClosure(val) = target {
-            let sc = arena.try_get_syntactic_closure(*val).unwrap();
-            sc.pop_env(arena);
+            val.try_get_syntactic_closure().unwrap().pop_env(arena);
         }
     }
 }

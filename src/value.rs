@@ -212,14 +212,14 @@ impl Value {
         }
     }
 
-    pub fn pair_to_vec(&self, arena: &Arena) -> Result<Vec<PoolPtr>, String> {
+    pub fn list_to_vec(&self) -> Result<Vec<PoolPtr>, String> {
         let mut p = self;
         let mut result: Vec<PoolPtr> = Vec::new();
         loop {
             match p {
                 Value::Pair(car_r, cdr_r) => {
                     result.push(car_r.get());
-                    p = arena.get(cdr_r.get());
+                    p = cdr_r.get().long_lived();
                 }
                 Value::EmptyList => break,
                 _ => {
@@ -306,11 +306,6 @@ impl Value {
     }
 }
 
-// TODO phase out inline version
-pub fn vec_from_list(arena: &Arena, val: PoolPtr) -> Result<Vec<PoolPtr>, String> {
-    arena.get(val).pair_to_vec(arena)
-}
-
 pub fn list_from_vec(arena: &Arena, vals: &[PoolPtr]) -> PoolPtr {
     if vals.is_empty() {
         arena.empty_list
@@ -320,8 +315,8 @@ pub fn list_from_vec(arena: &Arena, vals: &[PoolPtr]) -> PoolPtr {
     }
 }
 
-pub fn eqv(arena: &Arena, left: PoolPtr, right: PoolPtr) -> bool {
-    match (arena.get(left), arena.get(right)) {
+pub fn eqv(left: PoolPtr, right: PoolPtr) -> bool {
+    match (&*left, &*right) {
         // This comparison is in the same order as the R5RS one for ease of
         // verification.
         (Value::Boolean(a), Value::Boolean(b)) => a == b,
@@ -339,19 +334,18 @@ pub fn eqv(arena: &Arena, left: PoolPtr, right: PoolPtr) -> bool {
 }
 
 //TODO should not loop on recursive data (R7RS)
-pub fn equal(arena: &Arena, left: PoolPtr, right: PoolPtr) -> bool {
-    match (arena.get(left), arena.get(right)) {
+pub fn equal(left: PoolPtr, right: PoolPtr) -> bool {
+    match (&*left, &*right) {
         (Value::Pair(left_car, left_cdr), Value::Pair(right_car, right_cdr)) => {
-            equal(arena, left_car.get(), right_car.get())
-                && equal(arena, left_cdr.get(), right_cdr.get())
+            equal(left_car.get(), right_car.get()) && equal(left_cdr.get(), right_cdr.get())
         }
         (Value::Vector(left_vec), Value::Vector(right_vec)) => left_vec
             .borrow()
             .iter()
             .zip(right_vec.borrow().iter())
-            .all(|(l, r)| equal(arena, *l, *r)),
+            .all(|(l, r)| equal(*l, *r)),
         (Value::String(left_string), Value::String(right_string)) => left_string == right_string,
-        _ => eqv(arena, left, right),
+        _ => eqv(left, right),
     }
 }
 

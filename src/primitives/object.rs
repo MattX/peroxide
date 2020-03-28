@@ -27,17 +27,17 @@ pub fn eq_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 
 pub fn eqv_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(2), Some(2))?;
-    Ok(arena.insert(Value::Boolean(value::eqv(arena, args[0], args[1]))))
+    Ok(arena.insert(Value::Boolean(value::eqv(args[0], args[1]))))
 }
 
 pub fn equal_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(2), Some(2))?;
-    Ok(arena.insert(Value::Boolean(value::equal(arena, args[0], args[1]))))
+    Ok(arena.insert(Value::Boolean(value::equal(args[0], args[1]))))
 }
 
 pub fn procedure_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    Ok(match arena.get(args[0]) {
+    Ok(match &*args[0] {
         Value::Lambda { .. } => arena.t,
         Value::Primitive(_) => arena.t,
         Value::Continuation(_) => arena.t,
