@@ -240,6 +240,70 @@ impl Value {
             true
         }
     }
+
+    // TODO make this less verbose with a macro?
+    pub fn try_get_integer(&self) -> Option<&BigInt> {
+        match self {
+            Value::Integer(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    pub fn try_get_character(&self) -> Option<char> {
+        match self {
+            Value::Character(c) => Some(*c),
+            _ => None,
+        }
+    }
+
+    pub fn try_get_string(&self) -> Option<&RefCell<String>> {
+        match self {
+            Value::String(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn try_get_vector(&self) -> Option<&RefCell<Vec<PoolPtr>>> {
+        match self {
+            Value::Vector(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn try_get_symbol(&self) -> Option<&str> {
+        match self {
+            Value::Symbol(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn try_get_pair(&self) -> Option<(&Cell<PoolPtr>, &Cell<PoolPtr>)> {
+        match self {
+            Value::Pair(car, cdr) => Some((car, cdr)),
+            _ => None,
+        }
+    }
+
+    pub fn try_get_environment(&self) -> Option<&RcEnv> {
+        match self {
+            Value::Environment(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    pub fn try_get_syntactic_closure(&self) -> Option<&SyntacticClosure> {
+        match self {
+            Value::SyntacticClosure(sc) => Some(sc),
+            _ => None,
+        }
+    }
+
+    pub fn try_get_port(&self) -> Option<&Port> {
+        match self {
+            Value::Port(p) => Some(p),
+            _ => None,
+        }
+    }
 }
 
 // TODO phase out inline version

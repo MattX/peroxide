@@ -24,7 +24,7 @@ use value::Value;
 
 pub fn string_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    Ok(arena.insert(Value::Boolean(arena.try_get_string(args[0]).is_some())))
+    Ok(arena.insert(Value::Boolean(args[0].try_get_string().is_some())))
 }
 
 pub fn make_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
@@ -39,8 +39,8 @@ pub fn make_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
             ))
         }
     };
-    let l = arena
-        .try_get_integer(args[0])
+    let l = args[0]
+        .try_get_integer()
         .ok_or_else(|| format!("make-string: Invalid length: {}.", args[0].pretty_print()))?;
     let l = l
         .to_usize()
@@ -51,9 +51,9 @@ pub fn make_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 
 pub fn string_length(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let l = arena
-        .try_get_string(args[0])
-        .ok_or_else(|| format!("string-length: Not a string: {}.", args[0].pretty_print()))?
+    let l = args[0]
+        .try_get_string()
+        .ok_or_else(|| format!("string-length: not a string: {}", args[0].pretty_print()))?
         .borrow()
         .chars()
         .count();
@@ -62,39 +62,39 @@ pub fn string_length(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String>
 
 pub fn string_set_b(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(3), Some(3))?;
-    let mut borrowed_string = arena
-        .try_get_string(args[0])
-        .ok_or_else(|| format!("string-set!: not a string: {}.", args[0].pretty_print()))?
+    let mut borrowed_string = args[0]
+        .try_get_string()
+        .ok_or_else(|| format!("string-set!: not a string: {}", args[0].pretty_print()))?
         .borrow_mut();
-    let idx = arena
-        .try_get_integer(args[1])
-        .ok_or_else(|| format!("string-set: invalid index: {}.", args[1].pretty_print()))?;
-    let chr = arena
-        .try_get_character(args[2])
-        .ok_or_else(|| format!("string-set: invalid character: {}.", args[2].pretty_print()))?;
+    let idx = args[1]
+        .try_get_integer()
+        .ok_or_else(|| format!("string-set: invalid index: {}", args[1].pretty_print()))?;
+    let chr = args[2]
+        .try_get_character()
+        .ok_or_else(|| format!("string-set: invalid character: {}", args[2].pretty_print()))?;
     let char_idx = idx
         .to_usize()
-        .ok_or_else(|| format!("string-ref: invalid index: {}.", idx))?;
+        .ok_or_else(|| format!("string-ref: invalid index: {}", idx))?;
     let (byte_idx, _) = borrowed_string
         .char_indices()
         .nth(char_idx)
-        .ok_or_else(|| format!("string-ref: invalid index: {}.", idx))?;
+        .ok_or_else(|| format!("string-ref: invalid index: {}", idx))?;
     borrowed_string.replace_range(byte_idx..=byte_idx, &chr.to_string());
     Ok(arena.unspecific)
 }
 
 pub fn string_ref(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(2), Some(2))?;
-    let borrowed_string = arena
-        .try_get_string(args[0])
-        .ok_or_else(|| format!("string-ref: not a string: {}.", args[0].pretty_print()))?
+    let borrowed_string = args[0]
+        .try_get_string()
+        .ok_or_else(|| format!("string-ref: not a string: {}", args[0].pretty_print()))?
         .borrow();
-    let idx = arena
-        .try_get_integer(args[1])
-        .ok_or_else(|| format!("string-ref: Invalid index: {}.", args[1].pretty_print()))?;
+    let idx = args[1]
+        .try_get_integer()
+        .ok_or_else(|| format!("string-ref: invalid index: {}", args[1].pretty_print()))?;
     let idx = idx
         .to_usize()
-        .ok_or_else(|| format!("string-ref: Invalid index: {}.", idx))?;
+        .ok_or_else(|| format!("string-ref: invalid index: {}", idx))?;
     let chr = borrowed_string
         .chars()
         .nth(idx)
@@ -106,8 +106,7 @@ pub fn string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     let values: Result<Vec<_>, String> = args
         .iter()
         .map(|a| {
-            arena
-                .try_get_character(*a)
+            a.try_get_character()
                 .ok_or_else(|| format!("string: not a char: {}", a.pretty_print()))
         })
         .collect();
@@ -117,11 +116,10 @@ pub fn string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     ))))
 }
 
-fn to_string_vec<'a>(arena: &'a Arena, args: &[PoolPtr]) -> Result<Vec<Ref<'a, String>>, String> {
+fn to_string_vec(args: &[PoolPtr]) -> Result<Vec<Ref<String>>, String> {
     args.iter()
         .map(|v| {
-            arena
-                .try_get_string(*v)
+            v.try_get_string()
                 .map(|s| s.borrow())
                 .ok_or_else(|| format!("not a string: {}", v.pretty_print()))
         })
@@ -131,7 +129,7 @@ fn to_string_vec<'a>(arena: &'a Arena, args: &[PoolPtr]) -> Result<Vec<Ref<'a, S
 macro_rules! string_cmp {
     ($fun:ident, $w:ident, $e:expr) => {
         pub fn $fun(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
-            let strings = to_string_vec(arena, args)?;
+            let strings = to_string_vec(args)?;
             Ok(arena.insert(Value::Boolean(strings.as_slice().windows(2).all(|$w| $e))))
         }
     };

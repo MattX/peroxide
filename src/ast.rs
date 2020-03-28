@@ -148,7 +148,7 @@ pub fn parse(
 ) -> Result<SyntaxElement, String> {
     let _value_hold = arena.root(value);
     let (env, value) = resolve_syntactic_closure(arena, env, value)?;
-    match arena.get(value) {
+    match &*value {
         Value::Symbol(s) => Ok(SyntaxElement::Reference(Box::new(construct_reference(
             &env, af_info, s,
         )?))),
@@ -202,7 +202,7 @@ fn parse_pair(
 ) -> Result<SyntaxElement, String> {
     let rest = vec_from_list(arena, cdr)?;
     let (car_env, resolved_car) = resolve_syntactic_closure(arena, env, car)?;
-    match arena.get(resolved_car) {
+    match &*resolved_car {
         Value::Symbol(s) => match match_symbol(&car_env, s) {
             Symbol::Quote => parse_quote(arena, &env, &rest, false),
             Symbol::SyntaxQuote => parse_quote(arena, &env, &rest, true),
@@ -239,7 +239,7 @@ fn parse_quote(
             quoted: arena.root(rest[0]),
         })))
     } else {
-        let quoted = arena.root(strip_syntactic_closure(arena, env, rest[0]));
+        let quoted = arena.root(strip_syntactic_closure(env, rest[0]));
         Ok(SyntaxElement::Quote(Box::new(Quote { quoted })))
     }
 }
@@ -305,7 +305,7 @@ fn parse_split_lambda(
     body: &[PoolPtr],
     name: Option<String>,
 ) -> Result<SyntaxElement, String> {
-    let formals = parse_formals(arena, formals)?;
+    let formals = parse_formals(formals)?;
     let inner_afi = environment::extend_af_info(af_info);
     let raw_env = Environment::new(Some(outer_env.clone()));
     let inner_env = Rc::new(RefCell::new(raw_env));
@@ -334,7 +334,7 @@ fn parse_split_lambda(
                 vms,
                 &inner_env,
                 &inner_afi,
-                define_data.target.get_name(arena),
+                define_data.target.get_name(),
             )?;
             if let Some(EnvironmentValue::Variable(v)) =
                 get_in_env(arena, &inner_env, &define_data.target)
@@ -383,7 +383,7 @@ fn parse_set(
     rest: &[PoolPtr],
 ) -> Result<SyntaxElement, String> {
     check_len(rest, Some(2), Some(2))?;
-    if let Some(dt) = get_define_target(arena, rest[0]) {
+    if let Some(dt) = get_define_target(rest[0]) {
         let value = parse(arena, vms, env, af_info, rest[1])?;
         match get_in_env(arena, env, &dt) {
             Some(EnvironmentValue::Variable(v)) => Ok(SyntaxElement::Set(Box::new(Set {
@@ -392,14 +392,8 @@ fn parse_set(
                 index: v.index,
                 value,
             }))),
-            Some(_) => Err(format!(
-                "trying to set non-variable `{}`",
-                dt.get_name(arena)
-            )),
-            None => Err(format!(
-                "trying to set undefined value `{}`",
-                dt.get_name(arena)
-            )),
+            Some(_) => Err(format!("trying to set non-variable `{}`", dt.get_name())),
+            None => Err(format!("trying to set undefined value `{}`", dt.get_name())),
         }
     } else {
         Err(format!(
@@ -426,7 +420,7 @@ fn parse_define(
             list_from_vec(arena, rest).pretty_print()
         ));
     }
-    let define_data = get_define_data(arena, rest)?;
+    let define_data = get_define_data(rest)?;
 
     // TODO: don't do this and instead allow defining syncloses at top level?
     let symbol = define_data.target.coerce_symbol();
@@ -454,12 +448,12 @@ impl DefineTarget {
         }
     }
 
-    fn get_name(&self, arena: &Arena) -> String {
+    fn get_name(&self) -> String {
         match self {
             DefineTarget::Bare(s) => s.clone(),
             DefineTarget::SyntacticClosure(v) => {
-                let sc = arena.try_get_syntactic_closure(*v).unwrap();
-                let symbol = arena.try_get_symbol(sc.expr).unwrap();
+                let sc = v.try_get_syntactic_closure().unwrap();
+                let symbol = sc.expr.try_get_symbol().unwrap();
                 symbol.into()
             }
         }
@@ -506,24 +500,24 @@ struct DefineData {
     pub value: DefineValue,
 }
 
-fn get_define_data(arena: &Arena, rest: &[PoolPtr]) -> Result<DefineData, String> {
-    let res = if let Some(target) = get_define_target(arena, rest[0]) {
+fn get_define_data(rest: &[PoolPtr]) -> Result<DefineData, String> {
+    let res = if let Some(target) = get_define_target(rest[0]) {
         check_len(rest, Some(2), Some(2))?;
         DefineData {
             target,
             value: DefineValue::Value(rest[1]),
         }
     } else {
-        get_lambda_define_value(arena, rest)?
+        get_lambda_define_value(rest)?
     };
     Ok(res)
 }
 
 /// Helper method to parse direct lambda defines `(define (x y z) y z)`.
-fn get_lambda_define_value(arena: &Arena, rest: &[PoolPtr]) -> Result<DefineData, String> {
+fn get_lambda_define_value(rest: &[PoolPtr]) -> Result<DefineData, String> {
     check_len(rest, Some(2), None)?;
-    if let Value::Pair(car, cdr) = arena.get(rest[0]) {
-        if let Value::Symbol(s) = arena.get(car.get()) {
+    if let Value::Pair(car, cdr) = &*rest[0] {
+        if let Value::Symbol(s) = &*car.get() {
             let variable = s.clone();
             Ok(DefineData {
                 target: DefineTarget::Bare(variable),
@@ -565,20 +559,20 @@ fn parse_application(
     })))
 }
 
-fn parse_formals(arena: &Arena, formals: PoolPtr) -> Result<Formals, String> {
+fn parse_formals(formals: PoolPtr) -> Result<Formals, String> {
     let mut values = Vec::new();
     let mut formal = formals;
     loop {
-        if let Some(dt) = get_define_target(arena, formal) {
+        if let Some(dt) = get_define_target(formal) {
             return Ok(Formals {
                 values,
                 rest: Some(dt),
             });
         } else {
-            match arena.get(formal) {
+            match &*formal {
                 Value::EmptyList => return Ok(Formals { values, rest: None }),
                 Value::Pair(car, cdr) => {
-                    if let Some(dt) = get_define_target(arena, car.get()) {
+                    if let Some(dt) = get_define_target(car.get()) {
                         values.push(dt);
                         formal = cdr.get();
                     } else {
@@ -682,7 +676,7 @@ fn make_macro(
 ) -> Result<RootPtr, String> {
     let mac = parse_compile_run_macro(arena, env, af_info, vms, val)?;
     let mac = arena.root(mac);
-    match arena.get(mac.pp()) {
+    match &*mac {
         Value::Lambda { .. } => Ok(mac), // TODO check the lambda takes 3 args
         _ => Err(format!(
             "macro must be a lambda, is {}",
@@ -778,10 +772,10 @@ fn expand_macro(
 }
 
 fn get_macro(arena: &Arena, env: &RcEnv, expr: PoolPtr) -> Option<Macro> {
-    match arena.get(expr) {
+    match &*expr {
         Value::Pair(car, _cdr) => {
             let (res_env, res_car) = resolve_syntactic_closure(arena, env, car.get()).unwrap();
-            match arena.get(res_car) {
+            match &*res_car {
                 Value::Symbol(s) => match match_symbol(&res_env, &s) {
                     Symbol::Macro(m) => Some(m),
                     _ => None,
@@ -849,13 +843,13 @@ fn collect_internal_defines(
         } else {
             *statement
         };
-        if let Value::Pair(car, cdr) = arena.get(expanded_statement) {
+        if let Value::Pair(car, cdr) = &*expanded_statement {
             let (res_env, res_car) = resolve_syntactic_closure(arena, env, car.get())?;
-            if let Value::Symbol(s) = arena.get(res_car) {
+            if let Value::Symbol(s) = &*res_car {
                 match match_symbol(&res_env, s) {
                     Symbol::Define => {
                         let rest = vec_from_list(arena, cdr.get())?;
-                        let dv = get_define_data(arena, &rest)?;
+                        let dv = get_define_data(&rest)?;
                         defines.push(dv);
                     }
                     Symbol::Begin => {
@@ -895,32 +889,33 @@ fn resolve_syntactic_closure(
         closed_env,
         free_variables,
         expr,
-    }) = arena.get(value)
+    }) = &*value
     {
-        let closed_env = arena
-            .try_get_environment(*closed_env.borrow())
-            .expect("Syntactic closure created with non-environment argument.");
-        let inner_env = environment::filter(closed_env, env, free_variables)?;
+        let val = &*closed_env.borrow();
+        let closed_env = val
+            .try_get_environment()
+            .expect("syntactic closure created with non-environment argument");
+        let inner_env = environment::filter(&closed_env, env, free_variables)?;
         resolve_syntactic_closure(arena, &inner_env, *expr)
     } else {
         Ok((env.clone(), value))
     }
 }
 
-fn strip_syntactic_closure(arena: &Arena, env: &RcEnv, value: PoolPtr) -> PoolPtr {
-    if let Value::SyntacticClosure(SyntacticClosure { expr, .. }) = arena.get(value) {
-        strip_syntactic_closure(arena, env, *expr)
+fn strip_syntactic_closure(env: &RcEnv, value: PoolPtr) -> PoolPtr {
+    if let Value::SyntacticClosure(SyntacticClosure { expr, .. }) = &*value {
+        strip_syntactic_closure(env, *expr)
     } else {
         value
     }
 }
 
-fn get_define_target(arena: &Arena, value: PoolPtr) -> Option<DefineTarget> {
-    match arena.get(value) {
+fn get_define_target(value: PoolPtr) -> Option<DefineTarget> {
+    match &*value {
         Value::Symbol(s) => Some(DefineTarget::Bare(s.clone())),
-        Value::SyntacticClosure(sc) => match arena.get(sc.expr) {
+        Value::SyntacticClosure(sc) => match &*sc.expr {
             Value::Symbol(_) => Some(DefineTarget::SyntacticClosure(value)),
-            Value::SyntacticClosure(_) => get_define_target(arena, sc.expr),
+            Value::SyntacticClosure(_) => get_define_target(sc.expr),
             _ => None,
         },
         _ => None,

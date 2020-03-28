@@ -27,6 +27,8 @@ use value::Value;
 use vm::Vm;
 
 /// A frontend for Heap / RHeap that handles convenience operations.
+///
+/// Should be renamed MemoryManager or something.
 pub struct Arena {
     /// Roots held by the arena. This must come before [`heap`], or the `Drop` on `RootPtr`
     /// will panic.
@@ -87,7 +89,10 @@ impl Arena {
         self.root(self.insert(v))
     }
 
-    /// Given a position in the arena, returns a reference to the value at that location.
+    /// Given a PoolPtr, returns a reference to the value at that location.
+    ///
+    /// The magic is to make rust believe that the reference lasts for any possible lifetime.
+    /// In most places in the code, this can be replaced with just &*at.
     pub fn get<'a>(&'a self, at: PoolPtr) -> &'a Value {
         unsafe { std::mem::transmute::<&Value, &'a Value>(&*at) }
     }
