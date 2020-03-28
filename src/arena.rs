@@ -97,22 +97,6 @@ impl Arena {
         unsafe { std::mem::transmute::<&Value, &'a Value>(&*at) }
     }
 
-    pub fn get_activation_frame(&self, at: PoolPtr) -> &RefCell<ActivationFrame> {
-        if let Value::ActivationFrame(ref af) = self.get(at) {
-            af
-        } else {
-            panic!("value is not an activation frame");
-        }
-    }
-
-    pub fn get_code_block(&self, at: PoolPtr) -> &CodeBlock {
-        if let Value::CodeBlock(c) = self.get(at) {
-            c
-        } else {
-            panic!("value is not a code block");
-        }
-    }
-
     pub fn gensym(&self, base: Option<&str>) -> PoolPtr {
         let base_str = base.map(|s| format!("{}-", s)).unwrap_or_else(|| "".into());
         loop {

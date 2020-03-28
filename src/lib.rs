@@ -118,16 +118,20 @@ pub fn parse_compile_run(
     let global_af_info = Rc::new(RefCell::new(ActivationFrameInfo {
         parent: None,
         altitude: 0,
-        entries: arena
-            .get_activation_frame(state.global_frame.pp())
+        entries: state
+            .global_frame
+            .pp()
+            .get_activation_frame()
             .borrow()
             .values
             .len(),
     }));
     let syntax_tree = ast::parse(arena, state, &cloned_env, &global_af_info, read.pp())
         .map_err(|e| format!("syntax error: {}", e))?;
-    arena
-        .get_activation_frame(state.global_frame.pp())
+    state
+        .global_frame
+        .pp()
+        .get_activation_frame()
         .borrow_mut()
         .ensure_index(arena, global_af_info.borrow().entries);
     // println!(" => {:?}", syntax_tree);

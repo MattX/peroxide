@@ -268,7 +268,7 @@ pub fn register_primitives(
     afi: &RcAfi,
     global_frame: &RootPtr,
 ) {
-    let frame = arena.get_activation_frame(global_frame.pp());
+    let frame = global_frame.pp().long_lived().get_activation_frame();
     for prim in PRIMITIVES.iter() {
         global_environment
             .borrow_mut()

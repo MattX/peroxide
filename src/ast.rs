@@ -695,8 +695,9 @@ fn parse_compile_run_macro(
 ) -> Result<PoolPtr, String> {
     let syntax_tree =
         parse(arena, vms, env, af_info, val).map_err(|e| format!("syntax error: {}", e))?;
-    arena
-        .get_activation_frame(vms.global_frame.pp())
+    vms.global_frame
+        .pp()
+        .get_activation_frame()
         .borrow_mut()
         .ensure_index(arena, get_toplevel_afi(af_info).borrow().entries);
 

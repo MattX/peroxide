@@ -30,6 +30,7 @@ use std::rc::Rc;
 
 use arena::Arena;
 use heap::{PoolPtr, RootPtr};
+use value::get_activation_frame;
 
 pub struct Environment {
     parent: Option<Rc<RefCell<Environment>>>,
@@ -241,23 +242,23 @@ pub struct ActivationFrame {
 }
 
 impl ActivationFrame {
-    pub fn get_parent<'a>(&self, arena: &'a Arena) -> Option<&'a RefCell<Self>> {
-        self.parent.map(|p| arena.get_activation_frame(p))
+    pub fn get_parent<'a>(&self) -> Option<&'a RefCell<Self>> {
+        self.parent.map(|p| p.long_lived().get_activation_frame())
     }
 
     pub fn get(&self, arena: &Arena, depth: usize, index: usize) -> PoolPtr {
         if depth == 0 {
             self.values[index]
-        } else if let Some(p) = self.get_parent(arena) {
+        } else if let Some(p) = self.get_parent() {
             p.borrow().get(arena, depth - 1, index)
         } else {
             panic!("Accessing depth with no parent.")
         }
     }
 
-    pub fn depth(&self, arena: &Arena) -> usize {
-        if let Some(p) = self.get_parent(arena) {
-            p.borrow().depth(arena) + 1
+    pub fn depth(&self) -> usize {
+        if let Some(p) = self.get_parent() {
+            p.borrow().depth() + 1
         } else {
             0
         }
@@ -279,7 +280,7 @@ impl ActivationFrame {
     pub fn set(&mut self, arena: &Arena, depth: usize, index: usize, value: PoolPtr) {
         if depth == 0 {
             self.values[index] = value;
-        } else if let Some(p) = self.get_parent(arena) {
+        } else if let Some(p) = self.get_parent() {
             p.borrow_mut().set(arena, depth - 1, index, value);
         } else {
             panic!("Accessing depth with no parent.");

@@ -241,6 +241,20 @@ impl Value {
         }
     }
 
+    pub fn get_activation_frame(&self) -> &RefCell<ActivationFrame> {
+        match self {
+            Value::ActivationFrame(af) => af,
+            _ => panic!("value is not an activation frame"),
+        }
+    }
+
+    pub fn get_code_block(&self) -> &CodeBlock {
+        match self {
+            Value::CodeBlock(c) => c,
+            _ => panic!("value is not a code block"),
+        }
+    }
+
     // TODO make this less verbose with a macro?
     pub fn try_get_integer(&self) -> Option<&BigInt> {
         match self {
@@ -303,6 +317,14 @@ impl Value {
             Value::Port(p) => Some(p),
             _ => None,
         }
+    }
+}
+
+/// Returns a long-lived activation frame
+pub fn get_activation_frame<'a>(frame: PoolPtr) -> &'a RefCell<ActivationFrame> {
+    match frame.long_lived() {
+        Value::ActivationFrame(af) => af,
+        _ => panic!("value is not an activation frame"),
     }
 }
 

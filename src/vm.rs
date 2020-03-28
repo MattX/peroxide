@@ -21,7 +21,7 @@ use arena::Arena;
 use environment::ActivationFrame;
 use heap::{Inventory, PoolPtr, PtrVec, RootPtr};
 use primitives::PrimitiveImplementation;
-use value::{list_from_vec, Value};
+use value::{get_activation_frame, list_from_vec, Value};
 use OUTPUT_PORT_INDEX;
 use {heap, parse_compile_run};
 use {VmState, INPUT_PORT_INDEX};
@@ -140,7 +140,7 @@ pub fn run(
 }
 
 fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
-    let code = arena.get_code_block(vm.current_code_block);
+    let code = vm.current_code_block.long_lived().get_code_block();
     // println!("running {:?}, rst {:?}", code.instructions[vm.pc], vm.return_stack);
     match code.instructions[vm.pc] {
         Instruction::Constant(v) => vm.set_value(code.constants[v]),
@@ -151,22 +151,21 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
         }
         Instruction::Jump(offset) => vm.pc += offset,
         Instruction::GlobalArgumentSet { index } => {
-            get_activation_frame(arena, vm.global_env)
+            get_activation_frame(vm.global_env)
                 .borrow_mut()
                 .set(arena, 0, index, vm.value);
             vm.set_value(arena.unspecific);
         }
         Instruction::GlobalArgumentGet { index } => {
             vm.set_value(
-                get_activation_frame(arena, vm.global_env)
+                get_activation_frame(vm.global_env)
                     .borrow()
                     .get(arena, 0, index),
             );
         }
         Instruction::CheckedGlobalArgumentGet { index } => {
             vm.set_value(
-                arena
-                    .get_activation_frame(vm.global_env)
+                get_activation_frame(vm.global_env)
                     .borrow()
                     .get(arena, 0, index),
             );
@@ -181,23 +180,23 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
             }
         }
         Instruction::DeepArgumentSet { depth, index } => {
-            get_activation_frame(arena, vm.env)
+            get_activation_frame(vm.env)
                 .borrow_mut()
                 .set(arena, depth, index, vm.value);
             vm.set_value(arena.unspecific);
         }
         Instruction::LocalArgumentGet { depth, index } => {
             vm.set_value(
-                get_activation_frame(arena, vm.env)
+                get_activation_frame(vm.env)
                     .borrow()
                     .get(arena, depth, index),
             );
         }
         Instruction::CheckedLocalArgumentGet { depth, index } => {
-            let frame = arena.get_activation_frame(vm.env).borrow();
+            let frame = get_activation_frame(vm.env).borrow();
             vm.set_value(frame.get(arena, depth, index));
             if vm.value == arena.undefined {
-                let current_depth = frame.depth(arena);
+                let current_depth = frame.depth();
                 return Err(raise_string(
                     arena,
                     format!(
@@ -208,7 +207,7 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
             }
         }
         Instruction::CheckArity { arity, dotted } => {
-            let actual_arity = get_activation_frame(arena, vm.value).borrow().values.len();
+            let actual_arity = get_activation_frame(vm.value).borrow().values.len();
             if dotted && actual_arity < arity {
                 return Err(raise_string(
                     arena,
@@ -225,7 +224,7 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
             }
         }
         Instruction::ExtendEnv => {
-            get_activation_frame(arena, vm.value).borrow_mut().parent = Some(vm.env);
+            get_activation_frame(vm.value).borrow_mut().parent = Some(vm.env);
             vm.env = vm.value;
         }
         Instruction::Return => {
@@ -243,7 +242,7 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
             }));
         }
         Instruction::PackFrame(arity) => {
-            let frame = get_activation_frame(arena, vm.value);
+            let frame = get_activation_frame(vm.value);
             let values = frame.borrow_mut().values.clone();
             let frame_len = std::cmp::max(arity, values.len());
             let listified = list_from_vec(arena, &values[arity..frame_len]);
@@ -251,7 +250,7 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
             frame.borrow_mut().values[arity] = listified;
         }
         Instruction::ExtendFrame(by) => {
-            let mut frame = arena.get_activation_frame(vm.value).borrow_mut();
+            let mut frame = get_activation_frame(vm.value).borrow_mut();
             let len = frame.values.len();
             frame.values.resize(len + by, arena.undefined);
         }
@@ -319,11 +318,6 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
     Ok(false)
 }
 
-// TODO remove this
-fn get_activation_frame(arena: &Arena, env: PoolPtr) -> &RefCell<ActivationFrame> {
-    arena.get_activation_frame(env)
-}
-
 fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
     let fun = arena.get(vm.fun);
     match fun {
@@ -342,7 +336,7 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
         }
         Value::Primitive(p) => match p.implementation {
             PrimitiveImplementation::Simple(i) => {
-                let af = arena.get_activation_frame(vm.value);
+                let af = vm.value.long_lived().get_activation_frame();
                 let values = &af.borrow().values;
                 vm.set_value(
                     i(arena, &values)
@@ -350,9 +344,9 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
                 );
             }
             PrimitiveImplementation::Io(i) => {
-                let af = arena.get_activation_frame(vm.value);
+                let af = vm.value.long_lived().get_activation_frame();
                 let values = &af.borrow().values;
-                let global_env = arena.get_activation_frame(vm.global_env).borrow();
+                let global_env = vm.global_env.long_lived().get_activation_frame().borrow();
                 let input_port = global_env.values[INPUT_PORT_INDEX];
                 let output_port = global_env.values[OUTPUT_PORT_INDEX];
                 vm.set_value(
@@ -367,7 +361,7 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
             PrimitiveImplementation::Eval => eval(arena, vm)?,
         },
         Value::Continuation(c) => {
-            let af = arena.get_activation_frame(vm.value).borrow();
+            let af = vm.value.long_lived().get_activation_frame().borrow();
             if af.values.len() != 1 {
                 return Err(raise_string(
                     arena,
@@ -395,7 +389,7 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
 }
 
 fn apply(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
-    let af = arena.get_activation_frame(vm.value).borrow();
+    let af = get_activation_frame(vm.value).borrow();
     let n_args = af.values.len();
     if n_args < 2 {
         return Err(raise_string(arena, "apply: too few arguments".into()));
@@ -421,7 +415,7 @@ fn call_cc(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
         return_stack: vm.return_stack.clone(),
     };
     let cont_r = arena.insert(Value::Continuation(cont));
-    let af = arena.get_activation_frame(vm.value).borrow();
+    let af = get_activation_frame(vm.value).borrow();
     let n_args = af.values.len();
     if n_args != 1 {
         return Err(raise_string(
@@ -439,7 +433,7 @@ fn call_cc(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
 }
 
 fn eval(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
-    let af = arena.get_activation_frame(vm.value).borrow();
+    let af = get_activation_frame(vm.value).borrow();
     let n_args = af.values.len();
     if n_args != 2 {
         return Err(raise_string(arena, "eval: expected 2 arguments".into()));
@@ -465,12 +459,12 @@ fn eval(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
 }
 
 fn resolve_variable(arena: &Arena, vm: &Vm, altitude: usize, index: usize) -> String {
-    let env = &arena.get_code_block(vm.current_code_block).environment;
+    let env = &vm.current_code_block.get_code_block().environment;
     env.borrow().get_name(altitude, index)
 }
 
 fn raise(arena: &Arena, vm: &Vm, abort: bool) -> Error {
-    let af = arena.get_activation_frame(vm.value).borrow();
+    let af = get_activation_frame(vm.value).borrow();
     let n_args = af.values.len();
     if n_args != 1 {
         raise_string(arena, "raise: expected a single argument".into())
@@ -487,11 +481,7 @@ fn error_stack(arena: &Arena, vm: &Vm, error: Error) -> Error {
         write!(
             message,
             "\tat {}",
-            arena
-                .get_code_block(cb)
-                .name
-                .as_deref()
-                .unwrap_or("[anonymous]")
+            cb.get_code_block().name.as_deref().unwrap_or("[anonymous]")
         )
         .unwrap();
     }
@@ -508,7 +498,7 @@ fn handle_error(arena: &Arena, vm: &mut Vm, e: Error) -> Result<RootPtr, RootPtr
     match annotated_e {
         Error::Abort(v) => Err(v),
         Error::Raise(v) => {
-            let handler = arena.get_activation_frame(vm.global_env).borrow().values[0];
+            let handler = vm.global_env.get_activation_frame().borrow().values[0];
             match arena.get(handler) {
                 Value::Boolean(false) => Err(v),
                 Value::Lambda { .. } => {
