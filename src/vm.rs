@@ -19,14 +19,14 @@ use std::fmt::Write;
 
 use arena::Arena;
 use environment::ActivationFrame;
+use heap;
 use heap::{Inventory, PoolPtr, PtrVec, RootPtr};
 use primitives::PrimitiveImplementation;
-use value::{list_from_vec, Value};
-use OUTPUT_PORT_INDEX;
-use {heap, parse_compile_run};
-use {VmState, INPUT_PORT_INDEX};
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::Relaxed;
+use value::{list_from_vec, Value};
+use INPUT_PORT_INDEX;
+use {Interpreter, OUTPUT_PORT_INDEX};
 
 static MAX_RECURSION_DEPTH: usize = 1000;
 
@@ -133,7 +133,7 @@ pub fn run(
     arena.root_vm(&vm);
     let res = loop {
         if interruptor.load(Relaxed) {
-            break Err(arena.insert_rooted(Value::String(RefCell::new("interrupted".into()))))
+            break Err(arena.insert_rooted(Value::String(RefCell::new("interrupted".into()))));
         };
         match run_one_instruction(arena, &mut vm) {
             Ok(true) => break Ok(arena.root(vm.value)),
@@ -462,7 +462,7 @@ fn eval(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
         return Err(raise_string(arena, "eval: expected 2 arguments".into()));
     }
     let expr = af.values[0];
-    let env_descriptor = af.values[1]
+    let _env_descriptor = af.values[1]
         .try_get_string()
         .ok_or_else(|| {
             raise_string(
@@ -475,7 +475,9 @@ fn eval(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
 
     // TODO filter environment depending on env descriptor
 
-    let res = parse_compile_run(arena, &mut VmState::new(arena), arena.root(expr))
+    let res = Interpreter::new(arena)
+        .as_vm_state()
+        .parse_compile_run(arena, arena.root(expr))
         .map_err(|e| raise_string(arena, format!("eval: {}", e)))?;
     vm.set_value(res.pp());
     Ok(())

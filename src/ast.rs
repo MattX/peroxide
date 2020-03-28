@@ -36,7 +36,7 @@ use std::rc::Rc;
 
 use arena::Arena;
 use environment::{
-    get_toplevel_afi, ActivationFrame, Environment, EnvironmentValue, Macro, RcAfi, RcEnv,
+    self, get_toplevel_afi, ActivationFrame, Environment, EnvironmentValue, Macro, RcAfi, RcEnv,
 };
 use heap::{PoolPtr, RootPtr};
 use primitives::SyntacticClosure;
@@ -44,7 +44,6 @@ use util::check_len;
 use value::{list_from_vec, Value};
 use VmState;
 use {compile, vm};
-use {compile_run, environment};
 
 const MAX_MACRO_EXPANSION: usize = 1000;
 
@@ -682,7 +681,7 @@ fn make_macro(
         Value::Lambda { code, .. } => {
             let code = code.get_code_block();
             if code.arity != 3 || code.dotted {
-                Err(format!("macro lambda must take exactly 3 arguments"))
+                Err("macro lambda must take exactly 3 arguments".into())
             } else {
                 Ok(mac)
             }
@@ -716,9 +715,16 @@ fn parse_compile_run_macro(
     let code = compile::compile_toplevel(arena, &syntax_tree, vms.global_environment.clone());
     // println!(" => {:?}", &state.code[start_pc..state.code.len()]);
     let code = arena.root(code);
-    vm::run(arena, code, 0, vms.global_frame.pp(), frame, &vms.interruptor)
-        .map(|v| v.pp())
-        .map_err(|e| format!("runtime error: {}", e.pp().pretty_print()))
+    vm::run(
+        arena,
+        code,
+        0,
+        vms.global_frame.pp(),
+        frame,
+        &vms.interruptor,
+    )
+    .map(|v| v.pp())
+    .map_err(|e| format!("runtime error: {}", e.pp().pretty_print()))
 }
 
 fn make_frame(arena: &Arena, global_frame: PoolPtr, af_info: &RcAfi) -> PoolPtr {
@@ -778,7 +784,7 @@ fn expand_macro(
             })),
         ],
     }));
-    compile_run(arena, vms, &syntax_tree)
+    vms.compile_run(arena, &syntax_tree)
 }
 
 fn get_macro(arena: &Arena, env: &RcEnv, expr: PoolPtr) -> Option<Macro> {

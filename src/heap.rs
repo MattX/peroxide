@@ -256,6 +256,7 @@ pub struct PoolPtr {
 }
 
 impl Copy for PoolPtr {}
+
 impl Clone for PoolPtr {
     fn clone(&self) -> Self {
         Self {
@@ -283,8 +284,11 @@ impl PoolPtr {
     /// not true; unless there is a rooting issue, the &Value will likely live for much longer.
     ///
     /// This method just makes Rust understand the &Value lasts for as long as needed.
+    // This triggers a Clippy lint that I'm pretty sure shouldn't trigger. Maybe a regression of
+    // https://github.com/rust-lang/rust-clippy/issues/2719?
+    #[allow(clippy::transmute_ptr_to_ptr)]
     pub fn long_lived<'a, 'b>(&'a self) -> &'b Value {
-        unsafe { std::mem::transmute::<&Value, &'b Value>(&*self) }
+        unsafe { std::mem::transmute::<&Value, _>(&*self) }
     }
 }
 

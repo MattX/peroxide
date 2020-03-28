@@ -30,8 +30,8 @@ use ast::SyntaxElement;
 use environment::{ActivationFrame, ActivationFrameInfo, Environment, RcEnv};
 use heap::RootPtr;
 use read::read_many;
-use value::Value;
 use std::sync::atomic::AtomicBool;
+use value::Value;
 
 pub mod arena;
 pub mod ast;
@@ -50,14 +50,23 @@ pub const ERROR_HANDLER_INDEX: usize = 0;
 pub const INPUT_PORT_INDEX: usize = 1;
 pub const OUTPUT_PORT_INDEX: usize = 2;
 
-/// Structure holding the global state of the interpreter between effective runs of the VM.
-pub struct VmState {
-    pub global_environment: RcEnv,
-    pub global_frame: RootPtr,
-    pub interruptor: AtomicBool,
+pub struct Interpreter {
+    global_environment: RcEnv,
+    global_frame: RootPtr,
+    interruptor: AtomicBool,
 }
 
-impl VmState {
+impl Interpreter {
+    pub fn as_vm_state(&self) -> VmState {
+        VmState {
+            global_environment: self.global_environment.clone(),
+            global_frame: self.global_frame.clone(),
+            interruptor: &self.interruptor,
+        }
+    }
+}
+
+impl Interpreter {
     pub fn new(arena: &Arena) -> Self {
         let global_environment = Rc::new(RefCell::new(Environment::new(None)));
         let global_frame =
@@ -92,7 +101,7 @@ impl VmState {
         );
         primitives::register_primitives(arena, &global_environment, &afi, &global_frame);
 
-        VmState {
+        Self {
             global_environment,
             global_frame,
             interruptor: AtomicBool::new(false),
@@ -100,63 +109,67 @@ impl VmState {
     }
 }
 
-pub fn initialize(arena: &mut Arena, state: &mut VmState, fname: &str) -> Result<(), String> {
-    let contents = fs::read_to_string(fname).map_err(|e| e.to_string())?;
-    let values = read_many(arena, &contents)?;
-    //println!("Values: {:?}", values);
-    for v in values.into_iter() {
-        // println!("eval> {}", pretty_print(arena, v.pp()));
-        parse_compile_run(arena, state, v)?;
-    }
-    Ok(())
+/// Structure holding the global state of the interpreter between effective runs of the VM.
+pub struct VmState<'a> {
+    pub global_environment: RcEnv,
+    pub global_frame: RootPtr,
+    pub interruptor: &'a AtomicBool,
 }
 
-/// High-level interface to parse, compile, and run a value that's been read.
-pub fn parse_compile_run(
-    arena: &Arena,
-    state: &mut VmState,
-    read: RootPtr,
-) -> Result<RootPtr, String> {
-    let cloned_env = state.global_environment.clone();
-    let global_af_info = Rc::new(RefCell::new(ActivationFrameInfo {
-        parent: None,
-        altitude: 0,
-        entries: state
-            .global_frame
+impl<'a> VmState<'a> {
+    pub fn initialize(&mut self, arena: &Arena, fname: &str) -> Result<(), String> {
+        let contents = fs::read_to_string(fname).map_err(|e| e.to_string())?;
+        let values = read_many(arena, &contents)?;
+        //println!("Values: {:?}", values);
+        for v in values.into_iter() {
+            // println!("eval> {}", pretty_print(arena, v.pp()));
+            self.parse_compile_run(arena, v)?;
+        }
+        Ok(())
+    }
+
+    /// High-level interface to parse, compile, and run a value that's been read.
+    pub fn parse_compile_run(&mut self, arena: &Arena, read: RootPtr) -> Result<RootPtr, String> {
+        let cloned_env = self.global_environment.clone();
+        let global_af_info = Rc::new(RefCell::new(ActivationFrameInfo {
+            parent: None,
+            altitude: 0,
+            entries: self
+                .global_frame
+                .pp()
+                .get_activation_frame()
+                .borrow()
+                .values
+                .len(),
+        }));
+        let syntax_tree = ast::parse(arena, self, &cloned_env, &global_af_info, read.pp())
+            .map_err(|e| format!("syntax error: {}", e))?;
+        self.global_frame
             .pp()
             .get_activation_frame()
-            .borrow()
-            .values
-            .len(),
-    }));
-    let syntax_tree = ast::parse(arena, state, &cloned_env, &global_af_info, read.pp())
-        .map_err(|e| format!("syntax error: {}", e))?;
-    state
-        .global_frame
-        .pp()
-        .get_activation_frame()
-        .borrow_mut()
-        .ensure_index(arena, global_af_info.borrow().entries);
-    // println!(" => {:?}", syntax_tree);
-    compile_run(arena, state, &syntax_tree)
-}
+            .borrow_mut()
+            .ensure_index(arena, global_af_info.borrow().entries);
+        // println!(" => {:?}", syntax_tree);
+        self.compile_run(arena, &syntax_tree)
+    }
 
-pub fn compile_run(
-    arena: &Arena,
-    state: &mut VmState,
-    syntax_tree: &SyntaxElement,
-) -> Result<RootPtr, String> {
-    let code = compile::compile_toplevel(arena, &syntax_tree, state.global_environment.clone());
-    let code = arena.root(code);
-    // println!(" => {:?}", arena.get_code_block(code.pp()));
-    // println!(" => {:?}", arena.get_code_block(arena.get_code_block(code.pp()).code_blocks[0]));
-    vm::run(
-        arena,
-        code,
-        0,
-        state.global_frame.pp(),
-        state.global_frame.pp(),
-        &state.interruptor,
-    )
-    .map_err(|e| format!("runtime error: {}", e.pp().pretty_print()))
+    pub fn compile_run(
+        &mut self,
+        arena: &Arena,
+        syntax_tree: &SyntaxElement,
+    ) -> Result<RootPtr, String> {
+        let code = compile::compile_toplevel(arena, &syntax_tree, self.global_environment.clone());
+        let code = arena.root(code);
+        // println!(" => {:?}", arena.get_code_block(code.pp()));
+        // println!(" => {:?}", arena.get_code_block(arena.get_code_block(code.pp()).code_blocks[0]));
+        vm::run(
+            arena,
+            code,
+            0,
+            self.global_frame.pp(),
+            self.global_frame.pp(),
+            &self.interruptor,
+        )
+        .map_err(|e| format!("runtime error: {}", e.pp().pretty_print()))
+    }
 }

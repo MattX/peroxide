@@ -23,7 +23,7 @@ use peroxide::lex::SegmentationResult;
 use peroxide::lex::Token;
 use peroxide::repl::GetLineError;
 use peroxide::repl::{FileRepl, ReadlineRepl, Repl, StdIoRepl};
-use peroxide::{initialize, VmState};
+use peroxide::{Interpreter, VmState};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -53,9 +53,10 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
     };
 
     let mut arena = Arena::default();
-    let mut vm_state = VmState::new(&arena);
+    let interpreter = Interpreter::new(&arena);
+    let mut vm_state = interpreter.as_vm_state();
     if !options.no_std {
-        initialize(&mut arena, &mut vm_state, "src/scheme-lib/init.scm")?;
+        vm_state.initialize(&arena, "src/scheme-lib/init.scm")?;
     }
     loop {
         if !handle_one_expr_wrap(&mut *repl, &mut arena, &mut vm_state, silent) {
@@ -142,7 +143,7 @@ fn rep(
         let parse_value = peroxide::read::read_tokens(arena, &token_vector)
             .map_err(|e| println!("Parsing error: {:?}", e))?;
 
-        match peroxide::parse_compile_run(arena, vm_state, parse_value) {
+        match vm_state.parse_compile_run(arena, parse_value) {
             Ok(v) => {
                 if !silent {
                     println!(" => {}", v.pp().pretty_print())
