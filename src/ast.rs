@@ -19,6 +19,9 @@
 //! macros and redefined keywords. Computing references here simplifies the compiler while not
 //! making the AST parser much more complex.
 //!
+//! Another important note is that macro definition and expansion both need the runtime system
+//! to be run, so we have to pass the VmState everywhere.
+//!
 //! ### Future work / notes:
 //!
 //! Once the data has been read, we can drop all of the code we've read and keep only the quotes.
@@ -676,7 +679,14 @@ fn make_macro(
     let mac = parse_compile_run_macro(arena, env, af_info, vms, val)?;
     let mac = arena.root(mac);
     match &*mac {
-        Value::Lambda { .. } => Ok(mac), // TODO check the lambda takes 3 args
+        Value::Lambda { code, .. } => {
+            let code = code.get_code_block();
+            if code.arity != 3 || code.dotted {
+                Err(format!("macro lambda must take exactly 3 arguments"))
+            } else {
+                Ok(mac)
+            }
+        }
         _ => Err(format!(
             "macro must be a lambda, is {}",
             mac.pp().pretty_print()
@@ -706,7 +716,7 @@ fn parse_compile_run_macro(
     let code = compile::compile_toplevel(arena, &syntax_tree, vms.global_environment.clone());
     // println!(" => {:?}", &state.code[start_pc..state.code.len()]);
     let code = arena.root(code);
-    vm::run(arena, code, 0, vms.global_frame.pp(), frame)
+    vm::run(arena, code, 0, vms.global_frame.pp(), frame, &vms.interruptor)
         .map(|v| v.pp())
         .map_err(|e| format!("runtime error: {}", e.pp().pretty_print()))
 }

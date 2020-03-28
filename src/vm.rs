@@ -25,6 +25,8 @@ use value::{list_from_vec, Value};
 use OUTPUT_PORT_INDEX;
 use {heap, parse_compile_run};
 use {VmState, INPUT_PORT_INDEX};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering::Relaxed;
 
 static MAX_RECURSION_DEPTH: usize = 1000;
 
@@ -115,6 +117,7 @@ pub fn run(
     pc: usize,
     global_env: PoolPtr,
     env: PoolPtr,
+    interruptor: &AtomicBool,
 ) -> Result<RootPtr, RootPtr> {
     let mut vm = Vm {
         value: arena.unspecific,
@@ -129,6 +132,9 @@ pub fn run(
     };
     arena.root_vm(&vm);
     let res = loop {
+        if interruptor.load(Relaxed) {
+            break Err(arena.insert_rooted(Value::String(RefCell::new("interrupted".into()))))
+        };
         match run_one_instruction(arena, &mut vm) {
             Ok(true) => break Ok(arena.root(vm.value)),
             Ok(_) => (),
@@ -344,7 +350,7 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
             if !tail {
                 if vm.return_stack.len() > MAX_RECURSION_DEPTH {
                     return Err(Error::Abort(arena.insert_rooted(Value::String(
-                        RefCell::new("Maximum recursion depth exceeded".into()),
+                        RefCell::new("maximum recursion depth exceeded".into()),
                     ))));
                 }
                 vm.return_stack.push(vm.get_return_point());
@@ -435,8 +441,7 @@ fn call_cc(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
     };
     let cont_r = arena.insert(Value::Continuation(cont));
     let af = vm.value.long_lived().get_activation_frame().borrow();
-    let n_args = af.values.len();
-    if n_args != 1 {
+    if af.values.len() != 1 {
         return Err(raise_string(
             arena,
             "%call/cc: expected a single argument".into(),
@@ -453,8 +458,7 @@ fn call_cc(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
 
 fn eval(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
     let af = vm.value.long_lived().get_activation_frame().borrow();
-    let n_args = af.values.len();
-    if n_args != 2 {
+    if af.values.len() != 2 {
         return Err(raise_string(arena, "eval: expected 2 arguments".into()));
     }
     let expr = af.values[0];
@@ -484,8 +488,7 @@ fn resolve_variable(vm: &Vm, altitude: usize, index: usize) -> String {
 
 fn raise(arena: &Arena, vm: &Vm, abort: bool) -> Error {
     let af = vm.value.long_lived().get_activation_frame().borrow();
-    let n_args = af.values.len();
-    if n_args != 1 {
+    if af.values.len() != 1 {
         raise_string(arena, "raise: expected a single argument".into())
     } else if abort {
         Error::Abort(arena.root(af.values[0]))

@@ -31,6 +31,7 @@ use environment::{ActivationFrame, ActivationFrameInfo, Environment, RcEnv};
 use heap::RootPtr;
 use read::read_many;
 use value::Value;
+use std::sync::atomic::AtomicBool;
 
 pub mod arena;
 pub mod ast;
@@ -53,6 +54,7 @@ pub const OUTPUT_PORT_INDEX: usize = 2;
 pub struct VmState {
     pub global_environment: RcEnv,
     pub global_frame: RootPtr,
+    pub interruptor: AtomicBool,
 }
 
 impl VmState {
@@ -93,6 +95,7 @@ impl VmState {
         VmState {
             global_environment,
             global_frame,
+            interruptor: AtomicBool::new(false),
         }
     }
 }
@@ -153,6 +156,7 @@ pub fn compile_run(
         0,
         state.global_frame.pp(),
         state.global_frame.pp(),
+        &state.interruptor,
     )
     .map_err(|e| format!("runtime error: {}", e.pp().pretty_print()))
 }
