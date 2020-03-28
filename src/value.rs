@@ -320,14 +320,6 @@ impl Value {
     }
 }
 
-/// Returns a long-lived activation frame
-pub fn get_activation_frame<'a>(frame: PoolPtr) -> &'a RefCell<ActivationFrame> {
-    match frame.long_lived() {
-        Value::ActivationFrame(af) => af,
-        _ => panic!("value is not an activation frame"),
-    }
-}
-
 pub fn list_from_vec(arena: &Arena, vals: &[PoolPtr]) -> PoolPtr {
     if vals.is_empty() {
         arena.empty_list

@@ -30,7 +30,6 @@ use std::rc::Rc;
 
 use arena::Arena;
 use heap::{PoolPtr, RootPtr};
-use value::get_activation_frame;
 
 pub struct Environment {
     parent: Option<Rc<RefCell<Environment>>>,
