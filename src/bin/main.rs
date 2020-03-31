@@ -53,6 +53,14 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
     };
 
     let interpreter = Interpreter::new();
+    let interruptor_clone = interpreter.interruptor().clone();
+
+    ctrlc::set_handler(move || {
+        println!("Ctrl+C received!");
+        interruptor_clone.interrupt();
+    }).map_err(|e| format!("error setting Ctrl+C handler: {}", e.to_string()))?;
+    println!("Handler set!");
+
     if !options.no_std {
         interpreter.initialize("src/scheme-lib/init.scm")?;
     }

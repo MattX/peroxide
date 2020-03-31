@@ -52,11 +52,12 @@ pub const ERROR_HANDLER_INDEX: usize = 0;
 pub const INPUT_PORT_INDEX: usize = 1;
 pub const OUTPUT_PORT_INDEX: usize = 2;
 
+#[derive(Clone, Debug)]
 pub struct Interruptor(Arc<AtomicBool>);
 
 impl Interruptor {
     pub fn interrupt(&self) {
-        self.0.store(false, Relaxed);
+        self.0.store(true, Relaxed);
     }
 }
 
