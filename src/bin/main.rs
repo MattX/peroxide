@@ -136,7 +136,7 @@ fn handle_one_expr(
 fn rep(vm_state: &Interpreter, toks: Vec<Vec<Token>>, silent: bool) -> Result<(), ()> {
     for token_vector in toks {
         let parse_value = peroxide::read::read_tokens(&vm_state.arena, &token_vector)
-            .map_err(|e| println!("Parsing error: {:?}", e))?;
+            .map_err(|e| println!("parse error: {:?}", e))?;
 
         match vm_state.parse_compile_run(parse_value) {
             Ok(v) => {

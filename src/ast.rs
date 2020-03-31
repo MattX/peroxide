@@ -866,14 +866,15 @@ fn collect_internal_defines(
                     }
                     Symbol::Begin => {
                         let expressions = cdr.get().list_to_vec()?;
-                        let (d, rest) = collect_internal_defines(arena, vms, env, &expressions)?;
-                        if !rest.is_empty() {
+                        let (d, r) = collect_internal_defines(arena, vms, env, &expressions)?;
+                        if !d.is_empty() && !r.is_empty() {
                             return Err(
                                 "Inner begin in define section may only contain definitions."
                                     .into(),
                             );
                         }
                         defines.extend(d.into_iter());
+                        rest.extend(r.into_iter());
                     }
                     Symbol::Macro(_) => panic!("Macro in fully expanded statement."),
                     _ => break,
@@ -888,7 +889,6 @@ fn collect_internal_defines(
     }
 
     rest.extend(&body[i..]);
-    assert_eq!(body.len(), defines.len() + rest.len());
     Ok((defines, rest))
 }
 
