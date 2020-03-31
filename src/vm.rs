@@ -32,28 +32,95 @@ static MAX_RECURSION_DEPTH: usize = 1000;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Instruction {
+    /// Loads a constant to the VM's value register. The attached usize is
+    /// an index into the current code block's `constants` array.
     Constant(usize),
+
+    /// Jump to the given location in the current code block if the value in
+    /// the VM's value register is falsy (i.e. is anything other than `#f`).
     JumpFalse(usize),
+    
+    /// Jumps to the given location in the current code block unconditionally.
     Jump(usize),
+
+    /// Sets the value in the global frame at the given index to the value in
+    /// the VM's value register.
     GlobalArgumentSet { index: usize },
+
+    /// Loads the value in the global frame at the given index into the VM's
+    /// value register.
     GlobalArgumentGet { index: usize },
+
+    /// Same as GlobalArgumentGet, but validates that the value is not undefined.
     CheckedGlobalArgumentGet { index: usize },
+
+    /// Sets the value at the given index in the frame at the given depth
+    /// relative to the VM's env register to the value in the VM's value
+    /// register.
     DeepArgumentSet { depth: usize, index: usize },
+
+    /// Loads the value at the given index in the frame at the given depth
+    /// relative to the VM's env register into the VM's value register
     LocalArgumentGet { depth: usize, index: usize },
+
+    /// Same as LocalArgumentGet, but validates that the value is not undefined.
     CheckedLocalArgumentGet { depth: usize, index: usize },
+
+    /// Checks that the activation frame in the VM's env register has the correct
+    /// length (or at least the correct length if dotted)
     CheckArity { arity: usize, dotted: bool },
+
+    /// Takes the frame currently in the VM's value register, and sets its
+    /// parent to be the frame in the VM's env register. Then, set the VM's
+    /// env register to the frame that was just modified. Panics if the value
+    /// register does not contain a frame.
     ExtendEnv,
+
+    /// Pops a code block and a program counter from the return stack, and set
+    /// the VM's code_block and pc registers to these values.
     Return,
+
+    /// Create a Lambda object whose definition frame is the VM's env register.
+    /// The attached usize is an index into the current code block's `code_blocks`
+    /// array and determines the code block containing code for the Lambda to
+    /// create.
     CreateClosure(usize),
+
+    /// Loads the activation frame in the VM's value register and collect any elements
+    /// with indices greater than arity into a list, that is then placed at the end
+    /// of the activation frame.
     PackFrame(usize),
+
+    /// Adds slots to the activation frame in the VM's value register.
     ExtendFrame(usize),
+
+    /// Pushes the VM's env register onto the stack.
     PreserveEnv,
+
+    /// Pops the top element of the stack, which must be an activation frame,
+    /// and load it into the VM's env register.
     RestoreEnv,
+
+    /// Pushes the VM's value register onto the stack.
     PushValue,
+
+    /// Pops the top element of the stack, which must be a Lambda, and sets it
+    /// as the VM's fun register.
     PopFunction,
+
+    /// Invokes the function in the VM's fun register. See invoke() for more details.
     FunctionInvoke { tail: bool },
+
+    /// Create a new activation frame with the attached number of items in it by
+    /// popping that number of values from the stack. The topmost item from the stack
+    /// goes in the last location in the frame.
     CreateFrame(usize),
+
+    /// Placeholder opcode used during compilation.
     NoOp,
+
+    /// Signals that the toplevel code is done executing. The VM driver loop
+    /// will return when this happen.
     Finish,
 }
 
@@ -336,8 +403,6 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
             // We could just pop values from the stack as we add them to the frame, but
             // this causes them to become unrooted, which is bad. So we copy the values,
             // then truncate the stack.
-            // Matt from 3 months later - I don't see why the above is true. There's no
-            // allocations in this block so it's fine to temporarily unroot these values.
             let stack_len = vm.stack.len();
             for i in (0..size).rev() {
                 frame.values[i] = *vm
