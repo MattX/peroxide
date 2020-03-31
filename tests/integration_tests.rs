@@ -22,7 +22,10 @@ use peroxide::Interpreter;
 use peroxide::VmState;
 
 fn execute(arena: &Arena, vm_state: &mut VmState, code: &str) -> Result<Value, String> {
-    execute_rooted(arena, vm_state, code).map(|e| (*e.pp()).clone())
+    println!("In execute");
+    let res = execute_rooted(arena, vm_state, code).map(|e| (*e.pp()).clone());
+    println!("Execute done");
+    res
 }
 
 fn execute_rooted(arena: &Arena, vm_state: &mut VmState, code: &str) -> Result<RootPtr, String> {
@@ -40,29 +43,29 @@ fn execute_to_vec(arena: &Arena, vm_state: &mut VmState, code: &str) -> Result<V
 }
 
 fn magic_execute(code: &str, init: bool) -> Result<Value, String> {
-    let (arena, interpreter) = arena_and_interpreter(init);
-    let res = execute(&arena, &mut interpreter.as_vm_state(), code);
+    let interpreter = make_interpreter(init);
+    let mut vms = interpreter.as_vm_state();
+    // execute(&interpreter.arena, &mut vms, code)
+    let res = execute(&interpreter.arena, &mut vms, code);
+    drop(vms);
     drop(interpreter);
     res
 }
 
 fn magic_execute_to_vec(code: &str, init: bool) -> Result<Vec<Value>, String> {
-    let (arena, interpreter) = arena_and_interpreter(init);
-    let res = execute_to_vec(&arena, &mut interpreter.as_vm_state(), code);
-    drop(interpreter);
-    res
+    let interpreter = make_interpreter(init);
+    execute_to_vec(&interpreter.arena, &mut interpreter.as_vm_state(), code)
 }
 
-fn arena_and_interpreter(init: bool) -> (Arena, Interpreter) {
-    let arena = Arena::default();
-    let interpreter = Interpreter::new(&arena);
+fn make_interpreter(init: bool) -> Interpreter {
+    let interpreter = Interpreter::new();
     if init {
         interpreter
             .as_vm_state()
-            .initialize(&arena, "src/scheme-lib/init.scm")
+            .initialize(&interpreter.arena, "src/scheme-lib/init.scm")
             .unwrap();
     }
-    (arena, interpreter)
+    interpreter
 }
 
 #[test]

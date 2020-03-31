@@ -32,6 +32,8 @@ use heap::RootPtr;
 use read::read_many;
 use std::sync::atomic::AtomicBool;
 use value::Value;
+use std::sync::Arc;
+use std::sync::atomic::Ordering::Relaxed;
 
 pub mod arena;
 pub mod ast;
@@ -50,10 +52,25 @@ pub const ERROR_HANDLER_INDEX: usize = 0;
 pub const INPUT_PORT_INDEX: usize = 1;
 pub const OUTPUT_PORT_INDEX: usize = 2;
 
+pub struct Interruptor(Arc<AtomicBool>);
+
+impl Interruptor {
+    pub fn interrupt(&self) {
+        self.0.store(false, Relaxed);
+    }
+}
+
+// TODO make arena non-pub
 pub struct Interpreter {
     global_environment: RcEnv,
     global_frame: RootPtr,
-    interruptor: AtomicBool,
+    interruptor: Arc<AtomicBool>,
+    // Keep arena last! It must not be dropped before the RootPtr above.
+    pub arena: Arena,
+}
+
+impl Drop for Interpreter {
+    fn drop(&mut self) {}
 }
 
 impl Interpreter {
@@ -67,7 +84,8 @@ impl Interpreter {
 }
 
 impl Interpreter {
-    pub fn new(arena: &Arena) -> Self {
+    pub fn new() -> Self {
+        let arena = Arena::default();
         let global_environment = Rc::new(RefCell::new(Environment::new(None)));
         let global_frame =
             arena.insert_rooted(Value::ActivationFrame(RefCell::new(ActivationFrame {
@@ -99,13 +117,18 @@ impl Interpreter {
                 .define("%current-output-port", &afi, true),
             OUTPUT_PORT_INDEX
         );
-        primitives::register_primitives(arena, &global_environment, &afi, &global_frame);
+        primitives::register_primitives(&arena, &global_environment, &afi, &global_frame);
 
         Self {
+            arena,
             global_environment,
             global_frame,
-            interruptor: AtomicBool::new(false),
+            interruptor: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    pub fn interruptor(&self) -> Interruptor {
+        Interruptor(self.interruptor.clone())
     }
 }
 
@@ -114,6 +137,10 @@ pub struct VmState<'a> {
     pub global_environment: RcEnv,
     pub global_frame: RootPtr,
     pub interruptor: &'a AtomicBool,
+}
+
+impl Drop for VmState<'_> {
+    fn drop(&mut self) {}
 }
 
 impl<'a> VmState<'a> {
@@ -167,8 +194,7 @@ impl<'a> VmState<'a> {
             code,
             0,
             self.global_frame.pp(),
-            self.global_frame.pp(),
-            &self.interruptor,
+            self
         )
         .map_err(|e| format!("runtime error: {}", e.pp().pretty_print()))
     }

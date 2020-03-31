@@ -18,15 +18,15 @@ use std::cell::{Cell, RefCell};
 use std::fmt::Write;
 
 use arena::Arena;
-use environment::ActivationFrame;
-use heap;
+use environment::{ActivationFrame, RcEnv};
+use ::{heap, VmState};
 use heap::{Inventory, PoolPtr, PtrVec, RootPtr};
 use primitives::PrimitiveImplementation;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::Relaxed;
 use value::{list_from_vec, Value};
 use INPUT_PORT_INDEX;
-use {Interpreter, OUTPUT_PORT_INDEX};
+use OUTPUT_PORT_INDEX;
 
 static MAX_RECURSION_DEPTH: usize = 1000;
 
@@ -110,29 +110,43 @@ impl Inventory for Vm {
     }
 }
 
+/// Holds a mutable pointer to a VM and some other stuff that's needed for eval().
+///
+/// Don't add anything that needs to act as a GC root to this struct, as only the Vm part is
+/// sent to the GC.
+struct VmPlus<'a> {
+    vm: &'a mut Vm,
+    interruptor: &'a AtomicBool,
+    global_env: RcEnv,
+}
+
 // TODO rename env around here to frame
 pub fn run(
     arena: &Arena,
     code: RootPtr,
     pc: usize,
-    global_env: PoolPtr,
     env: PoolPtr,
-    interruptor: &AtomicBool,
+    vm_state: &VmState,
 ) -> Result<RootPtr, RootPtr> {
     let mut vm = Vm {
         value: arena.unspecific,
         pc,
         return_stack: Vec::new(),
         stack: Vec::new(),
-        global_env,
+        global_env: vm_state.global_frame.pp(),
         env,
         fun: arena.unspecific,
         root_code_block: code.pp(),
         current_code_block: code.pp(),
     };
     arena.root_vm(&vm);
+    let mut vm_plus = VmPlus {
+        vm: &mut vm,
+        interruptor: vm_state.interruptor,
+        global_env: vm_state.global_environment.clone(),
+    };
     let res = loop {
-        if interruptor.load(Relaxed) {
+        if vm_state.interruptor.load(Relaxed) {
             break Err(arena.insert_rooted(Value::String(RefCell::new("interrupted".into()))));
         };
         match run_one_instruction(arena, &mut vm) {
@@ -456,7 +470,9 @@ fn call_cc(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
     invoke(arena, vm, true)
 }
 
+// fn eval(arena: &Arena, vm: &mut Vm, env: &RcEnv) -> Result<(), Error> {
 fn eval(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
+    todo!();
     let af = vm.value.long_lived().get_activation_frame().borrow();
     if af.values.len() != 2 {
         return Err(raise_string(arena, "eval: expected 2 arguments".into()));
@@ -475,11 +491,17 @@ fn eval(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
 
     // TODO filter environment depending on env descriptor
 
-    let res = Interpreter::new(arena)
-        .as_vm_state()
-        .parse_compile_run(arena, arena.root(expr))
-        .map_err(|e| raise_string(arena, format!("eval: {}", e)))?;
-    vm.set_value(res.pp());
+    // let res = VmState {
+    //     global_environment: env.clone(),
+    //     global_frame: arena.root(vm.global_env),
+    //     interruptor: vm.interruptor,
+    // }
+
+    // let res = Interpreter::new(arena)
+    //     .as_vm_state()
+    //     .parse_compile_run(arena, arena.root(expr))
+    //     .map_err(|e| raise_string(arena, format!("eval: {}", e)))?;
+    // vm.set_value(res.pp());
     Ok(())
 }
 

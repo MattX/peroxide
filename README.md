@@ -57,6 +57,7 @@ much better error messages.
 https://doc.rust-lang.org/cargo/reference/manifest.html#the-features-section).
 * Make errors not be strings :)
 * Allow meta-commands like `,exit` or `,decompile`
+* PoolPtr / Values should only live as long as the Heap or Arena
 
 ## Useful documentation
 

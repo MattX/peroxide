@@ -719,9 +719,8 @@ fn parse_compile_run_macro(
         arena,
         code,
         0,
-        vms.global_frame.pp(),
         frame,
-        &vms.interruptor,
+        vms
     )
     .map(|v| v.pp())
     .map_err(|e| format!("runtime error: {}", e.pp().pretty_print()))

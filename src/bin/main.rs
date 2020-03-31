@@ -52,14 +52,14 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
         }
     };
 
-    let mut arena = Arena::default();
-    let interpreter = Interpreter::new(&arena);
+    let interpreter = Interpreter::new();
     let mut vm_state = interpreter.as_vm_state();
+    let arena = &interpreter.arena;
     if !options.no_std {
-        vm_state.initialize(&arena, "src/scheme-lib/init.scm")?;
+        vm_state.initialize(arena, "src/scheme-lib/init.scm")?;
     }
     loop {
-        if !handle_one_expr_wrap(&mut *repl, &mut arena, &mut vm_state, silent) {
+        if !handle_one_expr_wrap(&mut *repl, arena, &mut vm_state, silent) {
             break;
         }
     }
@@ -71,7 +71,7 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
 // Returns true if the REPL loop should continue, false otherwise.
 fn handle_one_expr_wrap(
     repl: &mut dyn Repl,
-    arena: &mut Arena,
+    arena: &Arena,
     vm_state: &mut VmState,
     silent: bool,
 ) -> bool {
@@ -82,7 +82,7 @@ fn handle_one_expr_wrap(
 
 fn handle_one_expr(
     repl: &mut dyn Repl,
-    arena: &mut Arena,
+    arena: &Arena,
     vm_state: &mut VmState,
     silent: bool,
 ) -> Result<bool, String> {
@@ -134,7 +134,7 @@ fn handle_one_expr(
 }
 
 fn rep(
-    arena: &mut Arena,
+    arena: &Arena,
     vm_state: &mut VmState,
     toks: Vec<Vec<Token>>,
     silent: bool,
