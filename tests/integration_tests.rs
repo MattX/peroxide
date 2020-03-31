@@ -19,51 +19,40 @@ use peroxide::heap::RootPtr;
 use peroxide::read::read_many;
 use peroxide::value::Value;
 use peroxide::Interpreter;
-use peroxide::VmState;
 
-fn execute(arena: &Arena, vm_state: &mut VmState, code: &str) -> Result<Value, String> {
-    println!("In execute");
-    let res = execute_rooted(arena, vm_state, code).map(|e| (*e.pp()).clone());
-    println!("Execute done");
-    res
+fn execute(vm_state: &Interpreter, code: &str) -> Result<Value, String> {
+    execute_rooted(vm_state, code).map(|e| (*e.pp()).clone())
 }
 
-fn execute_rooted(arena: &Arena, vm_state: &mut VmState, code: &str) -> Result<RootPtr, String> {
-    let mut results: Vec<_> = read_many(arena, code)?
+fn execute_rooted(vm_state: &Interpreter, code: &str) -> Result<RootPtr, String> {
+    let mut results: Vec<_> = read_many(&vm_state.arena, code)?
         .into_iter()
-        .map(|read| vm_state.parse_compile_run(arena, read))
+        .map(|read| vm_state.parse_compile_run(read))
         .collect::<Result<Vec<_>, _>>()?;
     results.pop().ok_or("no expressions".into())
 }
 
-fn execute_to_vec(arena: &Arena, vm_state: &mut VmState, code: &str) -> Result<Vec<Value>, String> {
-    let val = execute_rooted(arena, vm_state, code)?;
+fn execute_to_vec(vm_state: &Interpreter, code: &str) -> Result<Vec<Value>, String> {
+    let val = execute_rooted(vm_state, code)?;
     let vec = val.pp().list_to_vec()?;
     Ok(vec.iter().map(|&iv| (*iv).clone()).collect())
 }
 
 fn magic_execute(code: &str, init: bool) -> Result<Value, String> {
     let interpreter = make_interpreter(init);
-    let mut vms = interpreter.as_vm_state();
     // execute(&interpreter.arena, &mut vms, code)
-    let res = execute(&interpreter.arena, &mut vms, code);
-    drop(vms);
-    drop(interpreter);
-    res
+    execute(&interpreter, code)
 }
 
 fn magic_execute_to_vec(code: &str, init: bool) -> Result<Vec<Value>, String> {
     let interpreter = make_interpreter(init);
-    execute_to_vec(&interpreter.arena, &mut interpreter.as_vm_state(), code)
+    execute_to_vec(&interpreter, code)
 }
 
 fn make_interpreter(init: bool) -> Interpreter {
     let interpreter = Interpreter::new();
     if init {
-        interpreter
-            .as_vm_state()
-            .initialize(&interpreter.arena, "src/scheme-lib/init.scm")
-            .unwrap();
+        interpreter.initialize("src/scheme-lib/init.scm").unwrap();
     }
     interpreter
 }

@@ -31,9 +31,9 @@ use environment::{ActivationFrame, ActivationFrameInfo, Environment, RcEnv};
 use heap::RootPtr;
 use read::read_many;
 use std::sync::atomic::AtomicBool;
-use value::Value;
-use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
+use std::sync::Arc;
+use value::Value;
 
 pub mod arena;
 pub mod ast;
@@ -61,6 +61,7 @@ impl Interruptor {
 }
 
 // TODO make arena non-pub
+/// Structure holding the global state of the interpreter between effective runs of the VM.
 pub struct Interpreter {
     global_environment: RcEnv,
     global_frame: RootPtr,
@@ -69,18 +70,12 @@ pub struct Interpreter {
     pub arena: Arena,
 }
 
+// Okay this is another dirty hack. This serves to convince the Rust compiler not to automatically
+// drop the Interpreter (and thus the Arena) too soon, e.g. in integration tests. If this whole
+// library was designed properly, PoolPtrs would have a lifetime not exceeding that of the Arena,
+// but unfortunately that is not the case and we are damned to suffer.
 impl Drop for Interpreter {
     fn drop(&mut self) {}
-}
-
-impl Interpreter {
-    pub fn as_vm_state(&self) -> VmState {
-        VmState {
-            global_environment: self.global_environment.clone(),
-            global_frame: self.global_frame.clone(),
-            interruptor: &self.interruptor,
-        }
-    }
 }
 
 impl Interpreter {
@@ -130,33 +125,20 @@ impl Interpreter {
     pub fn interruptor(&self) -> Interruptor {
         Interruptor(self.interruptor.clone())
     }
-}
 
-/// Structure holding the global state of the interpreter between effective runs of the VM.
-pub struct VmState<'a> {
-    pub global_environment: RcEnv,
-    pub global_frame: RootPtr,
-    pub interruptor: &'a AtomicBool,
-}
-
-impl Drop for VmState<'_> {
-    fn drop(&mut self) {}
-}
-
-impl<'a> VmState<'a> {
-    pub fn initialize(&mut self, arena: &Arena, fname: &str) -> Result<(), String> {
+    pub fn initialize(&self, fname: &str) -> Result<(), String> {
         let contents = fs::read_to_string(fname).map_err(|e| e.to_string())?;
-        let values = read_many(arena, &contents)?;
+        let values = read_many(&self.arena, &contents)?;
         //println!("Values: {:?}", values);
         for v in values.into_iter() {
             // println!("eval> {}", pretty_print(arena, v.pp()));
-            self.parse_compile_run(arena, v)?;
+            self.parse_compile_run(v)?;
         }
         Ok(())
     }
 
     /// High-level interface to parse, compile, and run a value that's been read.
-    pub fn parse_compile_run(&mut self, arena: &Arena, read: RootPtr) -> Result<RootPtr, String> {
+    pub fn parse_compile_run(&self, read: RootPtr) -> Result<RootPtr, String> {
         let cloned_env = self.global_environment.clone();
         let global_af_info = Rc::new(RefCell::new(ActivationFrameInfo {
             parent: None,
@@ -169,33 +151,22 @@ impl<'a> VmState<'a> {
                 .values
                 .len(),
         }));
-        let syntax_tree = ast::parse(arena, self, &cloned_env, &global_af_info, read.pp())
+        let syntax_tree = ast::parse(&self.arena, self, &cloned_env, &global_af_info, read.pp())
             .map_err(|e| format!("syntax error: {}", e))?;
         self.global_frame
             .pp()
             .get_activation_frame()
             .borrow_mut()
-            .ensure_index(arena, global_af_info.borrow().entries);
+            .ensure_index(&self.arena, global_af_info.borrow().entries);
         // println!(" => {:?}", syntax_tree);
-        self.compile_run(arena, &syntax_tree)
+        self.compile_run(&syntax_tree)
     }
 
-    pub fn compile_run(
-        &mut self,
-        arena: &Arena,
-        syntax_tree: &SyntaxElement,
-    ) -> Result<RootPtr, String> {
-        let code = compile::compile_toplevel(arena, &syntax_tree, self.global_environment.clone());
-        let code = arena.root(code);
-        // println!(" => {:?}", arena.get_code_block(code.pp()));
-        // println!(" => {:?}", arena.get_code_block(arena.get_code_block(code.pp()).code_blocks[0]));
-        vm::run(
-            arena,
-            code,
-            0,
-            self.global_frame.pp(),
-            self
-        )
-        .map_err(|e| format!("runtime error: {}", e.pp().pretty_print()))
+    pub fn compile_run(&self, syntax_tree: &SyntaxElement) -> Result<RootPtr, String> {
+        let code =
+            compile::compile_toplevel(&self.arena, &syntax_tree, self.global_environment.clone());
+        let code = self.arena.root(code);
+        vm::run(code, 0, self.global_frame.pp(), self)
+            .map_err(|e| format!("runtime error: {}", e.pp().pretty_print()))
     }
 }

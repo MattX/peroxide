@@ -23,7 +23,7 @@ use peroxide::lex::SegmentationResult;
 use peroxide::lex::Token;
 use peroxide::repl::GetLineError;
 use peroxide::repl::{FileRepl, ReadlineRepl, Repl, StdIoRepl};
-use peroxide::{Interpreter, VmState};
+use peroxide::Interpreter;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -53,13 +53,11 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
     };
 
     let interpreter = Interpreter::new();
-    let mut vm_state = interpreter.as_vm_state();
-    let arena = &interpreter.arena;
     if !options.no_std {
-        vm_state.initialize(arena, "src/scheme-lib/init.scm")?;
+        interpreter.initialize("src/scheme-lib/init.scm")?;
     }
     loop {
-        if !handle_one_expr_wrap(&mut *repl, arena, &mut vm_state, silent) {
+        if !handle_one_expr_wrap(&mut *repl, &interpreter, silent) {
             break;
         }
     }
@@ -69,21 +67,15 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
 }
 
 // Returns true if the REPL loop should continue, false otherwise.
-fn handle_one_expr_wrap(
-    repl: &mut dyn Repl,
-    arena: &Arena,
-    vm_state: &mut VmState,
-    silent: bool,
-) -> bool {
-    handle_one_expr(repl, arena, vm_state, silent)
+fn handle_one_expr_wrap(repl: &mut dyn Repl, vm_state: &Interpreter, silent: bool) -> bool {
+    handle_one_expr(repl, vm_state, silent)
         .map_err(|e| println!("Error: {}", e))
         .unwrap_or(true)
 }
 
 fn handle_one_expr(
     repl: &mut dyn Repl,
-    arena: &Arena,
-    vm_state: &mut VmState,
+    vm_state: &Interpreter,
     silent: bool,
 ) -> Result<bool, String> {
     let mut current_expr_string: Vec<String> = Vec::new();
@@ -129,21 +121,16 @@ fn handle_one_expr(
     }
 
     repl.add_to_history(&current_expr_string.join("\n"));
-    let _ = rep(arena, vm_state, exprs, silent);
+    let _ = rep(vm_state, exprs, silent);
     Ok(true)
 }
 
-fn rep(
-    arena: &Arena,
-    vm_state: &mut VmState,
-    toks: Vec<Vec<Token>>,
-    silent: bool,
-) -> Result<(), ()> {
+fn rep(vm_state: &Interpreter, toks: Vec<Vec<Token>>, silent: bool) -> Result<(), ()> {
     for token_vector in toks {
-        let parse_value = peroxide::read::read_tokens(arena, &token_vector)
+        let parse_value = peroxide::read::read_tokens(&vm_state.arena, &token_vector)
             .map_err(|e| println!("Parsing error: {:?}", e))?;
 
-        match vm_state.parse_compile_run(arena, parse_value) {
+        match vm_state.parse_compile_run(parse_value) {
             Ok(v) => {
                 if !silent {
                     println!(" => {}", v.pp().pretty_print())

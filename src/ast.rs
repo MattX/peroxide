@@ -20,7 +20,7 @@
 //! making the AST parser much more complex.
 //!
 //! Another important note is that macro definition and expansion both need the runtime system
-//! to be run, so we have to pass the VmState everywhere.
+//! to be run, so we have to pass the Interpreter everywhere.
 //!
 //! ### Future work / notes:
 //!
@@ -29,6 +29,9 @@
 //! post-AST values.
 //!
 //! Another small thing is dealing with loopy trees as allowed by R7RS.
+
+// TODO basically everywhere in this file: methods that take an Interpreter don't also need an
+//      Arena.
 
 use std::cell::{Cell, RefCell};
 use std::fmt;
@@ -42,7 +45,7 @@ use heap::{PoolPtr, RootPtr};
 use primitives::SyntacticClosure;
 use util::check_len;
 use value::{list_from_vec, Value};
-use VmState;
+use Interpreter;
 use {compile, vm};
 
 const MAX_MACRO_EXPANSION: usize = 1000;
@@ -134,7 +137,7 @@ struct Formals {
 
 /// Parses an expression into an AST (aka `SyntaxElement`)
 ///
-/// Annoyingly enough, we need a full `VmState` passed everywhere here, because macros
+/// Annoyingly enough, we need a full `Interpreter` passed everywhere here, because macros
 /// need to be executed and can add new code.
 ///
 /// **parse() requires `value` to be rooted**, but it won't tell you that because it's sneaky.
@@ -143,7 +146,7 @@ struct Formals {
 /// rooted, we can get away with not rooting stuff as we go down the expression.
 pub fn parse(
     arena: &Arena,
-    vms: &mut VmState,
+    vms: &Interpreter,
     env: &RcEnv,
     af_info: &RcAfi,
     value: PoolPtr,
@@ -196,7 +199,7 @@ fn construct_reference(env: &RcEnv, afi: &RcAfi, name: &str) -> Result<Reference
 
 fn parse_pair(
     arena: &Arena,
-    vms: &mut VmState,
+    vms: &Interpreter,
     env: &RcEnv,
     af_info: &RcAfi,
     car: PoolPtr,
@@ -248,7 +251,7 @@ fn parse_quote(
 
 fn parse_if(
     arena: &Arena,
-    vms: &mut VmState,
+    vms: &Interpreter,
     env: &RcEnv,
     af_info: &RcAfi,
     rest: &[PoolPtr],
@@ -266,7 +269,7 @@ fn parse_if(
 
 fn parse_begin(
     arena: &Arena,
-    vms: &mut VmState,
+    vms: &Interpreter,
     env: &RcEnv,
     af_info: &RcAfi,
     rest: &[PoolPtr],
@@ -281,7 +284,7 @@ fn parse_begin(
 
 fn parse_lambda(
     arena: &Arena,
-    vms: &mut VmState,
+    vms: &Interpreter,
     env: &RcEnv,
     af_info: &RcAfi,
     rest: &[PoolPtr],
@@ -300,7 +303,7 @@ fn parse_lambda(
 
 fn parse_split_lambda(
     arena: &Arena,
-    vms: &mut VmState,
+    vms: &Interpreter,
     outer_env: &RcEnv,
     af_info: &RcAfi,
     formals: PoolPtr,
@@ -378,7 +381,7 @@ fn parse_split_lambda(
 
 fn parse_set(
     arena: &Arena,
-    vms: &mut VmState,
+    vms: &Interpreter,
     env: &RcEnv,
     af_info: &RcAfi,
     rest: &[PoolPtr],
@@ -408,7 +411,7 @@ fn parse_set(
 /// (see [collect_internal_defines]).
 fn parse_define(
     arena: &Arena,
-    vms: &mut VmState,
+    vms: &Interpreter,
     env: &RcEnv,
     af_info: &RcAfi,
     rest: &[PoolPtr],
@@ -481,7 +484,7 @@ impl DefineValue {
     pub fn parse(
         &self,
         arena: &Arena,
-        vms: &mut VmState,
+        vms: &Interpreter,
         env: &RcEnv,
         af_info: &RcAfi,
         name: String,
@@ -543,7 +546,7 @@ fn get_lambda_define_value(rest: &[PoolPtr]) -> Result<DefineData, String> {
 
 fn parse_application(
     arena: &Arena,
-    vms: &mut VmState,
+    vms: &Interpreter,
     env: &RcEnv,
     af_info: &RcAfi,
     fun: PoolPtr,
@@ -590,7 +593,7 @@ fn parse_formals(formals: PoolPtr) -> Result<Formals, String> {
 
 fn parse_define_syntax(
     arena: &Arena,
-    vms: &mut VmState,
+    vms: &Interpreter,
     env: &RcEnv,
     af_info: &RcAfi,
     rest: &[PoolPtr],
@@ -622,7 +625,7 @@ fn parse_define_syntax(
 
 fn parse_let_syntax(
     arena: &Arena,
-    vms: &mut VmState,
+    vms: &Interpreter,
     env: &RcEnv,
     af_info: &RcAfi,
     rest: &[PoolPtr],
@@ -672,7 +675,7 @@ fn make_macro(
     arena: &Arena,
     env: &RcEnv,
     af_info: &RcAfi,
-    vms: &mut VmState,
+    vms: &Interpreter,
     val: PoolPtr,
 ) -> Result<RootPtr, String> {
     let mac = parse_compile_run_macro(arena, env, af_info, vms, val)?;
@@ -699,7 +702,7 @@ fn parse_compile_run_macro(
     arena: &Arena,
     env: &RcEnv,
     af_info: &RcAfi,
-    vms: &mut VmState,
+    vms: &Interpreter,
     val: PoolPtr,
 ) -> Result<PoolPtr, String> {
     let syntax_tree =
@@ -715,15 +718,9 @@ fn parse_compile_run_macro(
     let code = compile::compile_toplevel(arena, &syntax_tree, vms.global_environment.clone());
     // println!(" => {:?}", &state.code[start_pc..state.code.len()]);
     let code = arena.root(code);
-    vm::run(
-        arena,
-        code,
-        0,
-        frame,
-        vms
-    )
-    .map(|v| v.pp())
-    .map_err(|e| format!("runtime error: {}", e.pp().pretty_print()))
+    vm::run(code, 0, frame, vms)
+        .map(|v| v.pp())
+        .map_err(|e| format!("runtime error: {}", e.pp().pretty_print()))
 }
 
 fn make_frame(arena: &Arena, global_frame: PoolPtr, af_info: &RcAfi) -> PoolPtr {
@@ -743,7 +740,7 @@ fn make_frame(arena: &Arena, global_frame: PoolPtr, af_info: &RcAfi) -> PoolPtr 
 
 fn expand_macro_full(
     arena: &Arena,
-    vms: &mut VmState,
+    vms: &Interpreter,
     env: &RcEnv,
     mac: Macro,
     expr: PoolPtr,
@@ -763,7 +760,7 @@ fn expand_macro_full(
 
 fn expand_macro(
     arena: &Arena,
-    vms: &mut VmState,
+    vms: &Interpreter,
     env: &RcEnv,
     mac: Macro,
     expr: RootPtr,
@@ -783,7 +780,7 @@ fn expand_macro(
             })),
         ],
     }));
-    vms.compile_run(arena, &syntax_tree)
+    vms.compile_run(&syntax_tree)
 }
 
 fn get_macro(arena: &Arena, env: &RcEnv, expr: PoolPtr) -> Option<Macro> {
@@ -840,7 +837,7 @@ fn match_symbol(env: &RcEnv, sym: &str) -> Symbol {
 #[allow(clippy::type_complexity)]
 fn collect_internal_defines(
     arena: &Arena,
-    vms: &mut VmState,
+    vms: &Interpreter,
     env: &RcEnv,
     body: &[PoolPtr],
 ) -> Result<(Vec<DefineData>, Vec<PoolPtr>), String> {
