@@ -77,7 +77,7 @@ where
             Token::Boolean(b) => Ok(arena.insert_rooted(Value::Boolean(*b))),
             Token::Character(c) => Ok(arena.insert_rooted(Value::Character(*c))),
             Token::String(s) => Ok(arena.insert_rooted(Value::String(RefCell::new(s.to_string())))),
-            Token::Symbol(s) => Ok(arena.insert_rooted(Value::Symbol(s.to_string()))),
+            Token::Symbol(s) => Ok(arena.insert_rooted(Value::Symbol(s.to_ascii_lowercase()))),
             Token::OpenParen => read_list(arena, it),
             Token::OpenByteVector => read_bytevec(arena, it),
             Token::OpenVector => read_vec(arena, it),
@@ -95,7 +95,6 @@ where
     }
 }
 
-// TODO we can avoid clones by consuming the NumValue here
 pub fn read_num_token(t: &NumValue) -> Value {
     let equalized = match t {
         NumValue::Real(r) => Value::Real(*r),
