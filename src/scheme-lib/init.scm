@@ -865,6 +865,16 @@
               ((inexact? (car ls)) (~min lo ls))
               (else (lp (if (< (car ls) lo) (car ls) lo) (cdr ls)))))))
 
+(define complex? number?)
+
+(define (even? x)
+  (and (integer? x)
+       (zero? (modulo x 2))))
+
+(define (odd? x)
+  (and (integer? x)
+       (not (zero? (modulo x 2)))))
+
 ;; Ports
 
 (define (close-output-port p) (close-port p))

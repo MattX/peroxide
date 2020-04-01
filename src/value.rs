@@ -157,6 +157,11 @@ impl Value {
                 expr.pretty_print()
             ),
             Value::Continuation(_) => "#<continuation>".to_string(),
+            Value::Lambda { code, .. } => match &code.get_code_block().name {
+                Some(n) => format!("#<procedure {}>", n),
+                None => "#<anonymous procedure>".to_string(),
+            },
+            Value::Primitive(p) => format!("#<primitive {}>", p.name),
             _ => format!("{}", self),
         }
     }

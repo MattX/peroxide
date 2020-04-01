@@ -18,11 +18,10 @@ use std::cell::{Cell, RefCell};
 use std::fmt::Write;
 
 use arena::Arena;
-use environment::{ActivationFrame, RcEnv};
+use environment::ActivationFrame;
 use heap;
 use heap::{Inventory, PoolPtr, PtrVec, RootPtr};
 use primitives::PrimitiveImplementation;
-use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::Relaxed;
 use value::{list_from_vec, Value};
 use OUTPUT_PORT_INDEX;
@@ -39,7 +38,7 @@ pub enum Instruction {
     /// Jump to the given location in the current code block if the value in
     /// the VM's value register is falsy (i.e. is anything other than `#f`).
     JumpFalse(usize),
-    
+
     /// Jumps to the given location in the current code block unconditionally.
     Jump(usize),
 
@@ -177,16 +176,6 @@ impl Inventory for Vm {
     }
 }
 
-/// Holds a mutable pointer to a VM and some other stuff that's needed for eval().
-///
-/// Don't add anything that needs to act as a GC root to this struct, as only the Vm part is
-/// sent to the GC.
-struct VmPlus<'a> {
-    vm: &'a mut Vm,
-    interruptor: &'a AtomicBool,
-    global_env: RcEnv,
-}
-
 // TODO rename env around here to frame
 pub fn run(code: RootPtr, pc: usize, env: PoolPtr, int: &Interpreter) -> Result<RootPtr, RootPtr> {
     let mut vm = Vm {
@@ -201,11 +190,6 @@ pub fn run(code: RootPtr, pc: usize, env: PoolPtr, int: &Interpreter) -> Result<
         current_code_block: code.pp(),
     };
     int.arena.root_vm(&vm);
-    let mut vm_plus = VmPlus {
-        vm: &mut vm,
-        interruptor: &int.interruptor,
-        global_env: int.global_environment.clone(),
-    };
     let res = loop {
         if int.interruptor.load(Relaxed) {
             int.interruptor.store(false, Relaxed);
@@ -213,17 +197,18 @@ pub fn run(code: RootPtr, pc: usize, env: PoolPtr, int: &Interpreter) -> Result<
                 .arena
                 .insert_rooted(Value::String(RefCell::new("interrupted".into()))));
         };
-        match run_one_instruction(&int.arena, &mut vm) {
+        match run_one_instruction(int, &mut vm) {
             Ok(true) => break Ok(int.arena.root(vm.value)),
             Ok(_) => (),
-            Err(e) => break handle_error(&int.arena, &mut vm, e),
+            Err(e) => break handle_error(int, &mut vm, e),
         }
     };
     int.arena.unroot_vm();
     res
 }
 
-fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
+fn run_one_instruction(int: &Interpreter, vm: &mut Vm) -> Result<bool, Error> {
+    let arena = &int.arena;
     let code = vm.current_code_block.long_lived().get_code_block();
     // println!("running {:?}, rst {:?}", code.instructions[vm.pc], vm.return_stack);
     match code.instructions[vm.pc] {
@@ -393,7 +378,7 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
             }
         }
         Instruction::FunctionInvoke { tail } => {
-            invoke(arena, vm, tail)?;
+            invoke(int, vm, tail)?;
         }
         Instruction::CreateFrame(size) => {
             let mut frame = ActivationFrame {
@@ -420,7 +405,8 @@ fn run_one_instruction(arena: &Arena, vm: &mut Vm) -> Result<bool, Error> {
     Ok(false)
 }
 
-fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
+fn invoke(int: &Interpreter, vm: &mut Vm, tail: bool) -> Result<(), Error> {
+    let arena = &int.arena;
     match vm.fun.long_lived() {
         Value::Lambda { code, frame } => {
             if !tail {
@@ -455,11 +441,11 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
                         .map_err(|e| raise_string(arena, format!("In {:?}: {}", p, e)))?,
                 );
             }
-            PrimitiveImplementation::Apply => apply(arena, vm, tail)?,
-            PrimitiveImplementation::CallCC => call_cc(arena, vm)?,
+            PrimitiveImplementation::Apply => apply(int, vm, tail)?,
+            PrimitiveImplementation::CallCC => call_cc(int, vm)?,
             PrimitiveImplementation::Abort => return Err(raise(arena, vm, true)),
             PrimitiveImplementation::Raise => return Err(raise(arena, vm, false)),
-            PrimitiveImplementation::Eval => eval(arena, vm)?,
+            PrimitiveImplementation::Eval => eval(int, vm)?,
         },
         Value::Continuation(c) => {
             let af = vm.value.long_lived().get_activation_frame().borrow();
@@ -489,7 +475,10 @@ fn invoke(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
     Ok(())
 }
 
-fn apply(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
+// TODO apply isn't really tail-recursive, and this could be fixed by returning to the
+//      trampoline here.
+fn apply(int: &Interpreter, vm: &mut Vm, tail: bool) -> Result<(), Error> {
+    let arena = &int.arena;
     let af = vm.value.long_lived().get_activation_frame().borrow();
     let n_args = af.values.len();
     if n_args < 2 {
@@ -506,10 +495,11 @@ fn apply(arena: &Arena, vm: &mut Vm, tail: bool) -> Result<(), Error> {
     };
     vm.set_value(arena.insert(Value::ActivationFrame(RefCell::new(new_af))));
     vm.fun = af.values[0];
-    invoke(arena, vm, tail)
+    invoke(int, vm, tail)
 }
 
-fn call_cc(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
+fn call_cc(int: &Interpreter, vm: &mut Vm) -> Result<(), Error> {
+    let arena = &int.arena;
     vm.return_stack.push(vm.get_return_point());
     let cont = Continuation {
         stack: vm.stack.clone(),
@@ -529,14 +519,12 @@ fn call_cc(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
     };
     vm.set_value(arena.insert(Value::ActivationFrame(RefCell::new(new_af))));
     vm.fun = af.values[0];
-    invoke(arena, vm, true)
+    invoke(int, vm, true)
 }
 
 // fn eval(arena: &Arena, vm: &mut Vm, env: &RcEnv) -> Result<(), Error> {
-fn eval(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
-    return Err(Error::Raise(arena.insert_rooted(Value::String(RefCell::new(
-        "not implemented".into(),
-    )))));
+fn eval(int: &Interpreter, vm: &mut Vm) -> Result<(), Error> {
+    let arena = &int.arena;
     let af = vm.value.long_lived().get_activation_frame().borrow();
     if af.values.len() != 2 {
         return Err(raise_string(arena, "eval: expected 2 arguments".into()));
@@ -553,19 +541,10 @@ fn eval(arena: &Arena, vm: &mut Vm) -> Result<(), Error> {
         .borrow()
         .clone();
 
-    // TODO filter environment depending on env descriptor
-
-    // let res = Interpreter {
-    //     global_environment: env.clone(),
-    //     global_frame: arena.root(vm.global_env),
-    //     interruptor: vm.interruptor,
-    // }
-
-    // let res = Interpreter::new(arena)
-    //     .as_vm_state()
-    //     .parse_compile_run(arena, arena.root(expr))
-    //     .map_err(|e| raise_string(arena, format!("eval: {}", e)))?;
-    // vm.set_value(res.pp());
+    let res = int
+        .parse_compile_run(arena.root(expr))
+        .map_err(|e| raise_string(arena, format!("eval: {}", e)))?;
+    vm.set_value(res.pp());
     Ok(())
 }
 
@@ -603,7 +582,8 @@ fn error_stack(arena: &Arena, vm: &Vm, error: Error) -> Error {
     error.map_error(|e| arena.insert_rooted(Value::Pair(Cell::new(e.pp()), Cell::new(msg_r.pp()))))
 }
 
-fn handle_error(arena: &Arena, vm: &mut Vm, e: Error) -> Result<RootPtr, RootPtr> {
+fn handle_error(int: &Interpreter, vm: &mut Vm, e: Error) -> Result<RootPtr, RootPtr> {
+    let arena = &int.arena;
     let annotated_e = error_stack(arena, &vm, e);
     match annotated_e {
         Error::Abort(v) => Err(v),
@@ -618,7 +598,7 @@ fn handle_error(arena: &Arena, vm: &mut Vm, e: Error) -> Result<RootPtr, RootPtr
                     };
                     vm.fun = handler;
                     vm.set_value(arena.insert(Value::ActivationFrame(RefCell::new(frame))));
-                    invoke(arena, vm, false).map_err(|e| e.into_value())?;
+                    invoke(int, vm, false).map_err(|e| e.into_value())?;
                     vm.pc += 1;
                     Ok(arena.root(arena.unspecific))
                 }

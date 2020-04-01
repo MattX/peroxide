@@ -79,6 +79,12 @@ impl Drop for Interpreter {
     fn drop(&mut self) {}
 }
 
+impl Default for Interpreter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Interpreter {
     pub fn new() -> Self {
         let arena = Arena::default();

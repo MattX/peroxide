@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::{Ref, RefCell};
+use std::cell::{Ref, RefCell, RefMut};
 
 use num_bigint::BigInt;
-use num_traits::ToPrimitive;
 
 use arena::Arena;
 use heap::PoolPtr;
+use primitives::try_get_index;
 use util::check_len;
 use value::Value;
 
@@ -34,71 +34,45 @@ pub fn make_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
         Some(Value::Character(c)) => *c,
         _ => {
             return Err(format!(
-                "make-string: Invalid initial character: {}.",
+                "invalid initial character: {}",
                 args[1].pretty_print()
             ))
         }
     };
-    let l = args[0]
-        .try_get_integer()
-        .ok_or_else(|| format!("make-string: Invalid length: {}.", args[0].pretty_print()))?;
-    let l = l
-        .to_usize()
-        .ok_or_else(|| format!("make-string: string cannot have negative length: {}.", l))?;
-    let s: String = std::iter::repeat(c).take(l).collect();
+    let length = try_get_index(args[0])?;
+    let s: String = std::iter::repeat(c).take(length).collect();
     Ok(arena.insert(Value::String(RefCell::new(s))))
 }
 
 pub fn string_length(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let l = args[0]
-        .try_get_string()
-        .ok_or_else(|| format!("string-length: not a string: {}", args[0].pretty_print()))?
-        .borrow()
-        .chars()
-        .count();
-    Ok(arena.insert(Value::Integer(BigInt::from(l))))
+    let length = get_borrowed_string(args[0])?.chars().count();
+    Ok(arena.insert(Value::Integer(BigInt::from(length))))
 }
 
 pub fn string_set_b(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(3), Some(3))?;
-    let mut borrowed_string = args[0]
-        .try_get_string()
-        .ok_or_else(|| format!("string-set!: not a string: {}", args[0].pretty_print()))?
-        .borrow_mut();
-    let idx = args[1]
-        .try_get_integer()
-        .ok_or_else(|| format!("string-set: invalid index: {}", args[1].pretty_print()))?;
+    let mut borrowed_string = get_mut_borrowed_string(args[0])?;
+    let char_idx = try_get_index(args[1])?;
     let chr = args[2]
         .try_get_character()
-        .ok_or_else(|| format!("string-set: invalid character: {}", args[2].pretty_print()))?;
-    let char_idx = idx
-        .to_usize()
-        .ok_or_else(|| format!("string-ref: invalid index: {}", idx))?;
+        .ok_or_else(|| format!("invalid character: {}", args[2].pretty_print()))?;
     let (byte_idx, _) = borrowed_string
         .char_indices()
         .nth(char_idx)
-        .ok_or_else(|| format!("string-ref: invalid index: {}", idx))?;
+        .ok_or_else(|| format!("invalid index: {}", char_idx))?;
     borrowed_string.replace_range(byte_idx..=byte_idx, &chr.to_string());
     Ok(arena.unspecific)
 }
 
 pub fn string_ref(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(2), Some(2))?;
-    let borrowed_string = args[0]
-        .try_get_string()
-        .ok_or_else(|| format!("string-ref: not a string: {}", args[0].pretty_print()))?
-        .borrow();
-    let idx = args[1]
-        .try_get_integer()
-        .ok_or_else(|| format!("string-ref: invalid index: {}", args[1].pretty_print()))?;
-    let idx = idx
-        .to_usize()
-        .ok_or_else(|| format!("string-ref: invalid index: {}", idx))?;
+    let borrowed_string = get_borrowed_string(args[0])?;
+    let idx = try_get_index(args[1])?;
     let chr = borrowed_string
         .chars()
         .nth(idx)
-        .ok_or_else(|| format!("string-ref: Invalid index: {}.", idx))?;
+        .ok_or_else(|| format!("Invalid index: {}.", idx))?;
     Ok(arena.insert(Value::Character(chr)))
 }
 
@@ -107,13 +81,42 @@ pub fn string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
         .iter()
         .map(|a| {
             a.try_get_character()
-                .ok_or_else(|| format!("string: not a char: {}", a.pretty_print()))
+                .ok_or_else(|| format!("not a char: {}", a.pretty_print()))
         })
         .collect();
     let values = values?;
     Ok(arena.insert(Value::String(RefCell::new(
         values.iter().cloned().collect(),
     ))))
+}
+
+pub fn substring(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
+    check_len(args, Some(3), Some(3))?;
+
+    let borrowed_string = get_borrowed_string(args[0])?;
+    let start = try_get_index(args[1])?;
+    let end = try_get_index(args[2])?;
+
+    let len = borrowed_string.len();
+    if start > end || end > len {
+        return Err(format!("invalid indices for substring: {}->{}", start, end));
+    }
+    let char_iterator = borrowed_string.chars().skip(start).take(end - start);
+    Ok(arena.insert(Value::String(RefCell::new(char_iterator.collect()))))
+}
+
+fn get_borrowed_string<'a>(v: PoolPtr) -> Result<Ref<'a, String>, String> {
+    Ok(v.long_lived()
+        .try_get_string()
+        .ok_or_else(|| format!("not a string: {}", v.pretty_print()))?
+        .borrow())
+}
+
+fn get_mut_borrowed_string<'a>(v: PoolPtr) -> Result<RefMut<'a, String>, String> {
+    Ok(v.long_lived()
+        .try_get_string()
+        .ok_or_else(|| format!("not a string: {}", v.pretty_print()))?
+        .borrow_mut())
 }
 
 fn to_string_vec(args: &[PoolPtr]) -> Result<Vec<Ref<String>>, String> {

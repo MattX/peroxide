@@ -92,18 +92,6 @@ impl Environment {
         }
     }
 
-    pub fn new_initial<T: AsRef<str>>(
-        parent: Option<Rc<RefCell<Environment>>>,
-        af_info: &RcAfi,
-        bindings: &[T],
-    ) -> Self {
-        let mut env = Environment::new(parent);
-        for identifier in bindings.iter() {
-            env.define(identifier.as_ref(), af_info, true);
-        }
-        env
-    }
-
     /// Define a new variable. The variable will be added to the topmost environment frame, and
     /// may shadow a variable from a lower frame.
     ///

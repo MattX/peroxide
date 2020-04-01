@@ -233,28 +233,40 @@ prim_monotonic!(less_than_equal, less_than_equal2);
 compare_op!(greater_than_equal2, >=);
 prim_monotonic!(greater_than_equal, greater_than_equal2);
 
-fn real_part(v: &Value) -> Value {
-    match v {
-        Value::ComplexReal(a) => Value::Real(a.re),
-        Value::ComplexRational(a) => Value::Rational(Box::new(a.re.clone())),
-        Value::ComplexInteger(a) => Value::Integer(a.re.clone()),
-        Value::Real(_) => v.clone(),
-        Value::Rational(_) => v.clone(),
-        Value::Integer(_) => v.clone(),
-        _ => panic!("real_part: non-numeric value"),
-    }
+pub fn real_part(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
+    check_len(args, Some(1), Some(1))?;
+    Ok(match &*args[0] {
+        Value::ComplexReal(a) => arena.insert(Value::Real(a.re)),
+        Value::ComplexRational(a) => arena.insert(Value::Rational(Box::new(a.re.clone()))),
+        Value::ComplexInteger(a) => arena.insert(Value::Integer(a.re.clone())),
+        Value::Real(_) => args[0],
+        Value::Rational(_) => args[0],
+        Value::Integer(_) => args[0],
+        _ => {
+            return Err(format!(
+                "real-part: non-numeric value {}",
+                args[0].pretty_print()
+            ))
+        }
+    })
 }
 
-fn imag_part(v: &Value) -> Value {
-    match v {
+pub fn imag_part(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
+    check_len(args, Some(1), Some(1))?;
+    Ok(arena.insert(match &*args[0] {
         Value::ComplexReal(a) => Value::Real(a.im),
         Value::ComplexRational(a) => Value::Rational(Box::new(a.im.clone())),
         Value::ComplexInteger(a) => Value::Integer(a.re.clone()),
         Value::Real(_) => Value::Real(0.0),
         Value::Rational(_) => Value::Rational(Box::new(BigRational::zero())),
         Value::Integer(_) => Value::Integer(BigInt::zero()),
-        _ => panic!("real_part: non-numeric value"),
-    }
+        _ => {
+            return Err(format!(
+                "real-part: non-numeric value {}",
+                args[0].pretty_print()
+            ))
+        }
+    }))
 }
 
 pub fn number_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
@@ -268,6 +280,18 @@ pub fn real_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
         Value::Real(_) | Value::Rational(_) | Value::Integer(_) => arena.t,
         _ => arena.f,
     })
+}
+
+pub fn rational_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
+    check_len(args, Some(1), Some(1))?;
+    Ok(arena.insert(Value::Boolean(
+        is_integer(&*args[0]) || is_rational(&*args[0]),
+    )))
+}
+
+pub fn integer_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
+    check_len(args, Some(1), Some(1))?;
+    Ok(arena.insert(Value::Boolean(is_integer(&*args[0]))))
 }
 
 pub fn exact_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
@@ -367,7 +391,6 @@ pub fn lcm(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     Ok(arena.insert(Value::Integer(acc)))
 }
 
-// TODO: support complex results
 macro_rules! transcendental {
     ($inner_name:ident, $operator:tt) => {
         pub fn $inner_name(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
@@ -376,7 +399,7 @@ macro_rules! transcendental {
             if !is_numeric(arg) {
                 return Err(format!("non-numeric value: {}", args[0].pretty_print()));
             }
-            Ok(arena.insert(match as_real(&*args[0]) {
+            Ok(arena.insert(match as_real(arg) {
                 Value::ComplexReal(c) => Value::ComplexReal(c.$operator()),
                 Value::Real(c) => Value::Real(c.$operator()),
                 _ => panic!("conversion to real failed."),
@@ -386,13 +409,36 @@ macro_rules! transcendental {
 }
 
 transcendental!(exp, exp);
-//transcendental!(log, log);  //TODO: figure out why that isn't working
+transcendental!(log, ln);
 transcendental!(cos, cos);
 transcendental!(sin, sin);
 transcendental!(tan, tan);
 transcendental!(acos, acos);
 transcendental!(asin, asin);
 transcendental!(atan, atan);
+transcendental!(sqrt, sqrt);
+
+pub fn magnitude(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
+    check_len(args, Some(1), Some(1))?;
+    if !is_numeric(&args[0]) {
+        return Err(format!("non-numeric value: {}", args[0].pretty_print()));
+    }
+    Ok(arena.insert(match as_complex(&as_real(&args[0])) {
+        Value::ComplexReal(c) => Value::Real(c.norm()),
+        _ => panic!("conversion to complex failed."),
+    }))
+}
+
+pub fn angle(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
+    check_len(args, Some(1), Some(1))?;
+    if !is_numeric(&args[0]) {
+        return Err(format!("non-numeric value: {}", args[0].pretty_print()));
+    }
+    Ok(arena.insert(match as_complex(&as_real(&args[0])) {
+        Value::ComplexReal(c) => Value::Real(c.arg()),
+        _ => panic!("conversion to complex failed."),
+    }))
+}
 
 fn get_radix(v: Option<&PoolPtr>) -> Result<u8, String> {
     let r = match v {
