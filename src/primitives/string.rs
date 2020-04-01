@@ -20,7 +20,7 @@ use arena::Arena;
 use heap::PoolPtr;
 use primitives::try_get_index;
 use util::check_len;
-use value::Value;
+use value::{Value, list_from_vec};
 
 pub fn string_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
@@ -46,13 +46,13 @@ pub fn make_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 
 pub fn string_length(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let length = get_borrowed_string(args[0])?.chars().count();
+    let length = get_borrowed_string(&args[0])?.chars().count();
     Ok(arena.insert(Value::Integer(BigInt::from(length))))
 }
 
 pub fn string_set_b(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(3), Some(3))?;
-    let mut borrowed_string = get_mut_borrowed_string(args[0])?;
+    let mut borrowed_string = get_mut_borrowed_string(&args[0])?;
     let char_idx = try_get_index(args[1])?;
     let chr = args[2]
         .try_get_character()
@@ -67,7 +67,7 @@ pub fn string_set_b(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> 
 
 pub fn string_ref(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(2), Some(2))?;
-    let borrowed_string = get_borrowed_string(args[0])?;
+    let borrowed_string = get_borrowed_string(&args[0])?;
     let idx = try_get_index(args[1])?;
     let chr = borrowed_string
         .chars()
@@ -93,7 +93,7 @@ pub fn string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 pub fn substring(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(3), Some(3))?;
 
-    let borrowed_string = get_borrowed_string(args[0])?;
+    let borrowed_string = get_borrowed_string(&args[0])?;
     let start = try_get_index(args[1])?;
     let end = try_get_index(args[2])?;
 
@@ -105,14 +105,32 @@ pub fn substring(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     Ok(arena.insert(Value::String(RefCell::new(char_iterator.collect()))))
 }
 
-fn get_borrowed_string<'a>(v: PoolPtr) -> Result<Ref<'a, String>, String> {
+pub fn string_to_list(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
+    check_len(args, Some(1), Some(1))?;
+
+    let borrowed_string = get_borrowed_string(&args[0])?;
+    let chars: Vec<_> = borrowed_string.chars().map(|c| arena.insert(Value::Character(c))).collect();
+
+    Ok(list_from_vec(arena, &chars))
+}
+
+pub fn string_append(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
+    let mut result = String::new();
+    for arg in args {
+        let st = get_borrowed_string(arg)?;
+        result += &st;
+    }
+    Ok(arena.insert(Value::String(RefCell::new(result))))
+}
+
+fn get_borrowed_string(v: &PoolPtr) -> Result<Ref<String>, String> {
     Ok(v.long_lived()
         .try_get_string()
         .ok_or_else(|| format!("not a string: {}", v.pretty_print()))?
         .borrow())
 }
 
-fn get_mut_borrowed_string<'a>(v: PoolPtr) -> Result<RefMut<'a, String>, String> {
+fn get_mut_borrowed_string(v: &PoolPtr) -> Result<RefMut<String>, String> {
     Ok(v.long_lived()
         .try_get_string()
         .ok_or_else(|| format!("not a string: {}", v.pretty_print()))?

@@ -104,7 +104,7 @@ macro_rules! simple_primitive {
     };
 }
 
-static PRIMITIVES: [Primitive; 118] = [
+static PRIMITIVES: [Primitive; 120] = [
     simple_primitive!("make-syntactic-closure", make_syntactic_closure),
     simple_primitive!("identifier=?", identifier_equal_p),
     simple_primitive!("identifier?", identifier_p),
@@ -189,6 +189,9 @@ static PRIMITIVES: [Primitive; 118] = [
     simple_primitive!("string-set!", string_set_b),
     simple_primitive!("string-ref", string_ref),
     simple_primitive!("string", string),
+    simple_primitive!("substring", substring),
+    simple_primitive!("string->list", string_to_list),
+    simple_primitive!("string-append", string_append),
     simple_primitive!("string=?", string_equal_p),
     simple_primitive!("string<?", string_less_than_p),
     simple_primitive!("string>?", string_greater_than_p),
@@ -199,7 +202,6 @@ static PRIMITIVES: [Primitive; 118] = [
     simple_primitive!("string-ci>?", string_ci_greater_than_p),
     simple_primitive!("string-ci<=?", string_ci_less_equal_p),
     simple_primitive!("string-ci>=?", string_ci_greater_equal_p),
-    simple_primitive!("substring", substring),
     simple_primitive!("open-output-string", open_output_string),
     simple_primitive!("get-output-string", get_output_string),
     simple_primitive!("vector?", vector_p),

@@ -875,6 +875,14 @@
   (and (integer? x)
        (not (zero? (modulo x 2)))))
 
+;; Strings
+
+(define (string-copy string)
+  (substring string 0 (string-length string)))
+
+(define (list->string lst)
+  (apply string lst))
+
 ;; Ports
 
 (define (close-output-port p) (close-port p))
@@ -903,3 +911,21 @@
 
 (define (null-environment v)
   (if (= v 5) "null" (raise "invalid environment descriptor")))
+
+;; Promises
+
+(define (promise done? proc)
+  (list (cons done? proc)))
+(define (promise-done? x) (car (car x)))
+(define (promise-value x) (cdr (car x)))
+(define (promise-update! new old)
+  (set-car! (car old) (promise-done? new))
+  (set-cdr! (car old) (promise-value new))
+  (set-car! new (car old)))
+(define (force promise)
+  (if (promise-done? promise)
+      (promise-value promise)
+      (let ((promise* ((promise-value promise))))
+        (if (not (promise-done? promise))
+          (promise-update! promise* promise))
+        (force promise))))
