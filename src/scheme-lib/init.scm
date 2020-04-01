@@ -840,6 +840,7 @@
 (define (inexact? x) (not (exact? x)))
 
 (define exact->inexact inexact)
+(define inexact->exact exact)
 
 (define (max x . rest)
   (define (~max hi ls)
@@ -874,6 +875,10 @@
 (define (odd? x)
   (and (integer? x)
        (not (zero? (modulo x 2)))))
+
+(define (atan x . y)
+  (cond ((null? y) (%atan x))
+        ((and (null? (cdr y))) (angle (make-rectangular x (car y))))))
 
 ;; Strings
 

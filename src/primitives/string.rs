@@ -20,7 +20,7 @@ use arena::Arena;
 use heap::PoolPtr;
 use primitives::try_get_index;
 use util::check_len;
-use value::{Value, list_from_vec};
+use value::{list_from_vec, Value};
 
 pub fn string_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
@@ -109,7 +109,10 @@ pub fn string_to_list(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String
     check_len(args, Some(1), Some(1))?;
 
     let borrowed_string = get_borrowed_string(&args[0])?;
-    let chars: Vec<_> = borrowed_string.chars().map(|c| arena.insert(Value::Character(c))).collect();
+    let chars: Vec<_> = borrowed_string
+        .chars()
+        .map(|c| arena.insert(Value::Character(c)))
+        .collect();
 
     Ok(list_from_vec(arena, &chars))
 }

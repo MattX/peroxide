@@ -139,6 +139,10 @@ pub fn bigint_to_i64(b: &BigInt) -> i64 {
 /// Turns complex value with an exact zero imaginary part into reals, and integer rationals into
 /// proper integers.
 pub fn simplify_numeric(v: Value) -> Value {
+    if !is_numeric(&v) {
+        panic!("simplify_numeric called on non-numeric");
+    }
+
     let realified = match &v {
         Value::ComplexRational(x) if x.im.is_zero() => {
             Some(Value::Rational(Box::new(x.re.clone())))
@@ -162,6 +166,19 @@ pub fn simplify_numeric(v: Value) -> Value {
         _ => None,
     }
     .unwrap_or(realified)
+}
+
+/// Checks that a value is numeric
+pub fn is_numeric(a: &Value) -> bool {
+    match a {
+        Value::Integer(_) => true,
+        Value::Rational(_) => true,
+        Value::Real(_) => true,
+        Value::ComplexInteger(_) => true,
+        Value::ComplexRational(_) => true,
+        Value::ComplexReal(_) => true,
+        _ => false,
+    }
 }
 
 #[cfg(test)]

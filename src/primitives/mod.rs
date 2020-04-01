@@ -104,7 +104,7 @@ macro_rules! simple_primitive {
     };
 }
 
-static PRIMITIVES: [Primitive; 120] = [
+static PRIMITIVES: [Primitive; 123] = [
     simple_primitive!("make-syntactic-closure", make_syntactic_closure),
     simple_primitive!("identifier=?", identifier_equal_p),
     simple_primitive!("identifier?", identifier_p),
@@ -141,6 +141,7 @@ static PRIMITIVES: [Primitive; 120] = [
     simple_primitive!("integer?", integer_p),
     simple_primitive!("exact?", exact_p),
     simple_primitive!("inexact", inexact),
+    simple_primitive!("exact", exact),
     simple_primitive!("nan?", nan_p),
     simple_primitive!("infinite?", infinite_p),
     simple_primitive!("real-part", real_part),
@@ -152,11 +153,13 @@ static PRIMITIVES: [Primitive; 120] = [
     simple_primitive!("tan", tan),
     simple_primitive!("acos", acos),
     simple_primitive!("asin", asin),
-    simple_primitive!("atan", atan),
+    simple_primitive!("%atan", atan),
     simple_primitive!("sqrt", sqrt),
     simple_primitive!("expt", expt),
     simple_primitive!("magnitude", magnitude),
     simple_primitive!("angle", angle),
+    simple_primitive!("make-rectangular", make_rectangular),
+    simple_primitive!("make-polar", make_polar),
     simple_primitive!("string->number", string_to_number),
     simple_primitive!("number->string", number_to_string),
     simple_primitive!("pair?", pair_p),

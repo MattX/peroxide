@@ -17,6 +17,7 @@ use std::collections::HashMap;
 
 use heap;
 use heap::{PoolPtr, RootPtr};
+use util::{is_numeric, simplify_numeric};
 use value::Value;
 use vm::Vm;
 
@@ -63,6 +64,7 @@ impl Arena {
                     }
                 }
             }
+            _ if is_numeric(&v) => self.heap.allocate(simplify_numeric(v)),
             _ => self.heap.allocate(v),
         }
     }

@@ -18,12 +18,13 @@ use num_bigint::BigInt;
 use num_complex::Complex;
 use num_integer::Integer;
 use num_rational::BigRational;
-use num_traits::{One, Pow, Signed, ToPrimitive, Zero};
+use num_traits::{pow, Float, One, Pow, Signed, ToPrimitive, Zero};
 
 use arena::Arena;
 use heap::PoolPtr;
 use std::cell::RefCell;
-use util::{check_len, rational_to_f64, simplify_numeric};
+use std::convert::TryFrom;
+use util::{check_len, is_numeric, rational_to_f64};
 use value::Value;
 use {lex, read};
 
@@ -73,7 +74,7 @@ macro_rules! prim_fold_0 {
         pub fn $name(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
             let values = numeric_vec(args)?;
             let result = values.iter().fold($fold_initial, |a, b| $folder(&a, &b));
-            Ok(arena.insert(simplify_numeric(result)))
+            Ok(arena.insert(result))
         }
     };
 }
@@ -91,7 +92,7 @@ fn subn(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(&values, Some(1), None).map_err(|e| format!("(-): {}", e))?;
     let first = (*values.first().expect("check_len is broken my bois")).clone();
     let result = values[1..].iter().fold(first, |a, b| sub2(&a, &b));
-    Ok(arena.insert(simplify_numeric(result)))
+    Ok(arena.insert(result))
 }
 
 fn sub1<'a, T>(n: &'a T) -> T
@@ -117,7 +118,7 @@ fn divn(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     for v in values[1..].iter() {
         result = div2(&result, v).ok_or_else(|| "exact division by zero".to_string())?;
     }
-    Ok(arena.insert(simplify_numeric(result)))
+    Ok(arena.insert(result))
 }
 
 fn div2(a: &Value, b: &Value) -> Option<Value> {
@@ -328,7 +329,25 @@ pub fn infinite_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 
 pub fn inexact(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
+    if !is_numeric(&args[0]) {
+        return Err(format!("not a number: {}", args[0].pretty_print()));
+    }
     Ok(arena.insert(as_real(&*args[0])))
+}
+
+pub fn exact(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
+    check_len(args, Some(1), Some(1))?;
+    if !is_numeric(&args[0]) {
+        return Err(format!("not a number: {}", args[0].pretty_print()));
+    }
+    Ok(match &*args[0] {
+        Value::ComplexReal(c) => arena.insert(Value::ComplexRational(Box::new(Complex::new(
+            f64_to_rational(c.re),
+            f64_to_rational(c.im),
+        )))),
+        Value::Real(f) => arena.insert(Value::Rational(Box::new(f64_to_rational(*f)))),
+        _ => args[0],
+    })
 }
 
 pub fn expt(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
@@ -514,30 +533,57 @@ pub fn number_to_string(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, Stri
     Ok(arena.insert(Value::String(RefCell::new(resp))))
 }
 
+pub fn make_rectangular(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
+    check_len(args, Some(2), Some(2))?;
+    let re = &*args[0];
+    let im = &*args[1];
+    if !is_numeric(re) || !is_numeric(im) {
+        return Err(format!(
+            "not numeric: {}, {}",
+            re.pretty_print(),
+            im.pretty_print()
+        ));
+    }
+    let res = match cast_same(re, im) {
+        (Value::Real(re), Value::Real(im)) => Value::ComplexReal(Complex::new(re, im)),
+        (Value::Rational(re), Value::Rational(im)) => Value::ComplexRational(Box::new(Complex::new(*re, *im))),
+        (Value::Integer(re), Value::Integer(im)) => Value::ComplexInteger(Box::new(Complex::new(re, im))),
+        _ => return Err(format!("arguments must be real: {}, {}", args[0].pretty_print(), args[1].pretty_print())),
+    };
+    Ok(arena.insert(res))
+}
+
+pub fn make_polar(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
+    check_len(args, Some(2), Some(2))?;
+    let magnitude = &*args[0];
+    let angle = &*args[1];
+    if !is_numeric(magnitude) || !is_numeric(angle) {
+        return Err(format!(
+            "not numeric: {}, {}",
+            magnitude.pretty_print(),
+            angle.pretty_print()
+        ));
+    }
+    let magnitude = as_real(&magnitude);
+    let angle = as_real(&angle);
+    if let (Value::Real(magnitude), Value::Real(angle)) = (magnitude, angle) {
+        Ok(arena.insert(Value::ComplexReal(Complex::from_polar(&magnitude, &angle))))
+    } else {
+        Err(format!("arguments must be real: {}, {}", args[0].pretty_print(), args[1].pretty_print()))
+    }
+}
+
 /// Takes an argument list (vector of arena pointers), returns a vector of numeric values or
 /// an error.
 ///
 /// TODO: we probably shouldn't collect into a vector because it makes basic math slow af.
 fn numeric_vec(args: &[PoolPtr]) -> Result<Vec<&Value>, String> {
     for arg in args {
-        if !is_numeric(&**arg) {
+        if !is_numeric(&*arg) {
             return Err(format!("{} is not numeric", arg.pretty_print()));
         }
     }
     Ok(args.iter().map(|v| &**v).collect())
-}
-
-/// Checks that a value is numeric
-fn is_numeric(a: &Value) -> bool {
-    match a {
-        Value::Integer(_) => true,
-        Value::Rational(_) => true,
-        Value::Real(_) => true,
-        Value::ComplexInteger(_) => true,
-        Value::ComplexRational(_) => true,
-        Value::ComplexReal(_) => true,
-        _ => false,
-    }
 }
 
 fn is_complex(a: &Value) -> bool {
@@ -572,6 +618,9 @@ fn is_integer(a: &Value) -> bool {
 
 /// Casts two numeric values to the same type.
 fn cast_same(a: &Value, b: &Value) -> (Value, Value) {
+    if !is_numeric(a) || !is_numeric(b) {
+        panic!("cast_same called on non-numeric value");
+    }
     let (a, b) = if is_complex(a) || is_complex(b) {
         (as_complex(a), as_complex(b))
     } else {
@@ -647,4 +696,19 @@ fn bigint_to_f64(b: &BigInt) -> f64 {
 
 fn bigint_to_rational(b: &BigInt) -> BigRational {
     BigRational::new(b.clone(), BigInt::one())
+}
+
+fn f64_to_rational(f: f64) -> BigRational {
+    let (mantissa, exponent, sign) = f.integer_decode();
+    let signed_mantissa = i64::try_from(mantissa).unwrap() * i64::from(sign);
+    let mut numer = BigInt::from(signed_mantissa);
+    let mut denom = BigInt::one();
+
+    if exponent >= 0 {
+        numer *= pow(BigInt::from(2), usize::try_from(exponent).unwrap());
+    } else {
+        denom *= pow(BigInt::from(2), usize::try_from(-exponent).unwrap())
+    }
+
+    BigRational::new(numer, denom)
 }
