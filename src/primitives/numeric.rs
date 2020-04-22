@@ -546,9 +546,19 @@ pub fn make_rectangular(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, Stri
     }
     let res = match cast_same(re, im) {
         (Value::Real(re), Value::Real(im)) => Value::ComplexReal(Complex::new(re, im)),
-        (Value::Rational(re), Value::Rational(im)) => Value::ComplexRational(Box::new(Complex::new(*re, *im))),
-        (Value::Integer(re), Value::Integer(im)) => Value::ComplexInteger(Box::new(Complex::new(re, im))),
-        _ => return Err(format!("arguments must be real: {}, {}", args[0].pretty_print(), args[1].pretty_print())),
+        (Value::Rational(re), Value::Rational(im)) => {
+            Value::ComplexRational(Box::new(Complex::new(*re, *im)))
+        }
+        (Value::Integer(re), Value::Integer(im)) => {
+            Value::ComplexInteger(Box::new(Complex::new(re, im)))
+        }
+        _ => {
+            return Err(format!(
+                "arguments must be real: {}, {}",
+                args[0].pretty_print(),
+                args[1].pretty_print()
+            ))
+        }
     };
     Ok(arena.insert(res))
 }
@@ -569,7 +579,11 @@ pub fn make_polar(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     if let (Value::Real(magnitude), Value::Real(angle)) = (magnitude, angle) {
         Ok(arena.insert(Value::ComplexReal(Complex::from_polar(&magnitude, &angle))))
     } else {
-        Err(format!("arguments must be real: {}, {}", args[0].pretty_print(), args[1].pretty_print()))
+        Err(format!(
+            "arguments must be real: {}, {}",
+            args[0].pretty_print(),
+            args[1].pretty_print()
+        ))
     }
 }
 

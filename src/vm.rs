@@ -333,8 +333,17 @@ fn run_one_instruction(int: &Interpreter, vm: &mut Vm) -> Result<bool, Error> {
         Instruction::PackFrame(arity) => {
             let frame = vm.value.long_lived().get_activation_frame();
             let values = frame.borrow_mut().values.clone();
-            let frame_len = std::cmp::max(arity, values.len());
-            let listified = list_from_vec(arena, &values[arity..frame_len]);
+            if values.len() < arity {
+                return Err(raise_string(
+                    arena,
+                    format!(
+                        "too few arguments for varargs method, expecting {}, got {}",
+                        arity,
+                        values.len()
+                    ),
+                ));
+            }
+            let listified = list_from_vec(arena, &values[arity..values.len()]);
             frame.borrow_mut().values.resize(arity + 1, arena.undefined);
             frame.borrow_mut().values[arity] = listified;
         }
