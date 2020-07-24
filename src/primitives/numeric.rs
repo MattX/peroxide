@@ -18,7 +18,7 @@ use num_bigint::BigInt;
 use num_complex::Complex;
 use num_integer::Integer;
 use num_rational::BigRational;
-use num_traits::{pow, Float, One, Pow, Signed, ToPrimitive, Zero};
+use num_traits::{pow, Float, One, Signed, ToPrimitive, Zero};
 
 use arena::Arena;
 use heap::PoolPtr;
@@ -354,7 +354,7 @@ pub fn expt(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(2), Some(2))?;
     let result = match (&*args[0], &*args[1]) {
         (Value::Integer(base), Value::Integer(exponent)) => {
-            let realistic_exponent = exponent.to_u64();
+            let realistic_exponent = exponent.to_u32();
             realistic_exponent
                 .map(|re| Value::Integer(base.pow(re)))
                 .unwrap_or(Value::Real(std::f64::INFINITY))
@@ -577,7 +577,7 @@ pub fn make_polar(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     let magnitude = as_real(&magnitude);
     let angle = as_real(&angle);
     if let (Value::Real(magnitude), Value::Real(angle)) = (magnitude, angle) {
-        Ok(arena.insert(Value::ComplexReal(Complex::from_polar(&magnitude, &angle))))
+        Ok(arena.insert(Value::ComplexReal(Complex::from_polar(magnitude, angle))))
     } else {
         Err(format!(
             "arguments must be real: {}, {}",
@@ -697,7 +697,6 @@ fn as_rational(n: &Value) -> Value {
     }
 }
 
-// TODO fix me. Should be easy once https://github.com/rust-num/num-rational/pull/52 gets merged.
 fn bigint_to_f64(b: &BigInt) -> f64 {
     b.to_f64().unwrap_or_else(|| {
         if b.is_positive() {

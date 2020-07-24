@@ -14,7 +14,6 @@
 
 extern crate peroxide;
 
-use peroxide::arena::Arena;
 use peroxide::heap::RootPtr;
 use peroxide::read::read_many;
 use peroxide::value::Value;

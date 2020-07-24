@@ -104,7 +104,7 @@ pub fn read_num_token(t: &NumValue) -> Value {
             // TODO if phase or magnitude are exact zeros we can do better things
             let magnitude = magnitude.coerce_real();
             let phase = phase.coerce_real();
-            Value::ComplexReal(Complex::from_polar(&magnitude, &phase))
+            Value::ComplexReal(Complex::from_polar(magnitude, phase))
         }
         NumValue::Rectangular(real, imag) => match (real.as_ref(), imag.as_ref()) {
             (NumValue::Real(_), _) | (_, NumValue::Real(_)) => {

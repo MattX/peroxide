@@ -8,12 +8,12 @@ publish = false
 [dependencies]
 bitvec = "0.17"
 ctrlc = "3.1.4"
-num-bigint = "0.2"
-num-complex = "0.2"
+num-bigint = "0.3"
+num-complex = "0.3"
 num-integer = "0.1"
-num-rational = "0.2"
+num-rational = "0.3"
 num-traits = "0.2"
-rustyline = "6.0"
+rustyline = "6.2"
 
 # [profile.release]
 # debug = true

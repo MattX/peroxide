@@ -67,7 +67,7 @@ impl fmt::Display for Value {
             Value::Unspecific => write!(f, "#unspecific"),
             Value::EofObject => write!(f, "#eof-object"),
             Value::EmptyList => write!(f, "()"),
-            Value::Real(r) => write!(f, "{:.1}", r),
+            Value::Real(r) => write!(f, "{}", r),
             Value::Integer(i) => write!(f, "{}", i),
             Value::Rational(r) => write!(f, "{}", r),
             Value::ComplexReal(c) => write!(f, "{}", c),

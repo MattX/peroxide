@@ -379,7 +379,7 @@
 
 (test "flying-fish" (symbol->string 'flying-fish))
 
-(test "Martin" (symbol->string 'Martin))
+(test "martin" (symbol->string 'Martin))
 
 (test "Malvina" (symbol->string (string->symbol "Malvina")))
 
