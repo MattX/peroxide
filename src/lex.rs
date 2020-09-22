@@ -108,46 +108,46 @@ impl NumValue {
 }
 
 /// Turns an str slice into a vector of tokens, or fails with an error message.
-pub fn lex(input: &str) -> Result<Vec<Token>, String> {
+pub fn lex(input: &str) -> Result<Vec<PositionedToken>, String> {
     let mut it = positioned_chars(input).peekable();
-    let mut tokens: Vec<Token> = Vec::new();
+    let mut tokens: Vec<PositionedToken> = Vec::new();
     loop {
         consume_leading_spaces(&mut it);
-        if let Some(&(_pos, c)) = it.peek() {
+        if let Some(&(pos, c)) = it.peek() {
             if c == ';' {
                 consume_to_newline(&mut it);
                 continue;
             }
-            let token = if c.is_digit(10) {
-                consume_number(&mut it)?
+            let token: PositionedToken = if c.is_digit(10) {
+                consume_number(&mut it)?.into()
             } else if c == '.' || c == '-' || c == '+' {
-                consume_sign_or_dot(&mut it)?
+                consume_sign_or_dot(&mut it)?.into()
             } else if c == '#' {
-                consume_hash(&mut it)?
+                consume_hash(&mut it)?.into()
             } else if c == '"' {
-                consume_string(&mut it)?
+                consume_string(&mut it)?.into()
             } else if c == '\'' {
                 it.next();
-                Token::Quote
+                ((pos, pos), Token::Quote)
             } else if c == '(' {
                 it.next();
-                Token::OpenParen
+                ((pos, pos), Token::OpenParen)
             } else if c == ')' {
                 it.next();
-                Token::ClosingParen
+                ((pos, pos), Token::ClosingParen)
             } else if c == '`' {
                 it.next();
-                Token::QuasiQuote
+                ((pos, pos), Token::QuasiQuote)
             } else if c == ',' {
                 it.next();
                 if let Some(&(_pos, '@')) = it.peek() {
                     it.next();
-                    Token::UnquoteSplicing
+                    ((pos, pos), Token::UnquoteSplicing)
                 } else {
-                    Token::Unquote
+                    ((pos, pos), Token::Unquote)
                 }
             } else {
-                Token::Symbol(take_delimited_token(&mut it, 1).into_iter().collect())
+                Token::Symbol(take_delimited_token(&mut it, 1).into_iter().collect()).into()
             };
             tokens.push(token);
         } else {
