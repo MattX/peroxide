@@ -18,6 +18,8 @@ use num_bigint::{BigInt, Sign};
 use num_rational::BigRational;
 use num_traits::identities::Zero;
 use num_traits::Pow;
+
+use std::str::Chars;
 use util;
 
 const EXPT_MARKERS: [char; 10] = ['e', 'E', 's', 'S', 'f', 'F', 'd', 'D', 'l', 'L'];
@@ -44,6 +46,37 @@ pub enum Token {
     QuasiQuote,
     Unquote,
     UnquoteSplicing,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct PositionedToken {
+    pub range: CodeRange,
+    pub token: Token,
+}
+
+// TODO: delete this
+impl From<Token> for PositionedToken {
+    fn from(t: Token) -> Self {
+        Self {
+            range: CodeRange {
+                start: (0, 0),
+                end: (0, 0),
+            },
+            token: t,
+        }
+    }
+}
+
+/// (line, char)
+type CodePosition = (u32, u32);
+
+/// Represents a range in source code.
+///
+/// Start is inclusive, end is exclusive.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct CodeRange {
+    pub start: CodePosition,
+    pub end: CodePosition,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -76,11 +109,11 @@ impl NumValue {
 
 /// Turns an str slice into a vector of tokens, or fails with an error message.
 pub fn lex(input: &str) -> Result<Vec<Token>, String> {
-    let mut it = input.chars().peekable();
+    let mut it = positioned_chars(input).peekable();
     let mut tokens: Vec<Token> = Vec::new();
     loop {
         consume_leading_spaces(&mut it);
-        if let Some(&c) = it.peek() {
+        if let Some(&(_pos, c)) = it.peek() {
             if c == ';' {
                 consume_to_newline(&mut it);
                 continue;
@@ -107,7 +140,7 @@ pub fn lex(input: &str) -> Result<Vec<Token>, String> {
                 Token::QuasiQuote
             } else if c == ',' {
                 it.next();
-                if it.peek() == Some(&'@') {
+                if let Some(&(_pos, '@')) = it.peek() {
                     it.next();
                     Token::UnquoteSplicing
                 } else {
@@ -125,8 +158,39 @@ pub fn lex(input: &str) -> Result<Vec<Token>, String> {
     Ok(tokens)
 }
 
-fn consume_to_newline(it: &mut dyn Iterator<Item = char>) {
-    for c in it {
+struct PositionedChars<'a> {
+    line: u32,
+    column: u32,
+    characters: Chars<'a>,
+}
+
+type PositionedChar = (CodePosition, char);
+
+impl<'a> Iterator for PositionedChars<'a> {
+    type Item = PositionedChar;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next_char = self.characters.next()?;
+        if next_char == '\n' {
+            self.line += 1;
+            self.column = 1;
+        } else {
+            self.column += 1;
+        }
+        Some(((self.line, self.column), next_char))
+    }
+}
+
+fn positioned_chars(s: &str) -> PositionedChars {
+    PositionedChars {
+        line: 1,
+        column: 1,
+        characters: s.chars(),
+    }
+}
+
+fn consume_to_newline(it: &mut dyn Iterator<Item = PositionedChar>) {
+    for (_pos, c) in it {
         if c == '\n' {
             break;
         }
@@ -135,9 +199,9 @@ fn consume_to_newline(it: &mut dyn Iterator<Item = char>) {
 
 fn consume_leading_spaces<I>(it: &mut Peekable<I>)
 where
-    I: Iterator<Item = char>,
+    I: Iterator<Item = PositionedChar>,
 {
-    while let Some(&c) = it.peek() {
+    while let Some(&(_pos, c)) = it.peek() {
         if c.is_whitespace() {
             it.next();
         } else {
@@ -152,10 +216,10 @@ where
 /// an opening or closing parenthesis is encountered.
 fn take_delimited_token<I>(it: &mut Peekable<I>, min: usize) -> Vec<char>
 where
-    I: Iterator<Item = char>,
+    I: Iterator<Item = PositionedChar>,
 {
     let mut result: Vec<char> = Vec::new();
-    while let Some(&c) = it.peek() {
+    while let Some(&(_pos, c)) = it.peek() {
         if result.len() < min || (c != '(' && c != ')' && !c.is_whitespace()) {
             result.push(c);
             it.next();
@@ -198,14 +262,14 @@ impl Exactness {
 
 fn consume_number<I>(it: &mut Peekable<I>) -> Result<Token, String>
 where
-    I: Iterator<Item = char>,
+    I: Iterator<Item = PositionedChar>,
 {
     parse_number(&take_delimited_token(it, 1), 10, Exactness::Default).map(Token::Num)
 }
 
 fn consume_sign_or_dot<I>(it: &mut Peekable<I>) -> Result<Token, String>
 where
-    I: Iterator<Item = char>,
+    I: Iterator<Item = PositionedChar>,
 {
     let token = take_delimited_token(it, 1);
     let token_s: String = token.iter().collect();
@@ -230,13 +294,11 @@ where
 
 fn consume_hash<I>(it: &mut Peekable<I>) -> Result<Token, String>
 where
-    I: Iterator<Item = char>,
+    I: Iterator<Item = PositionedChar>,
 {
-    if it.peek() != Some(&'#') {
-        panic!("Unexpected first char `{:?}` in consume_hash.", it.next());
-    }
-    it.next();
-    if let Some(c) = it.next() {
+    let (_pos, first) = it.next().unwrap();
+    debug_assert_eq!(first, '#');
+    if let Some((_pos, c)) = it.next() {
         match c {
             '\\' => {
                 let seq = take_delimited_token(it, 1);
@@ -257,7 +319,7 @@ where
             'f' => Ok(Token::Boolean(false)),
             '(' => Ok(Token::OpenVector),
             'u' => match (it.next(), it.next()) {
-                (Some('8'), Some('(')) => Ok(Token::OpenByteVector),
+                (Some((_, '8')), Some((_, '('))) => Ok(Token::OpenByteVector),
                 (a, b) => Err(format!("Unknown token form: `#u{:?}{:?}...", a, b)),
             },
             'i' | 'e' | 'b' | 'o' | 'd' | 'x' => {
@@ -455,17 +517,15 @@ fn parse_special_real(s: &[char]) -> Option<f64> {
 
 fn consume_string<I>(it: &mut Peekable<I>) -> Result<Token, String>
 where
-    I: Iterator<Item = char>,
+    I: Iterator<Item = PositionedChar>,
 {
-    if it.peek() != Some(&'"') {
-        panic!("Unexpected first char `{:?}` in consume_string.", it.next());
-    }
-    it.next();
+    let (_, first) = it.next().unwrap();
+    debug_assert_eq!(first, '"');
 
     let mut found_end: bool = false;
     let mut escaped: bool = false;
     let mut result: String = String::new();
-    for c in it {
+    for (_pos, c) in it {
         if escaped {
             let r = match c {
                 'n' => '\n',
