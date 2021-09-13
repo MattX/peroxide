@@ -199,6 +199,13 @@ impl Environment {
             },
         }
     }
+
+    /// Removes all variables whose names starts with `%` from the environment. This is called
+    /// once the standard library has been loaded so normal code doesn't see the underlying
+    /// primitives.
+    pub fn remove_special(&mut self) {
+        self.values.retain(|k, _v| !k.starts_with('%'));
+    }
 }
 
 pub type RcEnv = Rc<RefCell<Environment>>;

@@ -141,6 +141,7 @@ impl Interpreter {
             // println!("eval> {}", pretty_print(arena, v.pp()));
             self.parse_compile_run(v)?;
         }
+        self.global_environment.borrow_mut().remove_special();
         Ok(())
     }
 

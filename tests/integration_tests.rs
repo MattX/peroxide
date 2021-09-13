@@ -401,7 +401,7 @@ fn call_cc() {
     assert_eq!(
         Value::Integer((-4).into()),
         magic_execute(
-            "(%call/cc (lambda (exit)\
+            "(call/cc (lambda (exit)\
              (for-each (lambda (x) (if (< x 0) (exit x))) '(1 2 3 -4 5 6))))",
             true
         )
