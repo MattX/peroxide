@@ -220,5 +220,5 @@ pub fn gensym(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     } else {
         None
     };
-    Ok(arena.gensym(base_name.as_ref().map(|x| &**x)))
+    Ok(arena.gensym(base_name.as_deref()))
 }

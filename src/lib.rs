@@ -24,15 +24,15 @@ extern crate rustyline;
 use std::cell::RefCell;
 use std::fs;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering::Relaxed;
+use std::sync::Arc;
 
 use arena::Arena;
 use ast::SyntaxElement;
 use environment::{ActivationFrame, ActivationFrameInfo, Environment, RcEnv};
 use heap::RootPtr;
 use read::read_many;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering::Relaxed;
-use std::sync::Arc;
 use value::Value;
 
 pub mod arena;
@@ -171,7 +171,7 @@ impl Interpreter {
 
     pub fn compile_run(&self, syntax_tree: &SyntaxElement) -> Result<RootPtr, String> {
         let code =
-            compile::compile_toplevel(&self.arena, &syntax_tree, self.global_environment.clone());
+            compile::compile_toplevel(&self.arena, syntax_tree, self.global_environment.clone());
         let code = self.arena.root(code);
         vm::run(code, 0, self.global_frame.pp(), self)
             .map_err(|e| format!("runtime error: {}", e.pp().pretty_print()))

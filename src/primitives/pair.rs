@@ -21,10 +21,7 @@ use value::Value;
 
 pub fn pair_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let ans = match &*args[0] {
-        Value::Pair(_, _) => true,
-        _ => false,
-    };
+    let ans = matches!(&*args[0], Value::Pair(_, _));
     Ok(arena.insert(Value::Boolean(ans)))
 }
 

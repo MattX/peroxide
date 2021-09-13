@@ -18,10 +18,8 @@ extern crate rustyline;
 
 use std::env;
 
-use peroxide::lex::SegmentationResult;
-use peroxide::lex::Token;
-use peroxide::repl::GetLineError;
-use peroxide::repl::{FileRepl, ReadlineRepl, Repl, StdIoRepl};
+use peroxide::lex::{SegmentationResult, Token};
+use peroxide::repl::{FileRepl, GetLineError, ReadlineRepl, Repl, StdIoRepl};
 use peroxide::Interpreter;
 
 fn main() {

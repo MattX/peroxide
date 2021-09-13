@@ -16,11 +16,10 @@ use std::cell::{RefCell, RefMut};
 use std::fmt;
 use std::io::{Error, ErrorKind, Read};
 
-use num_traits::ToPrimitive;
-
 use arena::Arena;
 use heap;
 use heap::PoolPtr;
+use num_traits::ToPrimitive;
 use util::check_len;
 use value::Value;
 
@@ -48,7 +47,7 @@ pub trait OutputPort: std::io::Write {
 }
 
 fn read_u8_helper(reader: &mut impl Read) -> std::io::Result<u8> {
-    let mut byte_buf = [0 as u8];
+    let mut byte_buf = [0_u8];
     let num_read = reader.read(&mut byte_buf)?;
     if num_read == 0 {
         Err(std::io::Error::from(ErrorKind::UnexpectedEof))
@@ -58,7 +57,7 @@ fn read_u8_helper(reader: &mut impl Read) -> std::io::Result<u8> {
 }
 
 fn read_char_helper(reader: &mut impl Read) -> std::io::Result<char> {
-    let mut buf = [0 as u8; 4];
+    let mut buf = [0_u8; 4];
     for i in 0..4 {
         let maybe_u8 = read_u8_helper(reader);
         match maybe_u8 {
@@ -219,31 +218,28 @@ fn is_port(arg: PoolPtr) -> bool {
 }
 
 fn is_input_port(arg: PoolPtr) -> bool {
-    match arg.try_get_port().expect("not a port") {
-        Port::BinaryInputFile(_) | Port::TextInputFile(_) => true,
-        _ => false,
-    }
+    matches!(
+        arg.try_get_port().expect("not a port"),
+        Port::BinaryInputFile(_) | Port::TextInputFile(_)
+    )
 }
 
 fn is_output_port(arg: PoolPtr) -> bool {
-    match arg.try_get_port().expect("not a port") {
-        Port::OutputFile(_) => true,
-        _ => false,
-    }
+    matches!(arg.try_get_port().expect("not a port"), Port::OutputFile(_))
 }
 
 fn is_binary_port(arg: PoolPtr) -> bool {
-    match arg.try_get_port().expect("not a port") {
-        Port::BinaryInputFile(_) | Port::OutputFile(_) => true,
-        _ => false,
-    }
+    matches!(
+        arg.try_get_port().expect("not a port"),
+        Port::BinaryInputFile(_) | Port::OutputFile(_)
+    )
 }
 
 fn is_textual_port(arg: PoolPtr) -> bool {
-    match arg.try_get_port().expect("not a port") {
-        Port::TextInputFile(_) | Port::OutputFile(_) => true,
-        _ => false,
-    }
+    matches!(
+        arg.try_get_port().expect("not a port"),
+        Port::TextInputFile(_) | Port::OutputFile(_)
+    )
 }
 
 pub fn port_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {

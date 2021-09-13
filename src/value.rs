@@ -15,14 +15,13 @@
 use std::cell::{Cell, RefCell};
 use std::fmt;
 
-use num_bigint::BigInt;
-use num_complex::Complex;
-use num_rational::BigRational;
-
 use arena::Arena;
 use compile::CodeBlock;
 use environment::{ActivationFrame, RcEnv};
 use heap::PoolPtr;
+use num_bigint::BigInt;
+use num_complex::Complex;
+use num_rational::BigRational;
 use primitives::{Port, Primitive, SyntacticClosure};
 use vm::Continuation;
 use {heap, util};
@@ -77,7 +76,7 @@ impl fmt::Display for Value {
             Value::Boolean(false) => write!(f, "#f"),
             Value::Character('\n') => write!(f, "#\\newline"),
             Value::Character(c) => write!(f, "#\\{}", util::escape_char(*c)),
-            Value::Symbol(s) => write!(f, "{}", util::escape_symbol(&s)),
+            Value::Symbol(s) => write!(f, "{}", util::escape_symbol(s)),
             Value::String(s) => write!(f, "\"{}\"", util::escape_string(&s.borrow())),
             Value::Pair(a, b) => write!(f, "({} . {})", &*a.get(), &*b.get()),
             Value::ByteVector(bv) => {
@@ -131,7 +130,7 @@ impl heap::Inventory for Value {
             }
             Value::SyntacticClosure(sc) => {
                 v.push(sc.expr);
-                v.push(sc.closed_env.borrow().clone());
+                v.push(*sc.closed_env.borrow());
             }
             Value::Port(p) => p.inventory(v),
             Value::Continuation(c) => c.inventory(v),
@@ -172,14 +171,14 @@ impl Value {
                 Value::Pair(a, b) => {
                     s.push_str(&a.get().pretty_print()[..]);
                     if let Value::EmptyList = &*b.get() {
-                        s.push_str(")");
+                        s.push(')');
                     } else {
-                        s.push_str(" ");
+                        s.push(' ');
                         _print_pair(&*b.get(), s);
                     }
                 }
                 Value::EmptyList => {
-                    s.push_str(")");
+                    s.push(')');
                 }
                 _ => {
                     s.push_str(&format!(". {})", p)[..]);

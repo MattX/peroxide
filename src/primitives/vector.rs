@@ -16,11 +16,10 @@
 
 use std::cell::RefCell;
 
-use num_bigint::BigInt;
-use num_traits::ToPrimitive;
-
 use arena::Arena;
 use heap::PoolPtr;
+use num_bigint::BigInt;
+use num_traits::ToPrimitive;
 use util::check_len;
 use value::Value;
 

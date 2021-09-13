@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::cell::RefCell;
+
 use arena::Arena;
 use ast::{Lambda, SyntaxElement};
 use environment::RcEnv;
 use heap::{Inventory, PoolPtr, PtrVec};
-use std::cell::RefCell;
 use value::Value;
 use vm::Instruction;
 

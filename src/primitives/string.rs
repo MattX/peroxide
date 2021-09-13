@@ -14,10 +14,9 @@
 
 use std::cell::{Ref, RefCell, RefMut};
 
-use num_bigint::BigInt;
-
 use arena::Arena;
 use heap::PoolPtr;
+use num_bigint::BigInt;
 use primitives::try_get_index;
 use util::check_len;
 use value::{list_from_vec, Value};

@@ -37,9 +37,8 @@ use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::{Rc, Weak};
 
-use value::Value;
-
 use bitvec::prelude::{BitBox, BitVec};
+use value::Value;
 use vm::Vm;
 
 const POOL_ENTRIES: u16 = 1 << 8;
@@ -538,9 +537,10 @@ impl RootPtr {
 
 #[cfg(test)]
 mod test {
+    use std::cell::RefCell;
+
     use crate::heap::{Pool, RHeap, POOL_ENTRIES};
     use crate::value::Value;
-    use std::cell::RefCell;
 
     #[test]
     fn test_alloc_free() {
@@ -591,7 +591,7 @@ mod test {
         }
         assert_eq!(pool.as_mut().allocate(val.clone()), None);
         pool.as_mut().free(POOL_ENTRIES / 2, false);
-        assert!(pool.as_mut().allocate(val.clone()).is_some());
+        assert!(pool.as_mut().allocate(val).is_some());
     }
 
     #[test]

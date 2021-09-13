@@ -12,18 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::cell::RefCell;
+use std::convert::TryFrom;
 use std::ops::{Neg, Rem};
 
+use arena::Arena;
+use heap::PoolPtr;
 use num_bigint::BigInt;
 use num_complex::Complex;
 use num_integer::Integer;
 use num_rational::BigRational;
 use num_traits::{pow, Float, One, Signed, ToPrimitive, Zero};
-
-use arena::Arena;
-use heap::PoolPtr;
-use std::cell::RefCell;
-use std::convert::TryFrom;
 use util::{check_len, is_numeric, rational_to_f64};
 use value::Value;
 use {lex, read};
@@ -91,7 +90,7 @@ fn subn(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     let values = numeric_vec(args)?;
     check_len(&values, Some(1), None).map_err(|e| format!("(-): {}", e))?;
     let first = (*values.first().expect("check_len is broken my bois")).clone();
-    let result = values[1..].iter().fold(first, |a, b| sub2(&a, &b));
+    let result = values[1..].iter().fold(first, |a, b| sub2(&a, b));
     Ok(arena.insert(result))
 }
 
@@ -297,13 +296,13 @@ pub fn integer_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
 
 pub fn exact_p(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
     check_len(args, Some(1), Some(1))?;
-    let resp = match &*args[0] {
+    let resp = matches!(
+        &*args[0],
         Value::ComplexRational(_)
-        | Value::ComplexInteger(_)
-        | Value::Rational(_)
-        | Value::Integer(_) => true,
-        _ => false,
-    };
+            | Value::ComplexInteger(_)
+            | Value::Rational(_)
+            | Value::Integer(_)
+    );
     Ok(arena.insert(Value::Boolean(resp)))
 }
 
@@ -574,8 +573,8 @@ pub fn make_polar(arena: &Arena, args: &[PoolPtr]) -> Result<PoolPtr, String> {
             angle.pretty_print()
         ));
     }
-    let magnitude = as_real(&magnitude);
-    let angle = as_real(&angle);
+    let magnitude = as_real(magnitude);
+    let angle = as_real(angle);
     if let (Value::Real(magnitude), Value::Real(angle)) = (magnitude, angle) {
         Ok(arena.insert(Value::ComplexReal(Complex::from_polar(magnitude, angle))))
     } else {
@@ -601,33 +600,22 @@ fn numeric_vec(args: &[PoolPtr]) -> Result<Vec<&Value>, String> {
 }
 
 fn is_complex(a: &Value) -> bool {
-    match a {
-        Value::ComplexInteger(_) => true,
-        Value::ComplexRational(_) => true,
-        Value::ComplexReal(_) => true,
-        _ => false,
-    }
+    matches!(
+        a,
+        Value::ComplexInteger(_) | Value::ComplexRational(_) | Value::ComplexReal(_)
+    )
 }
 
 fn is_real(a: &Value) -> bool {
-    match a {
-        Value::ComplexReal(_) | Value::Real(_) => true,
-        _ => false,
-    }
+    matches!(a, Value::ComplexReal(_) | Value::Real(_))
 }
 
 fn is_rational(a: &Value) -> bool {
-    match a {
-        Value::ComplexRational(_) | Value::Rational(_) => true,
-        _ => false,
-    }
+    matches!(a, Value::ComplexRational(_) | Value::Rational(_))
 }
 
 fn is_integer(a: &Value) -> bool {
-    match a {
-        Value::ComplexInteger(_) | Value::Integer(_) => true,
-        _ => false,
-    }
+    matches!(a, Value::ComplexInteger(_) | Value::Integer(_))
 }
 
 /// Casts two numeric values to the same type.

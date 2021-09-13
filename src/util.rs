@@ -16,7 +16,6 @@ use num_bigint::BigInt;
 use num_complex::Complex;
 use num_rational::BigRational;
 use num_traits::{Signed, ToPrimitive, Zero};
-
 use value::Value;
 
 /// Checks that a vector has at least `min`, at most `max` entries.
@@ -40,7 +39,7 @@ pub fn parse_num(s: &str, base: u32) -> Result<i64, String> {
         panic!("Invalid base {}.", base);
     }
 
-    let mut r = 0 as i64;
+    let mut r = 0_i64;
     let mut it = s.chars().peekable();
     let reverse = it.peek() == Some(&'-');
     if reverse {
@@ -166,15 +165,15 @@ pub fn simplify_numeric(v: Value) -> Value {
 
 /// Checks that a value is numeric
 pub fn is_numeric(a: &Value) -> bool {
-    match a {
-        Value::Integer(_) => true,
-        Value::Rational(_) => true,
-        Value::Real(_) => true,
-        Value::ComplexInteger(_) => true,
-        Value::ComplexRational(_) => true,
-        Value::ComplexReal(_) => true,
-        _ => false,
-    }
+    matches!(
+        a,
+        Value::Integer(_)
+            | Value::Rational(_)
+            | Value::Real(_)
+            | Value::ComplexInteger(_)
+            | Value::ComplexRational(_)
+            | Value::ComplexReal(_)
+    )
 }
 
 #[cfg(test)]

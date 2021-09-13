@@ -45,8 +45,7 @@ use heap::{PoolPtr, RootPtr};
 use primitives::SyntacticClosure;
 use util::check_len;
 use value::{list_from_vec, Value};
-use Interpreter;
-use {compile, vm};
+use {compile, vm, Interpreter};
 
 const MAX_MACRO_EXPANSION: usize = 1000;
 

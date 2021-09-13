@@ -15,13 +15,12 @@
 use std::cell::{Cell, RefCell};
 use std::iter::Peekable;
 
-use num_complex::Complex;
-use num_traits::cast::ToPrimitive;
-
 use arena::Arena;
 use heap::RootPtr;
 use lex;
 use lex::{NumValue, Token};
+use num_complex::Complex;
+use num_traits::cast::ToPrimitive;
 use util::simplify_numeric;
 use value::Value;
 
@@ -138,7 +137,7 @@ where
                     it.next();
                     let ret = do_read(arena, it);
                     let next = it.next();
-                    if next != Some(&&Token::ClosingParen) {
+                    if next != Some(&Token::ClosingParen) {
                         Err(ParseResult::ParseError(format!(
                             "Unexpected token {:?} after dot.",
                             next

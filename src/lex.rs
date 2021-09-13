@@ -18,7 +18,6 @@ use num_bigint::{BigInt, Sign};
 use num_rational::BigRational;
 use num_traits::identities::Zero;
 use num_traits::Pow;
-
 use util;
 
 const EXPT_MARKERS: [char; 10] = ['e', 'E', 's', 'S', 'f', 'F', 'd', 'D', 'l', 'L'];

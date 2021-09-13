@@ -16,16 +16,14 @@
 
 use std::cell::{Cell, RefCell};
 use std::fmt::Write;
+use std::sync::atomic::Ordering::Relaxed;
 
 use arena::Arena;
 use environment::ActivationFrame;
-use heap;
 use heap::{Inventory, PoolPtr, PtrVec, RootPtr};
 use primitives::PrimitiveImplementation;
-use std::sync::atomic::Ordering::Relaxed;
 use value::{list_from_vec, Value};
-use OUTPUT_PORT_INDEX;
-use {Interpreter, INPUT_PORT_INDEX};
+use {heap, Interpreter, INPUT_PORT_INDEX, OUTPUT_PORT_INDEX};
 
 static MAX_RECURSION_DEPTH: usize = 1000;
 
@@ -444,7 +442,7 @@ fn invoke(int: &Interpreter, vm: &mut Vm, tail: bool) -> Result<(), Error> {
                     let af = vm.value.long_lived().get_activation_frame();
                     let values = &af.borrow().values;
                     vm.set_value(
-                        i(arena, &values)
+                        i(arena, values)
                             .map_err(|e| raise_string(arena, format!("In {:?}: {}", p, e)))?,
                     );
                 }
@@ -455,7 +453,7 @@ fn invoke(int: &Interpreter, vm: &mut Vm, tail: bool) -> Result<(), Error> {
                     let input_port = global_env.values[INPUT_PORT_INDEX];
                     let output_port = global_env.values[OUTPUT_PORT_INDEX];
                     vm.set_value(
-                        i(arena, input_port, output_port, &values)
+                        i(arena, input_port, output_port, values)
                             .map_err(|e| raise_string(arena, format!("In {:?}: {}", p, e)))?,
                     );
                 }
@@ -607,7 +605,7 @@ fn error_stack(arena: &Arena, vm: &Vm, error: Error) -> Error {
 
 fn handle_error(int: &Interpreter, vm: &mut Vm, e: Error) -> Result<RootPtr, RootPtr> {
     let arena = &int.arena;
-    let annotated_e = error_stack(arena, &vm, e);
+    let annotated_e = error_stack(arena, vm, e);
     match annotated_e {
         Error::Abort(v) => Err(v),
         Error::Raise(v) => {
