@@ -67,6 +67,7 @@ pub enum Instruction {
 
     /// Checks that the activation frame in the VM's env register has the correct
     /// length (or at least the correct length if dotted)
+    // TODO we might be able to just get the arguments from the local code block.
     CheckArity { arity: usize, dotted: bool },
 
     /// Takes the frame currently in the VM's value register, and sets its

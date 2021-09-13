@@ -59,7 +59,6 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
         interruptor_clone.interrupt();
     })
     .map_err(|e| format!("error setting Ctrl+C handler: {}", e.to_string()))?;
-    println!("Handler set!");
 
     if !options.no_std {
         interpreter.initialize("src/scheme-lib/init.scm")?;

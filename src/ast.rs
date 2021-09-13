@@ -209,25 +209,25 @@ fn parse_pair(
     let (car_env, resolved_car) = resolve_syntactic_closure(arena, env, car)?;
     match &*resolved_car {
         Value::Symbol(s) => match match_symbol(&car_env, s) {
-            Symbol::Quote => parse_quote(arena, &env, &rest, false),
-            Symbol::SyntaxQuote => parse_quote(arena, &env, &rest, true),
-            Symbol::If => parse_if(arena, vms, &env, af_info, &rest),
-            Symbol::Begin => parse_begin(arena, vms, &env, af_info, &rest),
-            Symbol::Lambda => parse_lambda(arena, vms, &env, af_info, &rest),
-            Symbol::Set => parse_set(arena, vms, &env, af_info, &rest),
-            Symbol::Define => parse_define(arena, vms, &env, af_info, &rest),
-            Symbol::DefineSyntax => parse_define_syntax(arena, vms, &env, af_info, &rest),
-            Symbol::LetSyntax => parse_let_syntax(arena, vms, &env, af_info, &rest, false),
-            Symbol::LetrecSyntax => parse_let_syntax(arena, vms, &env, af_info, &rest, true),
+            Symbol::Quote => parse_quote(arena, env, &rest, false),
+            Symbol::SyntaxQuote => parse_quote(arena, env, &rest, true),
+            Symbol::If => parse_if(arena, vms, env, af_info, &rest),
+            Symbol::Begin => parse_begin(arena, vms, env, af_info, &rest),
+            Symbol::Lambda => parse_lambda(arena, vms, env, af_info, &rest),
+            Symbol::Set => parse_set(arena, vms, env, af_info, &rest),
+            Symbol::Define => parse_define(arena, vms, env, af_info, &rest),
+            Symbol::DefineSyntax => parse_define_syntax(arena, vms, env, af_info, &rest),
+            Symbol::LetSyntax => parse_let_syntax(arena, vms, env, af_info, &rest, false),
+            Symbol::LetrecSyntax => parse_let_syntax(arena, vms, env, af_info, &rest, true),
             Symbol::Macro(m) => {
                 // TODO fix this to avoid reconstructing the pair
                 let expr = arena.insert(Value::Pair(Cell::new(car), Cell::new(cdr)));
-                let expanded = expand_macro_full(arena, vms, &env, m, expr)?;
-                parse(arena, vms, &env, af_info, expanded)
+                let expanded = expand_macro_full(arena, vms, env, m, expr)?;
+                parse(arena, vms, env, af_info, expanded)
             }
-            _ => parse_application(arena, vms, &env, af_info, car, &rest),
+            _ => parse_application(arena, vms, env, af_info, car, &rest),
         },
-        _ => parse_application(arena, vms, &env, af_info, car, &rest),
+        _ => parse_application(arena, vms, env, af_info, car, &rest),
     }
 }
 
@@ -492,7 +492,7 @@ impl DefineValue {
         match self {
             DefineValue::Value(v) => parse(arena, vms, env, af_info, *v),
             DefineValue::Lambda { formals, body } => {
-                parse_split_lambda(arena, vms, env, af_info, *formals, &body, Some(name))
+                parse_split_lambda(arena, vms, env, af_info, *formals, body, Some(name))
             }
         }
     }
@@ -788,7 +788,7 @@ fn get_macro(arena: &Arena, env: &RcEnv, expr: PoolPtr) -> Option<Macro> {
         Value::Pair(car, _cdr) => {
             let (res_env, res_car) = resolve_syntactic_closure(arena, env, car.get()).unwrap();
             match &*res_car {
-                Value::Symbol(s) => match match_symbol(&res_env, &s) {
+                Value::Symbol(s) => match match_symbol(&res_env, s) {
                     Symbol::Macro(m) => Some(m),
                     _ => None,
                 },
@@ -847,7 +847,7 @@ fn collect_internal_defines(
 
     let mut defines = Vec::new();
     let mut rest = Vec::new();
-    let mut i = 0 as usize;
+    let mut i = 0_usize;
 
     for statement in body.iter() {
         let expanded_statement = if let Some(m) = get_macro(arena, env, *statement) {
@@ -907,7 +907,7 @@ fn resolve_syntactic_closure(
         let closed_env = val
             .try_get_environment()
             .expect("syntactic closure created with non-environment argument");
-        let inner_env = environment::filter(&closed_env, env, free_variables)?;
+        let inner_env = environment::filter(closed_env, env, free_variables)?;
         resolve_syntactic_closure(arena, &inner_env, *expr)
     } else {
         Ok((env.clone(), value))
