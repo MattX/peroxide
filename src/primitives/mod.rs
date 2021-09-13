@@ -256,6 +256,7 @@ pub struct Primitive {
     pub implementation: PrimitiveImplementation,
 }
 
+#[derive(Copy, Clone)]
 pub enum PrimitiveImplementation {
     Simple(fn(&Arena, &[PoolPtr]) -> Result<PoolPtr, String>),
     Io(fn(&Arena, PoolPtr, PoolPtr, &[PoolPtr]) -> Result<PoolPtr, String>),

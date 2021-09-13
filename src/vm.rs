@@ -126,6 +126,8 @@ pub enum Instruction {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnPoint {
     pub code_block: PoolPtr,
+
+    /// Holds the index of the last executed instruction
     pub pc: usize,
 }
 
@@ -210,8 +212,9 @@ pub fn run(code: RootPtr, pc: usize, env: PoolPtr, int: &Interpreter) -> Result<
 fn run_one_instruction(int: &Interpreter, vm: &mut Vm) -> Result<bool, Error> {
     let arena = &int.arena;
     let code = vm.current_code_block.long_lived().get_code_block();
-    // println!("running {:?}, rst {:?}", code.instructions[vm.pc], vm.return_stack);
-    match code.instructions[vm.pc] {
+    let instr = code.instructions[vm.pc];
+    // println!("running {:?}, pc {}", instr, vm.pc);
+    match instr {
         Instruction::Constant(v) => vm.set_value(code.constants[v]),
         Instruction::JumpFalse(offset) => {
             if !vm.value.truthy() {
@@ -287,7 +290,7 @@ fn run_one_instruction(int: &Interpreter, vm: &mut Vm) -> Result<bool, Error> {
         }
         Instruction::CheckArity { arity, dotted } => {
             let actual_arity = vm
-                .env
+                .value
                 .long_lived()
                 .get_activation_frame()
                 .borrow()
@@ -334,6 +337,7 @@ fn run_one_instruction(int: &Interpreter, vm: &mut Vm) -> Result<bool, Error> {
             let frame = vm.value.long_lived().get_activation_frame();
             let values = frame.borrow_mut().values.clone();
             if values.len() < arity {
+                // TODO should this be a panic? Normally we've already checked arg length here
                 return Err(raise_string(
                     arena,
                     format!(
@@ -410,7 +414,10 @@ fn run_one_instruction(int: &Interpreter, vm: &mut Vm) -> Result<bool, Error> {
         Instruction::NoOp => panic!("NoOp encountered."),
         Instruction::Finish => return Ok(true),
     }
-    vm.pc += 1;
+    match instr {
+        Instruction::FunctionInvoke { .. } => {}
+        _ => vm.pc += 1,
+    }
     Ok(false)
 }
 
@@ -430,32 +437,38 @@ fn invoke(int: &Interpreter, vm: &mut Vm, tail: bool) -> Result<(), Error> {
             vm.current_code_block = *code;
             vm.pc = 0;
         }
-        Value::Primitive(p) => match p.implementation {
-            PrimitiveImplementation::Simple(i) => {
-                let af = vm.value.long_lived().get_activation_frame();
-                let values = &af.borrow().values;
-                vm.set_value(
-                    i(arena, &values)
-                        .map_err(|e| raise_string(arena, format!("In {:?}: {}", p, e)))?,
-                );
-            }
-            PrimitiveImplementation::Io(i) => {
-                let af = vm.value.long_lived().get_activation_frame();
-                let values = &af.borrow().values;
-                let global_env = vm.global_env.long_lived().get_activation_frame().borrow();
-                let input_port = global_env.values[INPUT_PORT_INDEX];
-                let output_port = global_env.values[OUTPUT_PORT_INDEX];
-                vm.set_value(
-                    i(arena, input_port, output_port, &values)
-                        .map_err(|e| raise_string(arena, format!("In {:?}: {}", p, e)))?,
-                );
-            }
-            PrimitiveImplementation::Apply => apply(int, vm, tail)?,
-            PrimitiveImplementation::CallCC => call_cc(int, vm)?,
-            PrimitiveImplementation::Abort => return Err(raise(arena, vm, true)),
-            PrimitiveImplementation::Raise => return Err(raise(arena, vm, false)),
-            PrimitiveImplementation::Eval => eval(int, vm)?,
-        },
+        Value::Primitive(p) => {
+            match p.implementation {
+                PrimitiveImplementation::Simple(i) => {
+                    let af = vm.value.long_lived().get_activation_frame();
+                    let values = &af.borrow().values;
+                    vm.set_value(
+                        i(arena, &values)
+                            .map_err(|e| raise_string(arena, format!("In {:?}: {}", p, e)))?,
+                    );
+                }
+                PrimitiveImplementation::Io(i) => {
+                    let af = vm.value.long_lived().get_activation_frame();
+                    let values = &af.borrow().values;
+                    let global_env = vm.global_env.long_lived().get_activation_frame().borrow();
+                    let input_port = global_env.values[INPUT_PORT_INDEX];
+                    let output_port = global_env.values[OUTPUT_PORT_INDEX];
+                    vm.set_value(
+                        i(arena, input_port, output_port, &values)
+                            .map_err(|e| raise_string(arena, format!("In {:?}: {}", p, e)))?,
+                    );
+                }
+                PrimitiveImplementation::Apply => apply(int, vm, tail)?,
+                PrimitiveImplementation::CallCC => call_cc(int, vm)?,
+                PrimitiveImplementation::Abort => return Err(raise(arena, vm, true)),
+                PrimitiveImplementation::Raise => return Err(raise(arena, vm, false)),
+                PrimitiveImplementation::Eval => eval(int, vm)?,
+            };
+            match p.implementation {
+                PrimitiveImplementation::Apply | PrimitiveImplementation::CallCC => {}
+                _ => vm.pc += 1,
+            };
+        }
         Value::Continuation(c) => {
             let af = vm.value.long_lived().get_activation_frame().borrow();
             if af.values.len() != 1 {
@@ -471,7 +484,7 @@ fn invoke(int: &Interpreter, vm: &mut Vm, tail: bool) -> Result<(), Error> {
                 .pop()
                 .expect("popping continuation with no return address");
             vm.current_code_block = code_block;
-            vm.pc = pc;
+            vm.pc = pc + 1;
             vm.set_value(af.values[0]);
         }
         _ => {
@@ -608,7 +621,6 @@ fn handle_error(int: &Interpreter, vm: &mut Vm, e: Error) -> Result<RootPtr, Roo
                     vm.fun = handler;
                     vm.set_value(arena.insert(Value::ActivationFrame(RefCell::new(frame))));
                     invoke(int, vm, false).map_err(|e| e.into_value())?;
-                    vm.pc += 1;
                     Ok(arena.root(arena.unspecific))
                 }
                 _ => {

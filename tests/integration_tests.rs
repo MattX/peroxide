@@ -434,3 +434,10 @@ fn eval() {
         .unwrap()
     );
 }
+
+#[test]
+fn check_arity() {
+    assert!(magic_execute("((lambda (x) x))", false).is_err());
+    assert!(magic_execute("(call/cc)", true).is_err());
+    assert!(magic_execute("((syntax-rules -1))", true).is_err());
+}

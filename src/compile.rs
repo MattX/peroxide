@@ -192,6 +192,7 @@ fn compile_lambda(arena: &Arena, l: &Lambda, rv: PoolPtr) -> PoolPtr {
         .unwrap()
         .borrow_mut()
         .push(code_block_ptr);
+    // println!("{:?}", code_block_ptr.pretty_print());
     code_block_ptr
 }
 
