@@ -336,15 +336,13 @@ fn run_one_instruction(int: &Interpreter, vm: &mut Vm) -> Result<bool, Error> {
             let frame = vm.value.long_lived().get_activation_frame();
             let values = frame.borrow_mut().values.clone();
             if values.len() < arity {
-                // TODO should this be a panic? Normally we've already checked arg length here
-                return Err(raise_string(
-                    arena,
-                    format!(
-                        "too few arguments for varargs method, expecting {}, got {}",
-                        arity,
-                        values.len()
-                    ),
-                ));
+                // This is a panic because we should already have checked in a prior CheckArity
+                // call.
+                panic!(
+                    "too few arguments for varargs method, expecting {}, got {}",
+                    arity,
+                    values.len()
+                );
             }
             let listified = list_from_vec(arena, &values[arity..values.len()]);
             frame.borrow_mut().values.resize(arity + 1, arena.undefined);
