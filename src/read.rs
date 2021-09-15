@@ -18,7 +18,7 @@ use std::iter::Peekable;
 use arena::Arena;
 use heap::RootPtr;
 use lex;
-use lex::{NumValue, Token};
+use lex::{NumValue, PositionedToken, Token};
 use num_complex::Complex;
 use num_traits::cast::ToPrimitive;
 use util::simplify_numeric;
@@ -30,7 +30,7 @@ pub enum ParseResult {
     ParseError(String),
 }
 
-pub fn read_tokens(arena: &Arena, tokens: &[Token]) -> Result<RootPtr, ParseResult> {
+pub fn read_tokens(arena: &Arena, tokens: &[PositionedToken]) -> Result<RootPtr, ParseResult> {
     if tokens.is_empty() {
         return Err(ParseResult::Nothing);
     }
@@ -68,10 +68,10 @@ pub fn read_many(arena: &Arena, code: &str) -> Result<Vec<RootPtr>, String> {
 
 fn do_read<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<RootPtr, ParseResult>
 where
-    I: Iterator<Item = &'b Token>,
+    I: Iterator<Item = &'b PositionedToken>,
 {
     if let Some(t) = it.next() {
-        match t {
+        match &t.token {
             Token::Num(x) => Ok(arena.insert_rooted(read_num_token(x))),
             Token::Boolean(b) => Ok(arena.insert_rooted(Value::Boolean(*b))),
             Token::Character(c) => Ok(arena.insert_rooted(Value::Character(*c))),
@@ -123,27 +123,34 @@ pub fn read_num_token(t: &NumValue) -> Value {
 
 fn read_list<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<RootPtr, ParseResult>
 where
-    I: Iterator<Item = &'b Token>,
+    I: Iterator<Item = &'b PositionedToken>,
 {
     if let Some(&t) = it.peek() {
-        match t {
+        match &t.token {
             Token::ClosingParen => {
                 it.next();
                 Ok(arena.insert_rooted(Value::EmptyList))
             }
             _ => {
                 let first = do_read(arena, it)?;
-                let second = if it.peek() == Some(&&Token::Dot) {
+                let second = if let Some(PositionedToken {
+                    token: Token::Dot, ..
+                }) = it.peek()
+                {
                     it.next();
                     let ret = do_read(arena, it);
                     let next = it.next();
-                    if next != Some(&Token::ClosingParen) {
+                    if let Some(PositionedToken {
+                        token: Token::ClosingParen,
+                        ..
+                    }) = next
+                    {
+                        ret
+                    } else {
                         Err(ParseResult::ParseError(format!(
                             "Unexpected token {:?} after dot.",
                             next
                         )))
-                    } else {
-                        ret
                     }
                 } else {
                     read_list(arena, it)
@@ -160,7 +167,7 @@ where
 
 fn read_bytevec<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<RootPtr, ParseResult>
 where
-    I: Iterator<Item = &'b Token>,
+    I: Iterator<Item = &'b PositionedToken>,
 {
     let mut result: Vec<u8> = Vec::new();
 
@@ -171,7 +178,7 @@ where
     }
 
     while let Some(&t) = it.peek() {
-        match t {
+        match &t.token {
             Token::ClosingParen => {
                 it.next();
                 break;
@@ -197,7 +204,7 @@ where
 
 fn read_vec<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<RootPtr, ParseResult>
 where
-    I: Iterator<Item = &'b Token>,
+    I: Iterator<Item = &'b PositionedToken>,
 {
     let mut roots = Vec::new();
     let mut result = Vec::new();
@@ -209,7 +216,7 @@ where
     }
 
     while let Some(&t) = it.peek() {
-        match t {
+        match &t.token {
             Token::ClosingParen => {
                 it.next();
                 break;
@@ -231,7 +238,7 @@ fn read_quote<'a, 'b, I>(
     prefix: &'static str,
 ) -> Result<RootPtr, ParseResult>
 where
-    I: Iterator<Item = &'b Token>,
+    I: Iterator<Item = &'b PositionedToken>,
 {
     let quoted = do_read(arena, it)?;
     let quoted_list_ptr = arena.insert_rooted(Value::Pair(

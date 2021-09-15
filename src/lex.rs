@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::iter::Peekable;
+use std::str::Chars;
 
 use num_bigint::{BigInt, Sign};
 use num_rational::BigRational;
 use num_traits::identities::Zero;
 use num_traits::Pow;
-
-use std::str::Chars;
 use util;
 
 const EXPT_MARKERS: [char; 10] = ['e', 'E', 's', 'S', 'f', 'F', 'd', 'D', 'l', 'L'];
@@ -55,14 +53,33 @@ pub struct PositionedToken {
 }
 
 // TODO: delete this
-impl From<Token> for PositionedToken {
-    fn from(t: Token) -> Self {
+// impl From<Token> for PositionedToken {
+//     fn from(t: Token) -> Self {
+//         Self {
+//             range: CodeRange {
+//                 start: (0, 0),
+//                 end: (0, 0),
+//             },
+//             token: t,
+//         }
+//     }
+// }
+
+impl PositionedToken {
+    fn single_char(pos: CodePosition, token: Token) -> Self {
         Self {
             range: CodeRange {
-                start: (0, 0),
-                end: (0, 0),
+                start: pos,
+                end: pos,
             },
-            token: t,
+            token,
+        }
+    }
+
+    fn new(start: CodePosition, end: CodePosition, token: Token) -> Self {
+        Self {
+            range: CodeRange { start, end },
+            token,
         }
     }
 }
@@ -109,7 +126,7 @@ impl NumValue {
 
 /// Turns an str slice into a vector of tokens, or fails with an error message.
 pub fn lex(input: &str) -> Result<Vec<PositionedToken>, String> {
-    let mut it = positioned_chars(input).peekable();
+    let mut it = positioned_chars(input);
     let mut tokens: Vec<PositionedToken> = Vec::new();
     loop {
         consume_leading_spaces(&mut it);
@@ -119,35 +136,37 @@ pub fn lex(input: &str) -> Result<Vec<PositionedToken>, String> {
                 continue;
             }
             let token: PositionedToken = if c.is_digit(10) {
-                consume_number(&mut it)?.into()
+                consume_number(&mut it)?
             } else if c == '.' || c == '-' || c == '+' {
-                consume_sign_or_dot(&mut it)?.into()
+                consume_sign_or_dot(&mut it)?
             } else if c == '#' {
-                consume_hash(&mut it)?.into()
+                consume_hash(&mut it)?
             } else if c == '"' {
-                consume_string(&mut it)?.into()
+                consume_string(&mut it)?
             } else if c == '\'' {
                 it.next();
-                ((pos, pos), Token::Quote)
+                PositionedToken::single_char(pos, Token::Quote)
             } else if c == '(' {
                 it.next();
-                ((pos, pos), Token::OpenParen)
+                PositionedToken::single_char(pos, Token::OpenParen)
             } else if c == ')' {
                 it.next();
-                ((pos, pos), Token::ClosingParen)
+                PositionedToken::single_char(pos, Token::ClosingParen)
             } else if c == '`' {
                 it.next();
-                ((pos, pos), Token::QuasiQuote)
+                PositionedToken::single_char(pos, Token::QuasiQuote)
             } else if c == ',' {
                 it.next();
-                if let Some(&(_pos, '@')) = it.peek() {
+                if let Some(&(end_pos, '@')) = it.peek() {
                     it.next();
-                    ((pos, pos), Token::UnquoteSplicing)
+                    PositionedToken::new(pos, end_pos, Token::UnquoteSplicing)
                 } else {
-                    ((pos, pos), Token::Unquote)
+                    PositionedToken::single_char(pos, Token::Unquote)
                 }
             } else {
-                Token::Symbol(take_delimited_token(&mut it, 1).into_iter().collect()).into()
+                let (start, end, chars) = take_delimited_token(&mut it, 1);
+                let tok = Token::Symbol(chars.into_iter().collect());
+                PositionedToken::new(start, end, tok)
             };
             tokens.push(token);
         } else {
@@ -158,10 +177,15 @@ pub fn lex(input: &str) -> Result<Vec<PositionedToken>, String> {
     Ok(tokens)
 }
 
+/// An iterator over chars in a string + their position.
+/// Effectively reimplements [`std::iter::Peekable`], but it's a pain to access the original
+/// iterator with `Peekable`, and `last_position` is a convenient little feature.
 struct PositionedChars<'a> {
     line: u32,
     column: u32,
     characters: Chars<'a>,
+    next_item: Option<PositionedChar>,
+    last_position: CodePosition,
 }
 
 type PositionedChar = (CodePosition, char);
@@ -170,26 +194,62 @@ impl<'a> Iterator for PositionedChars<'a> {
     type Item = PositionedChar;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next_char = self.characters.next()?;
-        if next_char == '\n' {
-            self.line += 1;
-            self.column = 1;
-        } else {
-            self.column += 1;
+        let (pos, char) = self.next_helper()?;
+        self.last_position = pos;
+        Some((pos, char))
+    }
+}
+
+impl<'a> PositionedChars<'a> {
+    /// Like `next`, but does not update `last_position`, so it can be called from `peek`.
+    fn next_helper(&mut self) -> Option<<Self as Iterator>::Item> {
+        match self.next_item {
+            Some(nxt) => {
+                self.next_item = None;
+                Some(nxt)
+            }
+            None => {
+                let next_char = self.characters.next()?;
+                if next_char == '\n' {
+                    let (line, column) = (self.line, self.column + 1);
+                    self.line += 1;
+                    self.column = 0;
+                    Some(((line, column), next_char))
+                } else {
+                    self.column += 1;
+                    Some(((self.line, self.column), next_char))
+                }
+            }
         }
-        Some(((self.line, self.column), next_char))
+    }
+
+    fn peek(&mut self) -> Option<&<Self as Iterator>::Item> {
+        match self.next_item {
+            Some(_) => self.next_item.as_ref(),
+            None => {
+                self.next_item = self.next_helper();
+                self.next_item.as_ref()
+            }
+        }
+    }
+
+    /// Returns the position returned in the last call to `next`.
+    fn last_position(&self) -> CodePosition {
+        self.last_position
     }
 }
 
 fn positioned_chars(s: &str) -> PositionedChars {
     PositionedChars {
         line: 1,
-        column: 1,
+        column: 0,
         characters: s.chars(),
+        next_item: None,
+        last_position: (1, 0),
     }
 }
 
-fn consume_to_newline(it: &mut dyn Iterator<Item = PositionedChar>) {
+fn consume_to_newline(it: &mut impl Iterator<Item = PositionedChar>) {
     for (_pos, c) in it {
         if c == '\n' {
             break;
@@ -197,10 +257,7 @@ fn consume_to_newline(it: &mut dyn Iterator<Item = PositionedChar>) {
     }
 }
 
-fn consume_leading_spaces<I>(it: &mut Peekable<I>)
-where
-    I: Iterator<Item = PositionedChar>,
-{
+fn consume_leading_spaces(it: &mut PositionedChars) {
     while let Some(&(_pos, c)) = it.peek() {
         if c.is_whitespace() {
             it.next();
@@ -214,11 +271,19 @@ where
 ///
 /// The token will have a minimum of `min` characters; after that, it ends whenever whitespace or
 /// an opening or closing parenthesis is encountered.
-fn take_delimited_token<I>(it: &mut Peekable<I>, min: usize) -> Vec<char>
-where
-    I: Iterator<Item = PositionedChar>,
-{
+// TODO remove `min` parameter, it's always 1
+fn take_delimited_token(
+    it: &mut PositionedChars,
+    min: usize,
+) -> (CodePosition, CodePosition, Vec<char>) {
     let mut result: Vec<char> = Vec::new();
+    let start_pos = if let Some(&(pos, _c)) = it.peek() {
+        pos
+    } else {
+        // TODO this is kind of gross -- if we've reached the end of the stream, there's no code
+        //      position to collect, so we should return Nones instead?
+        return ((0, 0), (0, 0), result);
+    };
     while let Some(&(_pos, c)) = it.peek() {
         if result.len() < min || (c != '(' && c != ')' && !c.is_whitespace()) {
             result.push(c);
@@ -227,7 +292,7 @@ where
             break;
         }
     }
-    result
+    (start_pos, it.last_position(), result)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -260,24 +325,20 @@ impl Exactness {
     }
 }
 
-fn consume_number<I>(it: &mut Peekable<I>) -> Result<Token, String>
-where
-    I: Iterator<Item = PositionedChar>,
-{
-    parse_number(&take_delimited_token(it, 1), 10, Exactness::Default).map(Token::Num)
+fn consume_number(it: &mut PositionedChars) -> Result<PositionedToken, String> {
+    let (start, end, chars) = take_delimited_token(it, 1);
+    let n = parse_number(&chars, 10, Exactness::Default)?;
+    Ok(PositionedToken::new(start, end, Token::Num(n)))
 }
 
-fn consume_sign_or_dot<I>(it: &mut Peekable<I>) -> Result<Token, String>
-where
-    I: Iterator<Item = PositionedChar>,
-{
-    let token = take_delimited_token(it, 1);
-    let token_s: String = token.iter().collect();
+fn consume_sign_or_dot(it: &mut PositionedChars) -> Result<PositionedToken, String> {
+    let (start, end, chars) = take_delimited_token(it, 1);
+    let token_s: String = chars.iter().collect();
 
     if token_s == "." {
-        return Ok(Token::Dot);
+        return Ok(PositionedToken::single_char(start, Token::Dot));
     }
-    if let Some(c) = token.get(1) {
+    if let Some(c) = chars.get(1) {
         if c.is_ascii_digit()
             || token_s == "+i"
             || token_s == "-i"
@@ -286,51 +347,65 @@ where
             || token_s.starts_with("+nan.0")
             || token_s.starts_with("-nan.0")
         {
-            return parse_number(&token, 10, Exactness::Default).map(Token::Num);
+            let n = parse_number(&chars, 10, Exactness::Default)?;
+            return Ok(PositionedToken::new(start, end, Token::Num(n)));
         }
     }
-    Ok(Token::Symbol(token_s))
+    Ok(PositionedToken::new(start, end, Token::Symbol(token_s)))
 }
 
-fn consume_hash<I>(it: &mut Peekable<I>) -> Result<Token, String>
-where
-    I: Iterator<Item = PositionedChar>,
-{
-    let (_pos, first) = it.next().unwrap();
+fn consume_hash(it: &mut PositionedChars) -> Result<PositionedToken, String> {
+    let (start_pos, first) = it.next().unwrap();
     debug_assert_eq!(first, '#');
     if let Some((_pos, c)) = it.next() {
         match c {
             '\\' => {
-                let seq = take_delimited_token(it, 1);
-                match seq.len() {
-                    0 => Err("Unexpected end of token.".to_string()),
+                let (_start, end, seq) = take_delimited_token(it, 1);
+                let tok = match seq.len() {
+                    0 => Err("unexpected end of token.".to_string()),
                     1 => Ok(Token::Character(seq[0])),
                     _ => {
                         let descriptor: String = seq.into_iter().collect();
                         match descriptor.to_lowercase().as_ref() {
                             "newline" => Ok(Token::Character('\n')),
                             "space" => Ok(Token::Character(' ')),
-                            _ => Err(format!("Unknown character descriptor: `{}`.", descriptor)),
+                            _ => Err(format!("unknown character descriptor: `{}`.", descriptor)),
                         }
                     }
-                }
+                }?;
+                Ok(PositionedToken::new(start_pos, end, tok))
             }
-            't' => Ok(Token::Boolean(true)),
-            'f' => Ok(Token::Boolean(false)),
-            '(' => Ok(Token::OpenVector),
+            't' => Ok(PositionedToken::new(
+                start_pos,
+                it.last_position(),
+                Token::Boolean(true),
+            )),
+            'f' => Ok(PositionedToken::new(
+                start_pos,
+                it.last_position(),
+                Token::Boolean(false),
+            )),
+            '(' => Ok(PositionedToken::new(
+                start_pos,
+                it.last_position(),
+                Token::OpenVector,
+            )),
             'u' => match (it.next(), it.next()) {
-                (Some((_, '8')), Some((_, '('))) => Ok(Token::OpenByteVector),
-                (a, b) => Err(format!("Unknown token form: `#u{:?}{:?}...", a, b)),
+                (Some((_, '8')), Some((end, '('))) => {
+                    Ok(PositionedToken::new(start_pos, end, Token::OpenByteVector))
+                }
+                (a, b) => Err(format!("unknown token form: `#u{:?}{:?}...", a, b)),
             },
             'i' | 'e' | 'b' | 'o' | 'd' | 'x' => {
-                let mut num = take_delimited_token(it, 1);
+                let (_start, end, mut num) = take_delimited_token(it, 1);
                 num.insert(0, c);
-                parse_prefixed_number(&num, None).map(Token::Num)
+                let n = parse_prefixed_number(&num, None)?;
+                Ok(PositionedToken::new(start_pos, end, Token::Num(n)))
             }
-            _ => Err(format!("Unknown token form: `#{}...`.", c)),
+            _ => Err(format!("unknown token form: `#{}...`.", c)),
         }
     } else {
-        Err("Unexpected end of #-token.".to_string())
+        Err("unexpected end of #-token.".to_string())
     }
 }
 
@@ -515,17 +590,14 @@ fn parse_special_real(s: &[char]) -> Option<f64> {
     }
 }
 
-fn consume_string<I>(it: &mut Peekable<I>) -> Result<Token, String>
-where
-    I: Iterator<Item = PositionedChar>,
-{
-    let (_, first) = it.next().unwrap();
+fn consume_string(it: &mut PositionedChars) -> Result<PositionedToken, String> {
+    let (start_pos, first) = it.next().unwrap();
     debug_assert_eq!(first, '"');
 
     let mut found_end: bool = false;
     let mut escaped: bool = false;
     let mut result: String = String::new();
-    for (_pos, c) in it {
+    while let Some((_pos, c)) = it.next() {
         if escaped {
             let r = match c {
                 'n' => '\n',
@@ -544,7 +616,11 @@ where
     }
 
     if found_end {
-        Ok(Token::String(result))
+        Ok(PositionedToken::new(
+            start_pos,
+            it.last_position(),
+            Token::String(result),
+        ))
     } else {
         Err(format!("Unterminated string `\"{}`.", result))
     }
@@ -558,14 +634,14 @@ pub enum BracketType {
 }
 
 pub struct SegmentationResult {
-    pub segments: Vec<Vec<Token>>,
-    pub remainder: Vec<Token>,
+    pub segments: Vec<Vec<PositionedToken>>,
+    pub remainder: Vec<PositionedToken>,
     pub depth: u64,
 }
 
 /// Splits a vector of token into a vector of vector of tokens, each of which represents a single
 /// expression that can be read.
-pub fn segment(toks: Vec<Token>) -> Result<SegmentationResult, String> {
+pub fn segment(toks: Vec<PositionedToken>) -> Result<SegmentationResult, String> {
     let mut segments = Vec::new();
     let mut current_segment = Vec::new();
     let mut brackets = Vec::new();
@@ -578,7 +654,7 @@ pub fn segment(toks: Vec<Token>) -> Result<SegmentationResult, String> {
             _ => None,
         };
 
-        let bracket_type = match tok {
+        let bracket_type = match tok.token {
             Token::OpenParen => Some(BracketType::List),
             Token::OpenVector => Some(BracketType::Vector),
             Token::OpenByteVector => Some(BracketType::Vector),
@@ -590,7 +666,7 @@ pub fn segment(toks: Vec<Token>) -> Result<SegmentationResult, String> {
 
         if let Some(t) = bracket_type {
             brackets.push(t);
-        } else if let Token::ClosingParen = tok {
+        } else if let Token::ClosingParen = tok.token {
             match brackets.pop() {
                 Some(BracketType::List) | Some(BracketType::Vector) => (),
                 _ => return Err("Unbalanced right parenthesis".into()),
@@ -626,44 +702,69 @@ mod tests {
         Token::Num(NumValue::Real(r))
     }
 
+    fn unposition(v: Vec<PositionedToken>) -> Vec<Token> {
+        v.into_iter().map(|x| x.token).collect()
+    }
+
     #[test]
     fn lex_char() {
-        assert_eq!(lex("#\\!").unwrap(), vec![Token::Character('!')]);
-        assert_eq!(lex("#\\n").unwrap(), vec![Token::Character('n')]);
-        assert_eq!(lex("#\\ ").unwrap(), vec![Token::Character(' ')]);
-        assert_eq!(lex("#\\NeWline").unwrap(), vec![Token::Character('\n')]);
-        assert_eq!(lex("#\\space").unwrap(), vec![Token::Character(' ')]);
+        assert_eq!(
+            unposition(lex("#\\!").unwrap()),
+            vec![Token::Character('!')]
+        );
+        assert_eq!(
+            unposition(lex("#\\n").unwrap()),
+            vec![Token::Character('n')]
+        );
+        assert_eq!(
+            unposition(lex("#\\ ").unwrap()),
+            vec![Token::Character(' ')]
+        );
+        assert_eq!(
+            unposition(lex("#\\NeWline").unwrap()),
+            vec![Token::Character('\n')]
+        );
+        assert_eq!(
+            unposition(lex("#\\space").unwrap()),
+            vec![Token::Character(' ')]
+        );
         assert!(lex("#\\defS").is_err());
         assert!(lex("#\\").is_err());
     }
 
     #[test]
     fn lex_int() {
-        assert_eq!(lex("123").unwrap(), vec![int_tok(123)]);
-        assert_eq!(lex("0").unwrap(), vec![int_tok(0)]);
-        assert_eq!(lex("-123").unwrap(), vec![int_tok(-123)]);
-        assert_eq!(lex("+123").unwrap(), vec![int_tok(123)]);
-        assert_eq!(lex("#xfe").unwrap(), vec![int_tok(254)]);
+        assert_eq!(unposition(lex("123").unwrap()), vec![int_tok(123)]);
+        assert_eq!(unposition(lex("0").unwrap()), vec![int_tok(0)]);
+        assert_eq!(unposition(lex("-123").unwrap()), vec![int_tok(-123)]);
+        assert_eq!(unposition(lex("+123").unwrap()), vec![int_tok(123)]);
+        assert_eq!(unposition(lex("#xfe").unwrap()), vec![int_tok(254)]);
         assert!(lex("12x3").is_err());
         assert!(lex("123x").is_err());
     }
 
     #[test]
     fn lex_float() {
-        assert_eq!(lex("123.4567").unwrap(), vec![real_tok(123.4567)]);
-        assert_eq!(lex(".4567").unwrap(), vec![real_tok(0.4567)]);
-        assert_eq!(lex("0.").unwrap(), vec![real_tok(0.0)]);
-        assert_eq!(lex("-0.").unwrap(), vec![real_tok(-0.0)]);
-        assert_eq!(lex("0.06").unwrap(), vec![real_tok(0.06)]);
-        assert_eq!(lex("0.06d0").unwrap(), vec![real_tok(0.06)]);
-        assert_eq!(lex("0.06d2").unwrap(), vec![real_tok(6.0)]);
-        assert_eq!(lex("0.06d-2").unwrap(), vec![real_tok(0.0006)]);
-        assert_eq!(lex("123#.##").unwrap(), vec![real_tok(1230.0)]);
         assert_eq!(
-            lex("-inf.0").unwrap(),
-            vec![real_tok(std::f64::NEG_INFINITY)]
+            unposition(lex("123.4567").unwrap()),
+            vec![real_tok(123.4567)]
         );
-        assert_eq!(lex("+inf.0").unwrap(), vec![real_tok(std::f64::INFINITY)]);
+        assert_eq!(unposition(lex(".4567").unwrap()), vec![real_tok(0.4567)]);
+        assert_eq!(unposition(lex("0.").unwrap()), vec![real_tok(0.0)]);
+        assert_eq!(unposition(lex("-0.").unwrap()), vec![real_tok(-0.0)]);
+        assert_eq!(unposition(lex("0.06").unwrap()), vec![real_tok(0.06)]);
+        assert_eq!(unposition(lex("0.06d0").unwrap()), vec![real_tok(0.06)]);
+        assert_eq!(unposition(lex("0.06d2").unwrap()), vec![real_tok(6.0)]);
+        assert_eq!(unposition(lex("0.06d-2").unwrap()), vec![real_tok(0.0006)]);
+        assert_eq!(unposition(lex("123#.##").unwrap()), vec![real_tok(1230.0)]);
+        assert_eq!(
+            unposition(lex("-inf.0").unwrap()),
+            vec![real_tok(f64::NEG_INFINITY)]
+        );
+        assert_eq!(
+            unposition(lex("+inf.0").unwrap()),
+            vec![real_tok(f64::INFINITY)]
+        );
         assert!(lex("-0a.").is_err());
         assert!(lex("-0.123d").is_err());
         assert!(lex("0.06e").is_err());
@@ -672,7 +773,7 @@ mod tests {
     #[test]
     fn lex_polar() {
         assert_eq!(
-            lex("1.2@3/4").unwrap(),
+            unposition(lex("1.2@3/4").unwrap()),
             vec![Token::Num(NumValue::Polar(
                 Box::new(NumValue::Real(1.2)),
                 Box::new(NumValue::Rational(BigRational::new(3.into(), 4.into())))
@@ -682,19 +783,25 @@ mod tests {
 
     #[test]
     fn lex_bool() {
-        assert_eq!(lex("#f").unwrap(), vec![Token::Boolean(false)]);
-        assert_eq!(lex("#t").unwrap(), vec![Token::Boolean(true)]);
+        assert_eq!(unposition(lex("#f").unwrap()), vec![Token::Boolean(false)]);
+        assert_eq!(unposition(lex("#t").unwrap()), vec![Token::Boolean(true)]);
     }
 
     #[test]
     fn lex_parens() {
         assert_eq!(
             lex("()").unwrap(),
-            vec![Token::OpenParen, Token::ClosingParen]
+            vec![
+                PositionedToken::new((1, 1), (1, 1), Token::OpenParen),
+                PositionedToken::new((1, 2), (1, 2), Token::ClosingParen),
+            ]
         );
         assert_eq!(
             lex(" (  ) ").unwrap(),
-            vec![Token::OpenParen, Token::ClosingParen]
+            vec![
+                PositionedToken::new((1, 2), (1, 2), Token::OpenParen),
+                PositionedToken::new((1, 5), (1, 5), Token::ClosingParen),
+            ]
         );
     }
 
@@ -710,45 +817,136 @@ mod tests {
         assert!(lex("").unwrap().is_empty());
         assert_eq!(
             lex("  123   #f   ").unwrap(),
-            vec![int_tok(123), Token::Boolean(false)]
+            vec![
+                PositionedToken::new((1, 3), (1, 5), int_tok(123)),
+                PositionedToken::new((1, 9), (1, 10), Token::Boolean(false)),
+            ]
         );
         assert_eq!(
             lex("123)456").unwrap(),
-            vec![int_tok(123), Token::ClosingParen, int_tok(456)]
+            vec![
+                PositionedToken::new((1, 1), (1, 3), int_tok(123)),
+                PositionedToken::single_char((1, 4), Token::ClosingParen),
+                PositionedToken::new((1, 5), (1, 7), int_tok(456)),
+            ]
         );
     }
 
     #[test]
     fn lex_symbol() {
-        assert_eq!(lex("abc").unwrap(), vec![Token::Symbol("abc".to_string())]);
-        assert_eq!(lex("<=").unwrap(), vec![Token::Symbol("<=".to_string())]);
-        assert_eq!(lex("+").unwrap(), vec![Token::Symbol("+".to_string())]);
-        assert_eq!(lex(".").unwrap(), vec![Token::Dot]);
-        assert_eq!(lex("...").unwrap(), vec![Token::Symbol("...".to_string())]);
+        assert_eq!(
+            lex("abc").unwrap(),
+            vec![PositionedToken::new(
+                (1, 1),
+                (1, 3),
+                Token::Symbol("abc".to_string())
+            )]
+        );
+        assert_eq!(
+            lex("<=").unwrap(),
+            vec![PositionedToken::new(
+                (1, 1),
+                (1, 2),
+                Token::Symbol("<=".to_string())
+            )]
+        );
+        assert_eq!(
+            lex("+").unwrap(),
+            vec![PositionedToken::single_char(
+                (1, 1),
+                Token::Symbol("+".to_string())
+            )]
+        );
+        assert_eq!(
+            lex(".").unwrap(),
+            vec![PositionedToken::single_char((1, 1), Token::Dot)]
+        );
+        assert_eq!(
+            lex("...").unwrap(),
+            vec![PositionedToken::new(
+                (1, 1),
+                (1, 3),
+                Token::Symbol("...".to_string())
+            )]
+        );
     }
 
     #[test]
     fn lex_string() {
         assert_eq!(
             lex("\"abcdef\"").unwrap(),
-            vec![Token::String("abcdef".to_string())]
+            vec![PositionedToken::new(
+                (1, 1),
+                (1, 8),
+                Token::String("abcdef".to_string())
+            )]
         );
         assert_eq!(
             lex("\"abc\\\"def\"").unwrap(),
-            vec![Token::String("abc\"def".to_string())]
+            vec![PositionedToken::new(
+                (1, 1),
+                (1, 10),
+                Token::String("abc\"def".to_string())
+            )]
         );
         assert_eq!(
             lex("\"abc\\\\def\"").unwrap(),
-            vec![Token::String("abc\\def".to_string())]
+            vec![PositionedToken::new(
+                (1, 1),
+                (1, 10),
+                Token::String("abc\\def".to_string())
+            )]
         );
         assert_eq!(
             lex("\"abc\\ndef\"").unwrap(),
-            vec![Token::String("abc\ndef".to_string())]
+            vec![PositionedToken::new(
+                (1, 1),
+                (1, 10),
+                Token::String("abc\ndef".to_string())
+            )]
         );
     }
 
     #[test]
     fn lex_spaces() {
-        assert_eq!(lex("  123  ").unwrap(), vec![int_tok(123)]);
+        assert_eq!(
+            lex("  123  ").unwrap(),
+            vec![PositionedToken::new((1, 3), (1, 5), int_tok(123))]
+        );
+    }
+
+    #[test]
+    fn lex_definition() {
+        assert_eq!(
+            unposition(lex("(define (list . args) args)").unwrap()),
+            vec![
+                Token::OpenParen,
+                Token::Symbol("define".into()),
+                Token::OpenParen,
+                Token::Symbol("list".into()),
+                Token::Dot,
+                Token::Symbol("args".into()),
+                Token::ClosingParen,
+                Token::Symbol("args".into()),
+                Token::ClosingParen,
+            ]
+        )
+    }
+
+    #[test]
+    fn test_char_iterator() {
+        let mut it = positioned_chars(&"ab\ncdefghijklm");
+        assert_eq!(it.peek().cloned(), Some(((1, 1), 'a')));
+        assert_eq!(it.peek().cloned(), Some(((1, 1), 'a')));
+        assert_eq!(it.last_position(), (1, 0));
+        assert_eq!(it.next(), Some(((1, 1), 'a')));
+        assert_eq!(it.last_position(), (1, 1));
+        assert_eq!(it.peek().cloned(), Some(((1, 2), 'b')));
+        assert_eq!(it.last_position(), (1, 1));
+        assert_eq!(it.next(), Some(((1, 2), 'b')));
+        assert_eq!(it.next(), Some(((1, 3), '\n')));
+        assert_eq!(it.next(), Some(((2, 1), 'c')));
+        assert_eq!(it.peek().cloned(), Some(((2, 2), 'd')));
+        assert_eq!(it.last_position(), (2, 1));
     }
 }
