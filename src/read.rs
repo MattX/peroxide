@@ -14,6 +14,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::iter::Peekable;
+use std::rc::Rc;
 
 use arena::Arena;
 use heap::RootPtr;
@@ -30,67 +31,224 @@ pub enum ParseResult {
     ParseError(String),
 }
 
-pub fn read_tokens(arena: &Arena, tokens: &[PositionedToken]) -> Result<RootPtr, ParseResult> {
-    if tokens.is_empty() {
-        return Err(ParseResult::Nothing);
-    }
-
-    let mut it = tokens.iter().peekable();
-    let res = do_read(arena, &mut it)?;
-    if let Some(s) = it.peek() {
-        Err(ParseResult::ParseError(format!("Unexpected token {:?}", s)))
-    } else {
-        Ok(res)
-    }
+pub struct Reader<'ar> {
+    arena: &'ar Arena,
+    locate: bool,
+    file_name: Rc<String>,
 }
 
-pub fn read(arena: &Arena, input: &str) -> Result<RootPtr, String> {
-    let tokens = lex::lex(input)?;
-    read_tokens(arena, &tokens).map_err(|e| format!("{:?}", e))
-}
-
-pub fn read_many(arena: &Arena, code: &str) -> Result<Vec<RootPtr>, String> {
-    let tokens = lex::lex(code)?;
-    let segments = lex::segment(tokens)?;
-    if !segments.remainder.is_empty() {
-        return Err(format!(
-            "Unterminated expression: dangling tokens {:?}",
-            segments.remainder
-        ));
-    }
-    segments
-        .segments
-        .iter()
-        .map(|s| read_tokens(arena, s))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("{:?}", e))
-}
-
-fn do_read<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<RootPtr, ParseResult>
-where
-    I: Iterator<Item = &'b PositionedToken>,
-{
-    if let Some(t) = it.next() {
-        match &t.token {
-            Token::Num(x) => Ok(arena.insert_rooted(read_num_token(x))),
-            Token::Boolean(b) => Ok(arena.insert_rooted(Value::Boolean(*b))),
-            Token::Character(c) => Ok(arena.insert_rooted(Value::Character(*c))),
-            Token::String(s) => Ok(arena.insert_rooted(Value::String(RefCell::new(s.to_string())))),
-            Token::Symbol(s) => Ok(arena.insert_rooted(Value::Symbol(s.to_ascii_lowercase()))),
-            Token::OpenParen => read_list(arena, it),
-            Token::OpenByteVector => read_bytevec(arena, it),
-            Token::OpenVector => read_vec(arena, it),
-            Token::Quote => read_quote(arena, it, "quote"),
-            Token::QuasiQuote => read_quote(arena, it, "quasiquote"),
-            Token::Unquote => read_quote(arena, it, "unquote"),
-            Token::UnquoteSplicing => read_quote(arena, it, "unquote-splicing"),
-            _ => Err(ParseResult::ParseError(format!(
-                "Unexpected token {:?}.",
-                t
-            ))),
+impl<'ar> Reader<'ar> {
+    pub fn new(arena: &'ar Arena, locate: bool, file_name: Rc<String>) -> Self {
+        Self {
+            arena,
+            locate,
+            file_name,
         }
-    } else {
-        panic!("do_parse called with no tokens.");
+    }
+
+    pub fn read_tokens(&self, tokens: &[PositionedToken]) -> Result<RootPtr, ParseResult> {
+        if tokens.is_empty() {
+            return Err(ParseResult::Nothing);
+        }
+
+        let mut it = tokens.iter().peekable();
+        let res = self.do_read(&mut it)?;
+        if let Some(s) = it.peek() {
+            Err(ParseResult::ParseError(format!("Unexpected token {:?}", s)))
+        } else {
+            Ok(res)
+        }
+    }
+
+    pub fn read(&self, input: &str) -> Result<RootPtr, String> {
+        let tokens = lex::lex(input)?;
+        self.read_tokens(&tokens).map_err(|e| format!("{:?}", e))
+    }
+
+    pub fn read_many(&self, code: &str) -> Result<Vec<RootPtr>, String> {
+        let tokens = lex::lex(code)?;
+        let segments = lex::segment(tokens)?;
+        if !segments.remainder.is_empty() {
+            return Err(format!(
+                "Unterminated expression: dangling tokens {:?}",
+                segments.remainder
+            ));
+        }
+        segments
+            .segments
+            .iter()
+            .map(|s| self.read_tokens(s))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("{:?}", e))
+    }
+
+    fn do_read<'a, 'b, I>(&self, it: &'a mut Peekable<I>) -> Result<RootPtr, ParseResult>
+    where
+        I: Iterator<Item = &'b PositionedToken>,
+    {
+        if let Some(t) = it.next() {
+            match &t.token {
+                Token::Num(x) => Ok(self.arena.insert_rooted(read_num_token(x))),
+                Token::Boolean(b) => Ok(self.arena.insert_rooted(Value::Boolean(*b))),
+                Token::Character(c) => Ok(self.arena.insert_rooted(Value::Character(*c))),
+                Token::String(s) => Ok(self
+                    .arena
+                    .insert_rooted(Value::String(RefCell::new(s.to_string())))),
+                Token::Symbol(s) => Ok(self
+                    .arena
+                    .insert_rooted(Value::Symbol(s.to_ascii_lowercase()))),
+                Token::OpenParen => self.read_list(it),
+                Token::OpenByteVector => self.read_bytevec(it),
+                Token::OpenVector => self.read_vec(it),
+                Token::Quote => self.read_quote(it, "quote"),
+                Token::QuasiQuote => self.read_quote(it, "quasiquote"),
+                Token::Unquote => self.read_quote(it, "unquote"),
+                Token::UnquoteSplicing => self.read_quote(it, "unquote-splicing"),
+                _ => Err(ParseResult::ParseError(format!(
+                    "Unexpected token {:?}.",
+                    t
+                ))),
+            }
+        } else {
+            panic!("do_parse called with no tokens.");
+        }
+    }
+
+    fn read_list<'a, 'b, I>(&self, it: &'a mut Peekable<I>) -> Result<RootPtr, ParseResult>
+    where
+        I: Iterator<Item = &'b PositionedToken>,
+    {
+        if let Some(&t) = it.peek() {
+            match &t.token {
+                Token::ClosingParen => {
+                    it.next();
+                    Ok(self.arena.insert_rooted(Value::EmptyList))
+                }
+                _ => {
+                    let first = self.do_read(it)?;
+                    let second = if let Some(PositionedToken {
+                        token: Token::Dot, ..
+                    }) = it.peek()
+                    {
+                        it.next();
+                        let ret = self.do_read(it);
+                        let next = it.next();
+                        if let Some(PositionedToken {
+                            token: Token::ClosingParen,
+                            ..
+                        }) = next
+                        {
+                            ret
+                        } else {
+                            Err(ParseResult::ParseError(format!(
+                                "Unexpected token {:?} after dot.",
+                                next
+                            )))
+                        }
+                    } else {
+                        self.read_list(it)
+                    }?;
+                    Ok(self
+                        .arena
+                        .insert_rooted(Value::Pair(Cell::new(first.pp()), Cell::new(second.pp()))))
+                }
+            }
+        } else {
+            Err(ParseResult::ParseError(
+                "Unexpected end of list.".to_string(),
+            ))
+        }
+    }
+
+    fn read_bytevec<'a, 'b, I>(&self, it: &'a mut Peekable<I>) -> Result<RootPtr, ParseResult>
+    where
+        I: Iterator<Item = &'b PositionedToken>,
+    {
+        let mut result: Vec<u8> = Vec::new();
+
+        if None == it.peek() {
+            return Err(ParseResult::ParseError(
+                "Unexpected end of vector.".to_string(),
+            ));
+        }
+
+        while let Some(&t) = it.peek() {
+            match &t.token {
+                Token::ClosingParen => {
+                    it.next();
+                    break;
+                }
+                Token::Num(NumValue::Integer(i)) => {
+                    it.next();
+                    let b = i.to_u8().ok_or_else(|| {
+                        ParseResult::ParseError(format!("Invalid byte value: {}.", i))
+                    })?;
+                    result.push(b);
+                }
+                v => {
+                    return Err(ParseResult::ParseError(format!(
+                        "Non-byte in bytevector literal: {:?}",
+                        v
+                    )));
+                }
+            }
+        }
+
+        Ok(self
+            .arena
+            .insert_rooted(Value::ByteVector(RefCell::new(result))))
+    }
+
+    fn read_vec<'a, 'b, I>(&self, it: &'a mut Peekable<I>) -> Result<RootPtr, ParseResult>
+    where
+        I: Iterator<Item = &'b PositionedToken>,
+    {
+        let mut roots = Vec::new();
+        let mut result = Vec::new();
+
+        if None == it.peek() {
+            return Err(ParseResult::ParseError(
+                "Unexpected end of vector.".to_string(),
+            ));
+        }
+
+        while let Some(&t) = it.peek() {
+            match &t.token {
+                Token::ClosingParen => {
+                    it.next();
+                    break;
+                }
+                _ => {
+                    let elem = self.do_read(it)?;
+                    result.push(elem.pp());
+                    roots.push(elem);
+                }
+            }
+        }
+
+        Ok(self
+            .arena
+            .insert_rooted(Value::Vector(RefCell::new(result))))
+    }
+
+    fn read_quote<'a, 'b, I>(
+        &self,
+        it: &'a mut Peekable<I>,
+        prefix: &'static str,
+    ) -> Result<RootPtr, ParseResult>
+    where
+        I: Iterator<Item = &'b PositionedToken>,
+    {
+        let quoted = self.do_read(it)?;
+        let quoted_list_ptr = self.arena.insert_rooted(Value::Pair(
+            Cell::new(quoted.pp()),
+            Cell::new(self.arena.empty_list),
+        ));
+        let quote_sym_ptr = self.arena.insert_rooted(Value::Symbol(prefix.to_string()));
+        Ok(self.arena.insert_rooted(Value::Pair(
+            Cell::new(quote_sym_ptr.pp()),
+            Cell::new(quoted_list_ptr.pp()),
+        )))
     }
 }
 
@@ -119,135 +277,4 @@ pub fn read_num_token(t: &NumValue) -> Value {
         },
     };
     simplify_numeric(equalized)
-}
-
-fn read_list<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<RootPtr, ParseResult>
-where
-    I: Iterator<Item = &'b PositionedToken>,
-{
-    if let Some(&t) = it.peek() {
-        match &t.token {
-            Token::ClosingParen => {
-                it.next();
-                Ok(arena.insert_rooted(Value::EmptyList))
-            }
-            _ => {
-                let first = do_read(arena, it)?;
-                let second = if let Some(PositionedToken {
-                    token: Token::Dot, ..
-                }) = it.peek()
-                {
-                    it.next();
-                    let ret = do_read(arena, it);
-                    let next = it.next();
-                    if let Some(PositionedToken {
-                        token: Token::ClosingParen,
-                        ..
-                    }) = next
-                    {
-                        ret
-                    } else {
-                        Err(ParseResult::ParseError(format!(
-                            "Unexpected token {:?} after dot.",
-                            next
-                        )))
-                    }
-                } else {
-                    read_list(arena, it)
-                }?;
-                Ok(arena.insert_rooted(Value::Pair(Cell::new(first.pp()), Cell::new(second.pp()))))
-            }
-        }
-    } else {
-        Err(ParseResult::ParseError(
-            "Unexpected end of list.".to_string(),
-        ))
-    }
-}
-
-fn read_bytevec<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<RootPtr, ParseResult>
-where
-    I: Iterator<Item = &'b PositionedToken>,
-{
-    let mut result: Vec<u8> = Vec::new();
-
-    if None == it.peek() {
-        return Err(ParseResult::ParseError(
-            "Unexpected end of vector.".to_string(),
-        ));
-    }
-
-    while let Some(&t) = it.peek() {
-        match &t.token {
-            Token::ClosingParen => {
-                it.next();
-                break;
-            }
-            Token::Num(NumValue::Integer(i)) => {
-                it.next();
-                let b = i.to_u8().ok_or_else(|| {
-                    ParseResult::ParseError(format!("Invalid byte value: {}.", i))
-                })?;
-                result.push(b);
-            }
-            v => {
-                return Err(ParseResult::ParseError(format!(
-                    "Non-byte in bytevector literal: {:?}",
-                    v
-                )));
-            }
-        }
-    }
-
-    Ok(arena.insert_rooted(Value::ByteVector(RefCell::new(result))))
-}
-
-fn read_vec<'a, 'b, I>(arena: &Arena, it: &'a mut Peekable<I>) -> Result<RootPtr, ParseResult>
-where
-    I: Iterator<Item = &'b PositionedToken>,
-{
-    let mut roots = Vec::new();
-    let mut result = Vec::new();
-
-    if None == it.peek() {
-        return Err(ParseResult::ParseError(
-            "Unexpected end of vector.".to_string(),
-        ));
-    }
-
-    while let Some(&t) = it.peek() {
-        match &t.token {
-            Token::ClosingParen => {
-                it.next();
-                break;
-            }
-            _ => {
-                let elem = do_read(arena, it)?;
-                result.push(elem.pp());
-                roots.push(elem);
-            }
-        }
-    }
-
-    Ok(arena.insert_rooted(Value::Vector(RefCell::new(result))))
-}
-
-fn read_quote<'a, 'b, I>(
-    arena: &Arena,
-    it: &'a mut Peekable<I>,
-    prefix: &'static str,
-) -> Result<RootPtr, ParseResult>
-where
-    I: Iterator<Item = &'b PositionedToken>,
-{
-    let quoted = do_read(arena, it)?;
-    let quoted_list_ptr = arena.insert_rooted(Value::Pair(
-        Cell::new(quoted.pp()),
-        Cell::new(arena.empty_list),
-    ));
-    let quote_sym_ptr = arena.insert_rooted(Value::Symbol(prefix.to_string()));
-    Ok(arena.insert_rooted(Value::Pair(
-        Cell::new(quote_sym_ptr.pp()),
-        Cell::new(quoted_list_ptr.pp()),
-    )))
 }

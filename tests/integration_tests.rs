@@ -14,8 +14,10 @@
 
 extern crate peroxide;
 
+use std::rc::Rc;
+
 use peroxide::heap::{GcMode, RootPtr};
-use peroxide::read::read_many;
+use peroxide::read::Reader;
 use peroxide::value::Value;
 use peroxide::Interpreter;
 
@@ -24,7 +26,9 @@ fn execute(vm_state: &Interpreter, code: &str) -> Result<Value, String> {
 }
 
 fn execute_rooted(vm_state: &Interpreter, code: &str) -> Result<RootPtr, String> {
-    let mut results: Vec<_> = read_many(&vm_state.arena, code)?
+    let reader = Reader::new(&vm_state.arena, true, Rc::new("<integ>".to_string()));
+    let mut results: Vec<_> = reader
+        .read_many(code)?
         .into_iter()
         .map(|read| vm_state.parse_compile_run(read))
         .collect::<Result<Vec<_>, _>>()?;
