@@ -14,11 +14,13 @@
 
 use std::cell::{Cell, RefCell};
 use std::fmt;
+use std::rc::Rc;
 
 use arena::Arena;
 use compile::CodeBlock;
 use environment::{ActivationFrame, RcEnv};
 use heap::PoolPtr;
+use lex::CodePosition;
 use num_bigint::BigInt;
 use num_complex::Complex;
 use num_rational::BigRational;
@@ -57,6 +59,7 @@ pub enum Value {
     SyntacticClosure(SyntacticClosure),
     Continuation(Continuation),
     CodeBlock(Box<CodeBlock>),
+    Located(PoolPtr, Box<Locator>),
 }
 
 impl fmt::Display for Value {
@@ -365,6 +368,13 @@ pub fn equal(left: PoolPtr, right: PoolPtr) -> bool {
         (Value::String(left_string), Value::String(right_string)) => left_string == right_string,
         _ => eqv(left, right),
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Locator {
+    file_name: Rc<String>,
+    start: CodePosition,
+    end: CodePosition,
 }
 
 #[cfg(test)]

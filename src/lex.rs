@@ -85,7 +85,7 @@ impl PositionedToken {
 }
 
 /// (line, char)
-type CodePosition = (u32, u32);
+pub type CodePosition = (u32, u32);
 
 /// Represents a range in source code.
 ///
