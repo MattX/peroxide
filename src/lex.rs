@@ -90,7 +90,7 @@ pub type CodePosition = (u32, u32);
 /// Represents a range in source code.
 ///
 /// Start is inclusive, end is exclusive.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct CodeRange {
     pub start: CodePosition,
     pub end: CodePosition,
@@ -597,7 +597,7 @@ fn consume_string(it: &mut PositionedChars) -> Result<PositionedToken, String> {
     let mut found_end: bool = false;
     let mut escaped: bool = false;
     let mut result: String = String::new();
-    while let Some((_pos, c)) = it.next() {
+    for (_pos, c) in &mut *it {
         if escaped {
             let r = match c {
                 'n' => '\n',

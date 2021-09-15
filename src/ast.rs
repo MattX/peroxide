@@ -745,6 +745,7 @@ fn expand_macro_full(
     mac: Macro,
     expr: PoolPtr,
 ) -> Result<PoolPtr, String> {
+    // TODO should we just take in a RootPtr instead of rooting here?
     let expr = arena.root(expr);
     let mut expanded = expand_macro(arena, vms, env, mac, expr)?;
     let mut macro_count = 0;

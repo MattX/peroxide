@@ -19,11 +19,11 @@ use std::rc::Rc;
 use arena::Arena;
 use heap::RootPtr;
 use lex;
-use lex::{NumValue, PositionedToken, Token};
+use lex::{CodeRange, NumValue, PositionedToken, Token};
 use num_complex::Complex;
 use num_traits::cast::ToPrimitive;
 use util::simplify_numeric;
-use value::Value;
+use value::{Locator, Value};
 
 #[derive(Debug)]
 pub enum ParseResult {
@@ -88,15 +88,15 @@ impl<'ar> Reader<'ar> {
     {
         if let Some(t) = it.next() {
             match &t.token {
-                Token::Num(x) => Ok(self.arena.insert_rooted(read_num_token(x))),
-                Token::Boolean(b) => Ok(self.arena.insert_rooted(Value::Boolean(*b))),
-                Token::Character(c) => Ok(self.arena.insert_rooted(Value::Character(*c))),
-                Token::String(s) => Ok(self
-                    .arena
-                    .insert_rooted(Value::String(RefCell::new(s.to_string())))),
-                Token::Symbol(s) => Ok(self
-                    .arena
-                    .insert_rooted(Value::Symbol(s.to_ascii_lowercase()))),
+                Token::Num(x) => Ok(self.insert_positioned(read_num_token(x), t.range)),
+                Token::Boolean(b) => Ok(self.insert_positioned(Value::Boolean(*b), t.range)),
+                Token::Character(c) => Ok(self.insert_positioned(Value::Character(*c), t.range)),
+                Token::String(s) => {
+                    Ok(self.insert_positioned(Value::String(RefCell::new(s.to_string())), t.range))
+                }
+                Token::Symbol(s) => {
+                    Ok(self.insert_positioned(Value::Symbol(s.to_ascii_lowercase()), t.range))
+                }
                 Token::OpenParen => self.read_list(it),
                 Token::OpenByteVector => self.read_bytevec(it),
                 Token::OpenVector => self.read_vec(it),
@@ -249,6 +249,21 @@ impl<'ar> Reader<'ar> {
             Cell::new(quote_sym_ptr.pp()),
             Cell::new(quoted_list_ptr.pp()),
         )))
+    }
+
+    fn insert_positioned(&self, v: Value, range: CodeRange) -> RootPtr {
+        let inner = self.arena.insert_rooted(v);
+        if self.locate {
+            self.arena.insert_rooted(Value::Located(
+                inner.pp(),
+                Box::new(Locator {
+                    file_name: self.file_name.clone(),
+                    range,
+                }),
+            ))
+        } else {
+            inner
+        }
     }
 }
 

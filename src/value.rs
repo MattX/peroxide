@@ -19,8 +19,8 @@ use std::rc::Rc;
 use arena::Arena;
 use compile::CodeBlock;
 use environment::{ActivationFrame, RcEnv};
-use heap::PoolPtr;
-use lex::CodePosition;
+use heap::{PoolPtr, RootPtr};
+use lex::CodeRange;
 use num_bigint::BigInt;
 use num_complex::Complex;
 use num_rational::BigRational;
@@ -372,9 +372,34 @@ pub fn equal(left: PoolPtr, right: PoolPtr) -> bool {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Locator {
-    file_name: Rc<String>,
-    start: CodePosition,
-    end: CodePosition,
+    pub file_name: Rc<String>,
+    pub range: CodeRange,
+}
+
+/// Requires `value` to be rooted?
+pub fn strip_locators(arena: &Arena, value: PoolPtr) -> RootPtr {
+    match &*value {
+        Value::Pair(car, cdr) => {
+            let new_car = strip_locators(arena, car.get());
+            let new_cdr = strip_locators(arena, cdr.get());
+            arena.insert_rooted(Value::Pair(
+                Cell::new(new_car.pp()),
+                Cell::new(new_cdr.pp()),
+            ))
+        }
+        Value::Vector(rc) => {
+            let roots = rc
+                .borrow()
+                .iter()
+                .map(|v| strip_locators(arena, *v))
+                .collect::<Vec<_>>();
+            arena.insert_rooted(Value::Vector(RefCell::new(
+                roots.iter().map(|v| v.pp()).collect(),
+            )))
+        }
+        Value::Located(v, _) => strip_locators(arena, *v),
+        _ => arena.root(value),
+    }
 }
 
 #[cfg(test)]

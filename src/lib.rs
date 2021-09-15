@@ -35,7 +35,7 @@ use ast::SyntaxElement;
 use environment::{ActivationFrame, ActivationFrameInfo, Environment, RcEnv};
 use heap::{GcMode, RootPtr};
 use read::Reader;
-use value::Value;
+use value::{strip_locators, Value};
 
 pub mod arena;
 pub mod ast;
@@ -156,6 +156,7 @@ impl Interpreter {
                 .values
                 .len(),
         }));
+        let read = strip_locators(&self.arena, read.pp());
         let syntax_tree = ast::parse(&self.arena, self, &cloned_env, &global_af_info, read.pp())
             .map_err(|e| format!("syntax error: {}", e))?;
         self.global_frame
