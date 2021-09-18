@@ -52,19 +52,6 @@ pub struct PositionedToken {
     pub token: Token,
 }
 
-// TODO: delete this
-// impl From<Token> for PositionedToken {
-//     fn from(t: Token) -> Self {
-//         Self {
-//             range: CodeRange {
-//                 start: (0, 0),
-//                 end: (0, 0),
-//             },
-//             token: t,
-//         }
-//     }
-// }
-
 impl PositionedToken {
     fn single_char(pos: CodePosition, token: Token) -> Self {
         Self {
@@ -89,11 +76,26 @@ pub type CodePosition = (u32, u32);
 
 /// Represents a range in source code.
 ///
-/// Start is inclusive, end is exclusive.
+/// Start and end are inclusive
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct CodeRange {
     pub start: CodePosition,
     pub end: CodePosition,
+}
+
+impl CodeRange {
+    // TODO could at least check relative order
+    pub fn merge(self, other: CodeRange) -> CodeRange {
+        CodeRange {
+            start: self.start,
+            end: other.end,
+        }
+    }
+}
+
+pub struct LexError {
+    pub msg: String,
+    pub location: Option<CodeRange>,
 }
 
 #[derive(Debug, PartialEq, Clone)]

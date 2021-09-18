@@ -144,7 +144,7 @@ fn rep(vm_state: &Interpreter, toks: Vec<Vec<PositionedToken>>, silent: bool) ->
             .read_tokens(&token_vector)
             .map_err(|e| println!("parse error: {:?}", e))?;
 
-        match vm_state.parse_compile_run(parse_value) {
+        match vm_state.parse_compile_run(parse_value.ptr) {
             Ok(v) => {
                 if !silent {
                     println!(" => {}", v.pp().pretty_print())

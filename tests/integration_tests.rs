@@ -30,7 +30,7 @@ fn execute_rooted(vm_state: &Interpreter, code: &str) -> Result<RootPtr, String>
     let mut results: Vec<_> = reader
         .read_many(code)?
         .into_iter()
-        .map(|read| vm_state.parse_compile_run(read))
+        .map(|read| vm_state.parse_compile_run(read.ptr))
         .collect::<Result<Vec<_>, _>>()?;
     results.pop().ok_or("no expressions".into())
 }

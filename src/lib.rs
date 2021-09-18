@@ -136,7 +136,7 @@ impl Interpreter {
         //println!("Values: {:?}", values);
         for v in values.into_iter() {
             // println!("eval> {}", pretty_print(arena, v.pp()));
-            self.parse_compile_run(v)?;
+            self.parse_compile_run(v.ptr)?;
         }
         self.global_environment.borrow_mut().remove_special();
         Ok(())
