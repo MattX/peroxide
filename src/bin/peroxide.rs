@@ -23,11 +23,13 @@ use std::env;
 use std::rc::Rc;
 use std::str::FromStr;
 
+use peroxide::error::locate_message;
 use clap::{App, Arg};
 use peroxide::heap::GcMode;
 use peroxide::lex::{PositionedToken, SegmentationResult};
 use peroxide::read::Reader;
 use peroxide::repl::{FileRepl, GetLineError, ReadlineRepl, Repl, StdIoRepl};
+use peroxide::value::Locator;
 use peroxide::Interpreter;
 
 fn main() {
@@ -114,7 +116,8 @@ fn handle_one_expr(
         };
 
         let line = line_opt.unwrap();
-        let mut tokenize_result = peroxide::lex::lex(&line)?;
+        let mut tokenize_result = peroxide::lex::lex(&line)
+            .map_err(|e| locate_message(&line, &Locator::new("<repl>", e.location), &e.msg))?;
         current_expr_string.push(line);
         pending_expr.append(&mut tokenize_result);
 

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::{Display, Formatter};
 use std::str::Chars;
 
 use num_bigint::{BigInt, Sign};
@@ -91,11 +92,43 @@ impl CodeRange {
             end: other.end,
         }
     }
+
+    fn from_pos(pos: CodePosition) -> CodeRange {
+        CodeRange {
+            start: pos,
+            end: pos,
+        }
+    }
+
+    fn new(start: CodePosition, end: CodePosition) -> CodeRange {
+        CodeRange { start, end }
+    }
 }
 
+impl Display for CodeRange {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.start == self.end {
+            write!(f, "{}:{}", self.start.0, self.start.1)
+        } else {
+            write!(
+                f,
+                "{}:{}->{}:{}",
+                self.start.0, self.start.1, self.end.0, self.end.1
+            )
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct LexError {
     pub msg: String,
-    pub location: Option<CodeRange>,
+    pub location: CodeRange,
+}
+
+impl LexError {
+    fn new<T>(msg: String, location: CodeRange) -> Result<T, LexError> {
+        Err(Self { msg, location })
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -127,7 +160,7 @@ impl NumValue {
 }
 
 /// Turns an str slice into a vector of tokens, or fails with an error message.
-pub fn lex(input: &str) -> Result<Vec<PositionedToken>, String> {
+pub fn lex(input: &str) -> Result<Vec<PositionedToken>, LexError> {
     let mut it = positioned_chars(input);
     let mut tokens: Vec<PositionedToken> = Vec::new();
     loop {
@@ -327,13 +360,16 @@ impl Exactness {
     }
 }
 
-fn consume_number(it: &mut PositionedChars) -> Result<PositionedToken, String> {
+fn consume_number(it: &mut PositionedChars) -> Result<PositionedToken, LexError> {
     let (start, end, chars) = take_delimited_token(it, 1);
-    let n = parse_number(&chars, 10, Exactness::Default)?;
+    let n = parse_number(&chars, 10, Exactness::Default).map_err(|msg| LexError {
+        msg,
+        location: CodeRange::new(start, end),
+    })?;
     Ok(PositionedToken::new(start, end, Token::Num(n)))
 }
 
-fn consume_sign_or_dot(it: &mut PositionedChars) -> Result<PositionedToken, String> {
+fn consume_sign_or_dot(it: &mut PositionedChars) -> Result<PositionedToken, LexError> {
     let (start, end, chars) = take_delimited_token(it, 1);
     let token_s: String = chars.iter().collect();
 
@@ -349,22 +385,25 @@ fn consume_sign_or_dot(it: &mut PositionedChars) -> Result<PositionedToken, Stri
             || token_s.starts_with("+nan.0")
             || token_s.starts_with("-nan.0")
         {
-            let n = parse_number(&chars, 10, Exactness::Default)?;
+            let n = parse_number(&chars, 10, Exactness::Default).map_err(|msg| LexError {
+                msg,
+                location: CodeRange::new(start, end),
+            })?;
             return Ok(PositionedToken::new(start, end, Token::Num(n)));
         }
     }
     Ok(PositionedToken::new(start, end, Token::Symbol(token_s)))
 }
 
-fn consume_hash(it: &mut PositionedChars) -> Result<PositionedToken, String> {
+fn consume_hash(it: &mut PositionedChars) -> Result<PositionedToken, LexError> {
     let (start_pos, first) = it.next().unwrap();
     debug_assert_eq!(first, '#');
-    if let Some((_pos, c)) = it.next() {
+    if let Some((pos, c)) = it.next() {
         match c {
             '\\' => {
                 let (_start, end, seq) = take_delimited_token(it, 1);
                 let tok = match seq.len() {
-                    0 => Err("unexpected end of token.".to_string()),
+                    0 => Err("unexpected end of #-token.".to_string()),
                     1 => Ok(Token::Character(seq[0])),
                     _ => {
                         let descriptor: String = seq.into_iter().collect();
@@ -374,7 +413,11 @@ fn consume_hash(it: &mut PositionedChars) -> Result<PositionedToken, String> {
                             _ => Err(format!("unknown character descriptor: `{}`.", descriptor)),
                         }
                     }
-                }?;
+                }
+                .map_err(|e| LexError {
+                    msg: e,
+                    location: CodeRange::new(start_pos, end),
+                })?;
                 Ok(PositionedToken::new(start_pos, end, tok))
             }
             't' => Ok(PositionedToken::new(
@@ -396,18 +439,30 @@ fn consume_hash(it: &mut PositionedChars) -> Result<PositionedToken, String> {
                 (Some((_, '8')), Some((end, '('))) => {
                     Ok(PositionedToken::new(start_pos, end, Token::OpenByteVector))
                 }
-                (a, b) => Err(format!("unknown token form: `#u{:?}{:?}...", a, b)),
+                (a, b) => LexError::new(
+                    format!("unknown token form: `#u{:?}{:?}...", a, b),
+                    CodeRange::from_pos(start_pos),
+                ),
             },
             'i' | 'e' | 'b' | 'o' | 'd' | 'x' => {
                 let (_start, end, mut num) = take_delimited_token(it, 1);
                 num.insert(0, c);
-                let n = parse_prefixed_number(&num, None)?;
+                let n = parse_prefixed_number(&num, None).map_err(|msg| LexError {
+                    msg,
+                    location: CodeRange::new(start_pos, end),
+                })?;
                 Ok(PositionedToken::new(start_pos, end, Token::Num(n)))
             }
-            _ => Err(format!("unknown token form: `#{}...`.", c)),
+            _ => LexError::new(
+                format!("unknown token form: `#{}...`.", c),
+                CodeRange::new(start_pos, pos),
+            ),
         }
     } else {
-        Err("unexpected end of #-token.".to_string())
+        LexError::new(
+            "unexpected end of #-token.".to_string(),
+            CodeRange::from_pos(start_pos),
+        )
     }
 }
 
@@ -585,27 +640,32 @@ fn parse_float(s: &[char]) -> Option<BigRational> {
 
 fn parse_special_real(s: &[char]) -> Option<f64> {
     match s.iter().collect::<String>().as_ref() {
-        "+inf.0" => Some(std::f64::INFINITY),
-        "-inf.0" => Some(std::f64::NEG_INFINITY),
-        "+nan.0" | "-nan.0" => Some(std::f64::NAN),
+        "+inf.0" => Some(f64::INFINITY),
+        "-inf.0" => Some(f64::NEG_INFINITY),
+        "+nan.0" | "-nan.0" => Some(f64::NAN),
         _ => None,
     }
 }
 
-fn consume_string(it: &mut PositionedChars) -> Result<PositionedToken, String> {
+fn consume_string(it: &mut PositionedChars) -> Result<PositionedToken, LexError> {
     let (start_pos, first) = it.next().unwrap();
     debug_assert_eq!(first, '"');
 
     let mut found_end: bool = false;
     let mut escaped: bool = false;
     let mut result: String = String::new();
-    for (_pos, c) in &mut *it {
+    for (pos, c) in &mut *it {
         if escaped {
             let r = match c {
                 'n' => '\n',
                 '"' => '"',
                 '\\' => '\\',
-                _ => return Err(format!("Invalid escape `\\{}`", c)),
+                _ => {
+                    return LexError::new(
+                        format!("Invalid escape `\\{}`", c),
+                        CodeRange::from_pos(pos),
+                    )
+                }
             };
             result.push(r);
         } else if c == '"' {
@@ -624,7 +684,10 @@ fn consume_string(it: &mut PositionedChars) -> Result<PositionedToken, String> {
             Token::String(result),
         ))
     } else {
-        Err(format!("Unterminated string `\"{}`.", result))
+        LexError::new(
+            format!("unterminated string `\"{}`", result),
+            CodeRange::from_pos(it.last_position),
+        )
     }
 }
 

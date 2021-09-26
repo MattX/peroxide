@@ -23,7 +23,7 @@ use std::rc::Rc;
 use arena::Arena;
 use heap::RootPtr;
 use lex;
-use lex::{CodeRange, NumValue, PositionedToken, Token};
+use lex::{CodeRange, LexError, NumValue, PositionedToken, Token};
 use num_complex::Complex;
 use num_traits::cast::ToPrimitive;
 use util::simplify_numeric;
@@ -34,6 +34,21 @@ pub enum NoParseResult {
     Nothing,
     ParseError(String),
     LocatedParseError { msg: String, location: CodeRange },
+}
+
+impl NoParseResult {
+    fn new_located<T>(msg: String, location: CodeRange) -> Result<T, NoParseResult> {
+        Err(NoParseResult::LocatedParseError { msg, location })
+    }
+}
+
+impl From<LexError> for NoParseResult {
+    fn from(le: LexError) -> Self {
+        NoParseResult::LocatedParseError {
+            msg: format!("lexing error: {}", le.msg),
+            location: le.location,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -77,26 +92,30 @@ impl<'ar> Reader<'ar> {
     }
 
     // TODO maybe expose a `read` method that just returns a RootPtr?.
-    pub fn read(&self, input: &str) -> Result<ParseResult, String> {
-        let tokens = lex::lex(input)?;
-        self.read_tokens(&tokens).map_err(|e| format!("{:?}", e))
-    }
+    // pub fn read(&self, input: &str) -> Result<ParseResult, String> {
+    //     let tokens = lex::lex(input)?;
+    //     self.read_tokens(&tokens).map_err(|e| format!("{:?}", e))
+    // }
 
-    pub fn read_many(&self, code: &str) -> Result<Vec<ParseResult>, String> {
+    pub fn read_many(&self, code: &str) -> Result<Vec<ParseResult>, NoParseResult> {
         let tokens = lex::lex(code)?;
-        let segments = lex::segment(tokens)?;
+        let segments = lex::segment(tokens).map_err(|e| NoParseResult::ParseError(e))?;
         if !segments.remainder.is_empty() {
-            return Err(format!(
-                "Unterminated expression: dangling tokens {:?}",
-                segments.remainder
-            ));
+            return NoParseResult::new_located(
+                "unterminated expression: dangling tokens".to_string(),
+                segments
+                    .remainder
+                    .first()
+                    .unwrap()
+                    .range
+                    .merge(segments.remainder.last().unwrap().range),
+            );
         }
         segments
             .segments
             .iter()
             .map(|s| self.read_tokens(s))
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| format!("{:?}", e))
     }
 
     fn do_read<'a, 'b, I>(&self, it: &'a mut Peekable<I>) -> Result<ParseResult, NoParseResult>

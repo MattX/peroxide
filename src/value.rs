@@ -14,6 +14,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::fmt;
+use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 
 use arena::Arena;
@@ -101,6 +102,7 @@ impl fmt::Display for Value {
                 write!(f, "#({})", contents)
             }
             Value::Environment(rce) => write!(f, "{:?}", rce.borrow()),
+            Value::Located(ptr, loc) => write!(f, "#<loc {} @ {}>", **ptr, loc),
             e => write!(f, "{:?}", e),
         }
     }
@@ -138,6 +140,7 @@ impl heap::Inventory for Value {
             Value::Port(p) => p.inventory(v),
             Value::Continuation(c) => c.inventory(v),
             Value::CodeBlock(c) => c.inventory(v),
+            Value::Located(p, _loc) => p.inventory(v),
             _ => (),
         }
     }
@@ -374,6 +377,21 @@ pub fn equal(left: PoolPtr, right: PoolPtr) -> bool {
 pub struct Locator {
     pub file_name: Rc<String>,
     pub range: CodeRange,
+}
+
+impl Locator {
+    pub fn new(file_name: impl Into<String>, range: CodeRange) -> Locator {
+        Locator {
+            file_name: Rc::new(file_name.into()),
+            range,
+        }
+    }
+}
+
+impl Display for Locator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.file_name, self.range)
+    }
 }
 
 /// Requires `value` to be rooted?

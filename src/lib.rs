@@ -33,14 +33,16 @@ use std::sync::Arc;
 use arena::Arena;
 use ast::SyntaxElement;
 use environment::{ActivationFrame, ActivationFrameInfo, Environment, RcEnv};
+use error::locate_message;
 use heap::{GcMode, RootPtr};
-use read::Reader;
-use value::{strip_locators, Value};
+use read::{NoParseResult, Reader};
+use value::{strip_locators, Locator, Value};
 
 pub mod arena;
 pub mod ast;
 pub mod compile;
 pub mod environment;
+pub mod error;
 pub mod heap;
 pub mod lex;
 pub mod primitives;
@@ -131,8 +133,20 @@ impl Interpreter {
 
     pub fn initialize(&self, fname: &str) -> Result<(), String> {
         let contents = fs::read_to_string(fname).map_err(|e| e.to_string())?;
-        let values =
-            Reader::new(&self.arena, true, Rc::new("<stdlib>".to_string())).read_many(&contents)?;
+        let values = Reader::new(&self.arena, true, Rc::new("<stdlib>".to_string()))
+            .read_many(&contents)
+            .map_err(|e| match e {
+                NoParseResult::Nothing => "standard library: empty file".to_string(),
+                NoParseResult::ParseError(msg) => msg,
+                NoParseResult::LocatedParseError { msg, location } => locate_message(
+                    &contents,
+                    &Locator {
+                        file_name: Rc::new("<stdlib>".into()),
+                        range: location,
+                    },
+                    &msg,
+                ),
+            })?;
         //println!("Values: {:?}", values);
         for v in values.into_iter() {
             // println!("eval> {}", pretty_print(arena, v.pp()));

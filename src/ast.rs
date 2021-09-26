@@ -44,10 +44,16 @@ use environment::{
 use heap::{PoolPtr, RootPtr};
 use primitives::SyntacticClosure;
 use util::check_len;
-use value::{list_from_vec, Value};
+use value::{list_from_vec, Locator, Value};
 use {compile, vm, Interpreter};
 
 const MAX_MACRO_EXPANSION: usize = 1000;
+
+#[derive(Debug)]
+pub struct LocatedSyntaxElement {
+    pub element: SyntaxElement,
+    pub locator: Option<Locator>,
+}
 
 #[derive(Debug)]
 pub enum SyntaxElement {
