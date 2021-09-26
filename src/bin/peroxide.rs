@@ -118,15 +118,16 @@ fn handle_one_expr(
         let line = line_opt.unwrap();
         let mut tokenize_result = peroxide::lex::lex(&line)
             .map_err(|e| locate_message(&line, &Locator::new("<repl>", e.location), &e.msg))?;
-        current_expr_string.push(line);
         pending_expr.append(&mut tokenize_result);
 
         let SegmentationResult {
             mut segments,
             remainder,
             depth: new_depth,
-        } = peroxide::lex::segment(pending_expr)?;
+        } = peroxide::lex::segment(pending_expr)
+            .map_err(|e| locate_message(&line, &Locator::new("<repl>", e.location), &e.msg))?;
         exprs.append(&mut segments);
+        current_expr_string.push(line);
 
         if remainder.is_empty() {
             break;

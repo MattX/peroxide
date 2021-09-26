@@ -2,6 +2,12 @@ use std::fmt::Write;
 
 use value::Locator;
 
+#[derive(Debug, Clone)]
+pub struct LocatedError<T> {
+    error: T,
+    locator: Locator,
+}
+
 pub fn locate_message(source: &str, locator: &Locator, msg: &str) -> String {
     let mut output = String::new();
 
@@ -28,13 +34,8 @@ pub fn locate_message(source: &str, locator: &Locator, msg: &str) -> String {
             )
             .unwrap();
             let marker = if i_line + 1 == locator.range.end.0 as usize {
-                let underline = if locator.range.start.1 == locator.range.end.1 {
-                    "^".to_string()
-                } else {
-                    "^".to_string()
-                        + &"-".repeat((locator.range.end.1 - locator.range.start.1 - 1) as usize)
-                        + "^"
-                };
+                let underline =
+                    "^".repeat((locator.range.end.1 - locator.range.start.1 + 1) as usize);
                 let prefix = " ".repeat((locator.range.start.1 + 1) as usize);
                 prefix + &underline
             } else {

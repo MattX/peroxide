@@ -126,8 +126,11 @@ pub struct LexError {
 }
 
 impl LexError {
-    fn new<T>(msg: String, location: CodeRange) -> Result<T, LexError> {
-        Err(Self { msg, location })
+    fn new<T>(msg: impl Into<String>, location: CodeRange) -> Result<T, LexError> {
+        Err(Self {
+            msg: msg.into(),
+            location,
+        })
     }
 }
 
@@ -439,10 +442,7 @@ fn consume_hash(it: &mut PositionedChars) -> Result<PositionedToken, LexError> {
                 (Some((_, '8')), Some((end, '('))) => {
                     Ok(PositionedToken::new(start_pos, end, Token::OpenByteVector))
                 }
-                (a, b) => LexError::new(
-                    format!("unknown token form: `#u{:?}{:?}...", a, b),
-                    CodeRange::from_pos(start_pos),
-                ),
+                _ => LexError::new("unknown token form: `#u...", CodeRange::new(start_pos, pos)),
             },
             'i' | 'e' | 'b' | 'o' | 'd' | 'x' => {
                 let (_start, end, mut num) = take_delimited_token(it, 1);
@@ -706,7 +706,7 @@ pub struct SegmentationResult {
 
 /// Splits a vector of token into a vector of vector of tokens, each of which represents a single
 /// expression that can be read.
-pub fn segment(toks: Vec<PositionedToken>) -> Result<SegmentationResult, String> {
+pub fn segment(toks: Vec<PositionedToken>) -> Result<SegmentationResult, LexError> {
     let mut segments = Vec::new();
     let mut current_segment = Vec::new();
     let mut brackets = Vec::new();
@@ -734,7 +734,7 @@ pub fn segment(toks: Vec<PositionedToken>) -> Result<SegmentationResult, String>
         } else if let Token::ClosingParen = tok.token {
             match brackets.pop() {
                 Some(BracketType::List) | Some(BracketType::Vector) => (),
-                _ => return Err("Unbalanced right parenthesis".into()),
+                _ => return LexError::new("unbalanced closing parenthesis", tok.range),
             };
             match brackets.last() {
                 Some(BracketType::Quote) => brackets.pop(),

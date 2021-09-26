@@ -36,7 +36,7 @@ use environment::{ActivationFrame, ActivationFrameInfo, Environment, RcEnv};
 use error::locate_message;
 use heap::{GcMode, RootPtr};
 use read::{NoParseResult, Reader};
-use value::{strip_locators, Locator, Value};
+use value::{strip_locators, Value};
 
 pub mod arena;
 pub mod ast;
@@ -137,15 +137,9 @@ impl Interpreter {
             .read_many(&contents)
             .map_err(|e| match e {
                 NoParseResult::Nothing => "standard library: empty file".to_string(),
-                NoParseResult::ParseError(msg) => msg,
-                NoParseResult::LocatedParseError { msg, location } => locate_message(
-                    &contents,
-                    &Locator {
-                        file_name: Rc::new("<stdlib>".into()),
-                        range: location,
-                    },
-                    &msg,
-                ),
+                NoParseResult::LocatedParseError { msg, locator } => {
+                    locate_message(&contents, &locator, &msg)
+                }
             })?;
         //println!("Values: {:?}", values);
         for v in values.into_iter() {

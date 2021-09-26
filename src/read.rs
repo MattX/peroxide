@@ -23,7 +23,7 @@ use std::rc::Rc;
 use arena::Arena;
 use heap::RootPtr;
 use lex;
-use lex::{CodeRange, LexError, NumValue, PositionedToken, Token};
+use lex::{CodeRange, NumValue, PositionedToken, Token};
 use num_complex::Complex;
 use num_traits::cast::ToPrimitive;
 use util::simplify_numeric;
@@ -32,23 +32,7 @@ use value::{Locator, Value};
 #[derive(Debug)]
 pub enum NoParseResult {
     Nothing,
-    ParseError(String),
-    LocatedParseError { msg: String, location: CodeRange },
-}
-
-impl NoParseResult {
-    fn new_located<T>(msg: String, location: CodeRange) -> Result<T, NoParseResult> {
-        Err(NoParseResult::LocatedParseError { msg, location })
-    }
-}
-
-impl From<LexError> for NoParseResult {
-    fn from(le: LexError) -> Self {
-        NoParseResult::LocatedParseError {
-            msg: format!("lexing error: {}", le.msg),
-            location: le.location,
-        }
-    }
+    LocatedParseError { msg: String, locator: Locator },
 }
 
 #[derive(Debug, Clone)]
@@ -82,10 +66,7 @@ impl<'ar> Reader<'ar> {
         let mut it = tokens.iter().peekable();
         let res = self.do_read(&mut it)?;
         if let Some(s) = it.peek() {
-            Err(NoParseResult::ParseError(format!(
-                "Unexpected token {:?}",
-                s
-            )))
+            Err(self.error(format!("unexpected token {:?}", s), s.range))
         } else {
             Ok(res)
         }
@@ -98,18 +79,18 @@ impl<'ar> Reader<'ar> {
     // }
 
     pub fn read_many(&self, code: &str) -> Result<Vec<ParseResult>, NoParseResult> {
-        let tokens = lex::lex(code)?;
-        let segments = lex::segment(tokens).map_err(NoParseResult::ParseError)?;
+        let tokens = lex::lex(code).map_err(|e| self.error(e.msg, e.location))?;
+        let segments = lex::segment(tokens).map_err(|e| self.error(e.msg, e.location))?;
         if !segments.remainder.is_empty() {
-            return NoParseResult::new_located(
-                "unterminated expression: dangling tokens".to_string(),
+            return Err(self.error(
+                "unterminated expression: dangling tokens",
                 segments
                     .remainder
                     .first()
                     .unwrap()
                     .range
                     .merge(segments.remainder.last().unwrap().range),
-            );
+            ));
         }
         segments
             .segments
@@ -133,20 +114,17 @@ impl<'ar> Reader<'ar> {
                 Token::Symbol(s) => {
                     Ok(self.insert_positioned(Value::Symbol(s.to_ascii_lowercase()), t.range))
                 }
-                Token::OpenParen => self.read_list(it, Some(t.range)),
+                Token::OpenParen => self.read_list(it, Some(t.range), t.range),
                 Token::OpenByteVector => self.read_bytevec(it, t.range),
                 Token::OpenVector => self.read_vec(it, t.range),
                 Token::Quote => self.read_quote(it, "quote", t.range),
                 Token::QuasiQuote => self.read_quote(it, "quasiquote", t.range),
                 Token::Unquote => self.read_quote(it, "unquote", t.range),
                 Token::UnquoteSplicing => self.read_quote(it, "unquote-splicing", t.range),
-                _ => Err(NoParseResult::ParseError(format!(
-                    "Unexpected token {:?}.",
-                    t
-                ))),
+                _ => Err(self.error(format!("unexpected token {:?}", t), t.range)),
             }
         } else {
-            panic!("do_parse called with no tokens.");
+            panic!("do_parse called with no tokens");
         }
     }
 
@@ -154,10 +132,14 @@ impl<'ar> Reader<'ar> {
     ///
     /// The `start` option should be passed iff no elements of the list have yet been read, and
     /// in that case it should contain the CodeRange for the opening `(`.
+    ///
+    /// The `prev` option should always contain the CodeRange for the last token read. (TODO this
+    /// is basically the same as `start`?)
     fn read_list<'a, 'b, I>(
         &self,
         it: &'a mut Peekable<I>,
         start: Option<CodeRange>,
+        prev: CodeRange,
     ) -> Result<ParseResult, NoParseResult>
     where
         I: Iterator<Item = &'b PositionedToken>,
@@ -171,26 +153,26 @@ impl<'ar> Reader<'ar> {
                 _ => {
                     let first = self.do_read(it)?;
                     let second = if let Some(PositionedToken {
-                        token: Token::Dot, ..
+                        token: Token::Dot,
+                        range,
                     }) = it.peek()
                     {
                         it.next();
                         let ret = self.do_read(it);
                         let next = it.next();
-                        if let Some(PositionedToken {
-                            token: Token::ClosingParen,
-                            ..
-                        }) = next
-                        {
-                            ret
-                        } else {
-                            Err(NoParseResult::ParseError(format!(
-                                "Unexpected token {:?} after dot.",
-                                next
-                            )))
+                        match next {
+                            Some(PositionedToken {
+                                token: Token::ClosingParen,
+                                ..
+                            }) => ret,
+                            Some(t) => Err(self.error(
+                                format!("unexpected token {:?} after dot", t.token),
+                                t.range,
+                            )),
+                            None => Err(self.error("missing token after dot", *range)),
                         }
                     } else {
-                        self.read_list(it, None)
+                        self.read_list(it, None, first.range)
                     }?;
                     let start = start.unwrap_or(t.range);
                     Ok(self.insert_positioned(
@@ -200,9 +182,7 @@ impl<'ar> Reader<'ar> {
                 }
             }
         } else {
-            Err(NoParseResult::ParseError(
-                "Unexpected end of list.".to_string(),
-            ))
+            Err(self.error("unexpected end of list", prev))
         }
     }
 
@@ -215,15 +195,12 @@ impl<'ar> Reader<'ar> {
         I: Iterator<Item = &'b PositionedToken>,
     {
         let mut result: Vec<u8> = Vec::new();
+        let mut last_pos = start;
 
         let end = loop {
             let t = it.peek();
             match t {
-                None => {
-                    return Err(NoParseResult::ParseError(
-                        "unterminated byte vector".to_string(),
-                    ))
-                }
+                None => return Err(self.error("unterminated byte vector", start.merge(last_pos))),
                 Some(&t) => match &t.token {
                     Token::ClosingParen => {
                         it.next();
@@ -232,15 +209,15 @@ impl<'ar> Reader<'ar> {
                     Token::Num(NumValue::Integer(i)) => {
                         it.next();
                         let b = i.to_u8().ok_or_else(|| {
-                            NoParseResult::ParseError(format!("Invalid byte value: {}.", i))
+                            self.error(format!("invalid byte value: {}", i), t.range)
                         })?;
                         result.push(b);
+                        last_pos = t.range;
                     }
                     v => {
-                        return Err(NoParseResult::ParseError(format!(
-                            "Non-byte in bytevector literal: {:?}",
-                            v
-                        )));
+                        return Err(
+                            self.error(format!("non-byte in bytevector literal: {:?}", v), t.range)
+                        );
                     }
                 },
             }
@@ -259,11 +236,12 @@ impl<'ar> Reader<'ar> {
     {
         let mut roots = Vec::new();
         let mut result = Vec::new();
+        let mut last_pos = start;
 
         let end = loop {
             let t = it.peek();
             match t {
-                None => return Err(NoParseResult::ParseError("unterminated vector".to_string())),
+                None => return Err(self.error("unterminated vector", start.merge(last_pos))),
                 Some(&t) => match &t.token {
                     Token::ClosingParen => {
                         it.next();
@@ -273,6 +251,7 @@ impl<'ar> Reader<'ar> {
                         let elem = self.do_read(it)?;
                         result.push(elem.ptr.pp());
                         roots.push(elem);
+                        last_pos = t.range;
                     }
                 },
             }
@@ -308,17 +287,27 @@ impl<'ar> Reader<'ar> {
     fn insert_positioned(&self, v: Value, range: CodeRange) -> ParseResult {
         let inner = self.arena.insert_rooted(v);
         let ptr = if self.locate {
-            self.arena.insert_rooted(Value::Located(
-                inner.pp(),
-                Box::new(Locator {
-                    file_name: self.file_name.clone(),
-                    range,
-                }),
-            ))
+            self.arena
+                .insert_rooted(Value::Located(inner.pp(), Box::new(self.locator(range))))
         } else {
             inner
         };
         ParseResult { ptr, range }
+    }
+
+    /// Convenience method to create a [`Locator`] with the current file name.
+    fn locator(&self, range: CodeRange) -> Locator {
+        Locator {
+            file_name: self.file_name.clone(),
+            range,
+        }
+    }
+
+    fn error(&self, msg: impl Into<String>, range: CodeRange) -> NoParseResult {
+        NoParseResult::LocatedParseError {
+            msg: msg.into(),
+            locator: self.locator(range),
+        }
     }
 }
 

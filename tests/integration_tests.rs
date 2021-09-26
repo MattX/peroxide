@@ -19,7 +19,7 @@ use std::rc::Rc;
 use peroxide::error::locate_message;
 use peroxide::heap::{GcMode, RootPtr};
 use peroxide::read::{NoParseResult, Reader};
-use peroxide::value::{Locator, Value};
+use peroxide::value::Value;
 use peroxide::Interpreter;
 
 fn execute(vm_state: &Interpreter, code: &str) -> Result<Value, String> {
@@ -32,15 +32,9 @@ fn execute_rooted(vm_state: &Interpreter, code: &str) -> Result<RootPtr, String>
         .read_many(code)
         .map_err(|e| match e {
             NoParseResult::Nothing => "standard library: empty file".to_string(),
-            NoParseResult::ParseError(msg) => msg,
-            NoParseResult::LocatedParseError { msg, location } => locate_message(
-                code,
-                &Locator {
-                    file_name: Rc::new("<stdlib>".into()),
-                    range: location,
-                },
-                &msg,
-            ),
+            NoParseResult::LocatedParseError { msg, locator } => {
+                locate_message(code, &locator, &msg)
+            }
         })?
         .into_iter()
         .map(|read| vm_state.parse_compile_run(read.ptr))
