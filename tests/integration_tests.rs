@@ -34,7 +34,7 @@ fn execute_rooted(vm_state: &Interpreter, code: &str) -> Result<RootPtr, String>
             NoParseResult::Nothing => "standard library: empty file".to_string(),
             NoParseResult::ParseError(msg) => msg,
             NoParseResult::LocatedParseError { msg, location } => locate_message(
-                &code,
+                code,
                 &Locator {
                     file_name: Rc::new("<stdlib>".into()),
                     range: location,

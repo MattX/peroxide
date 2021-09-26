@@ -99,7 +99,7 @@ impl<'ar> Reader<'ar> {
 
     pub fn read_many(&self, code: &str) -> Result<Vec<ParseResult>, NoParseResult> {
         let tokens = lex::lex(code)?;
-        let segments = lex::segment(tokens).map_err(|e| NoParseResult::ParseError(e))?;
+        let segments = lex::segment(tokens).map_err(NoParseResult::ParseError)?;
         if !segments.remainder.is_empty() {
             return NoParseResult::new_located(
                 "unterminated expression: dangling tokens".to_string(),

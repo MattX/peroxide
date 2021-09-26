@@ -1000,7 +1000,7 @@ mod tests {
 
     #[test]
     fn test_char_iterator() {
-        let mut it = positioned_chars(&"ab\ncdefghijklm");
+        let mut it = positioned_chars("ab\ncdefghijklm");
         assert_eq!(it.peek().cloned(), Some(((1, 1), 'a')));
         assert_eq!(it.peek().cloned(), Some(((1, 1), 'a')));
         assert_eq!(it.last_position(), (1, 0));

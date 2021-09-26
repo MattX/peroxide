@@ -1,5 +1,4 @@
 use std::fmt::Write;
-use std::iter::repeat;
 
 use value::Locator;
 
@@ -7,7 +6,7 @@ pub fn locate_message(source: &str, locator: &Locator, msg: &str) -> String {
     let mut output = String::new();
 
     let max_num_line_width = locator.range.end.0.to_string().chars().count();
-    let prefix: String = repeat(' ').take(max_num_line_width).collect();
+    let prefix: String = " ".repeat(max_num_line_width);
 
     writeln!(output, "error: {}", msg).unwrap();
     writeln!(output, "{}--> {}", prefix, locator).unwrap();
@@ -33,20 +32,13 @@ pub fn locate_message(source: &str, locator: &Locator, msg: &str) -> String {
                     "^".to_string()
                 } else {
                     "^".to_string()
-                        + &repeat('-')
-                            .take((locator.range.end.1 - locator.range.start.1 - 1) as usize)
-                            .collect::<String>()
+                        + &"-".repeat((locator.range.end.1 - locator.range.start.1 - 1) as usize)
                         + "^"
                 };
-                let prefix = repeat(' ')
-                    .take((locator.range.start.1 + 1) as usize)
-                    .collect::<String>();
+                let prefix = " ".repeat((locator.range.start.1 + 1) as usize);
                 prefix + &underline
             } else {
-                repeat('-')
-                    .take((locator.range.start.1 + 2) as usize)
-                    .collect::<String>()
-                    + "^"
+                "-".repeat((locator.range.start.1 + 2) as usize) + "^"
             };
             writeln!(output, "{} | {}", prefix, marker).unwrap();
         } else if i_line + 1 == locator.range.end.0 as usize {
@@ -58,10 +50,7 @@ pub fn locate_message(source: &str, locator: &Locator, msg: &str) -> String {
                 width = max_num_line_width
             )
             .unwrap();
-            let marker = repeat('-')
-                .take((locator.range.end.1 + 2) as usize)
-                .collect::<String>()
-                + "^";
+            let marker = "-".repeat((locator.range.end.1 + 2) as usize) + "^";
             writeln!(output, "{} | {}", prefix, marker).unwrap();
         } else {
             writeln!(
