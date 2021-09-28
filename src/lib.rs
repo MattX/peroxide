@@ -36,7 +36,7 @@ use environment::{ActivationFrame, ActivationFrameInfo, Environment, RcEnv};
 use error::locate_message;
 use heap::{GcMode, RootPtr};
 use read::{NoParseResult, Reader};
-use value::{strip_locators, Value};
+use value::Value;
 
 pub mod arena;
 pub mod ast;
@@ -164,7 +164,7 @@ impl Interpreter {
                 .values
                 .len(),
         }));
-        let read = strip_locators(&self.arena, read.pp());
+        // let read = strip_locators(&self.arena, read.pp());
         let syntax_tree = ast::parse(
             &self.arena,
             self,

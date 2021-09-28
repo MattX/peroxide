@@ -44,7 +44,7 @@ use environment::{
 use heap::{PoolPtr, RootPtr};
 use primitives::SyntacticClosure;
 use util::check_len;
-use value::{list_from_vec, Locator, Value};
+use value::{list_from_vec, strip_locators, Locator, Value};
 use {compile, vm, Interpreter};
 
 const MAX_MACRO_EXPANSION: usize = 1000;
@@ -217,19 +217,16 @@ pub fn parse(
         }
         // TODO when we're parsing the results of a macro, we might want to / need to do something
         //      different with locators?
-        Value::Located(ptr, locator) => {
-            // let src: Source = *locator.clone();
-            parse(
-                arena,
-                vms,
-                &env,
-                af_info,
-                *ptr,
-                Source::from(*locator.clone()),
-            )
-        }
+        Value::Located(ptr, locator) => parse(
+            arena,
+            vms,
+            &env,
+            af_info,
+            *ptr,
+            Source::from(*locator.clone()),
+        ),
         _ => Ok(SyntaxElement::Quote(Box::new(Quote {
-            quoted: arena.root(value),
+            quoted: strip_locators(arena, arena.root(value).pp()),
         }))
         .with_source(source)),
     }
@@ -274,7 +271,7 @@ fn parse_pair(
 ) -> Result<LocatedSyntaxElement, String> {
     let rest = cdr.list_to_vec()?;
     let (car_env, resolved_car) = resolve_syntactic_closure(arena, env, car)?;
-    match &*resolved_car {
+    match &*resolved_car.strip_locator() {
         Value::Symbol(s) => match match_symbol(&car_env, s) {
             Symbol::Quote => parse_quote(arena, env, &rest, false, source),
             Symbol::SyntaxQuote => parse_quote(arena, env, &rest, true, source),
@@ -308,12 +305,11 @@ fn parse_quote(
     if rest.len() != 1 {
         Err(format!("quote expected 1 argument, got {}", rest.len()))
     } else if syntax {
-        Ok(SyntaxElement::Quote(Box::new(Quote {
-            quoted: arena.root(rest[0]),
-        }))
-        .with_source(source))
+        let unlocated = strip_locators(arena, arena.root(rest[0]).pp());
+        Ok(SyntaxElement::Quote(Box::new(Quote { quoted: unlocated })).with_source(source))
     } else {
-        let quoted = arena.root(strip_syntactic_closure(env, rest[0]));
+        let unlocated = strip_locators(arena, arena.root(rest[0]).pp());
+        let quoted = arena.root(strip_syntactic_closure(env, unlocated.pp()));
         Ok(SyntaxElement::Quote(Box::new(Quote { quoted })).with_source(source))
     }
 }
@@ -609,8 +605,8 @@ fn get_define_data(rest: &[PoolPtr], source: Source) -> Result<DefineData, Strin
 /// Helper method to parse direct lambda defines `(define (x y z) y z)`.
 fn get_lambda_define_value(rest: &[PoolPtr], source: Source) -> Result<DefineData, String> {
     check_len(rest, Some(2), None)?;
-    if let Value::Pair(car, cdr) = &*rest[0] {
-        if let Value::Symbol(s) = &*car.get() {
+    if let Value::Pair(car, cdr) = &*rest[0].strip_locator() {
+        if let Value::Symbol(s) = &*car.get().strip_locator() {
             let variable = s.clone();
             Ok(DefineData {
                 target: DefineTarget::Bare(variable),
@@ -661,7 +657,7 @@ fn parse_formals(formals: PoolPtr) -> Result<Formals, String> {
                 rest: Some(dt),
             });
         } else {
-            match &*formal {
+            match &*formal.strip_locator() {
                 Value::EmptyList => return Ok(Formals { values, rest: None }),
                 Value::Pair(car, cdr) => {
                     if let Some(dt) = get_define_target(car.get()) {
@@ -695,6 +691,7 @@ fn parse_define_syntax(
     check_len(rest, Some(2), Some(2))?;
 
     let symbol = rest[0]
+        .strip_locator()
         .try_get_symbol()
         .ok_or_else(|| {
             format!(
@@ -732,6 +729,7 @@ fn parse_let_syntax(
         check_len(&binding, Some(2), Some(2))?;
 
         let symbol = binding[0]
+            .strip_locator()
             .try_get_symbol()
             .ok_or_else(|| {
                 format!(
@@ -842,7 +840,7 @@ fn expand_macro_full(
     source: Source,
 ) -> Result<(PoolPtr, Source), String> {
     // TODO should we just take in a RootPtr instead of rooting here?
-    let expr = arena.root(expr);
+    let expr = strip_locators(arena, arena.root(expr).pp());
     let mut source = Source::Macro {
         macro_source: mac.source.clone(),
         code_source: Box::new(source),
@@ -963,7 +961,7 @@ fn collect_internal_defines(
         } else {
             *statement
         };
-        if let Value::Pair(car, cdr) = &*expanded_statement {
+        if let Value::Pair(car, cdr) = &*expanded_statement.strip_locator() {
             let (res_env, res_car) = resolve_syntactic_closure(arena, env, car.get())?;
             if let Value::Symbol(s) = &*res_car.strip_locator() {
                 match match_symbol(&res_env, s) {
@@ -1036,7 +1034,7 @@ fn strip_syntactic_closure(env: &RcEnv, value: PoolPtr) -> PoolPtr {
 }
 
 fn get_define_target(value: PoolPtr) -> Option<DefineTarget> {
-    match &*value {
+    match &*value.strip_locator() {
         Value::Symbol(s) => Some(DefineTarget::Bare(s.clone())),
         Value::SyntacticClosure(sc) => match &*sc.expr {
             Value::Symbol(_) => Some(DefineTarget::SyntacticClosure(value)),
