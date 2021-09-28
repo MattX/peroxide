@@ -150,6 +150,7 @@ pub fn parse(
     af_info: &RcAfi,
     value: PoolPtr,
 ) -> Result<SyntaxElement, String> {
+    // TODO remove the hold? It says just above that we don't need it...
     let _value_hold = arena.root(value);
     let (env, value) = resolve_syntactic_closure(arena, env, value)?;
     match &*value {
@@ -176,14 +177,14 @@ fn construct_reference(env: &RcEnv, afi: &RcAfi, name: &str) -> Result<Reference
             depth: afi.borrow().altitude - v.altitude,
             index: v.index,
         }),
-        Some(_) => Err(format!(
-            "Illegal reference to {}, which is not a variable.",
+        Some(EnvironmentValue::Macro(_)) => Err(format!(
+            "illegal reference to {}, which is a macro, not a variable",
             name
         )),
         None => {
             // TODO: remove this, or find a better way to surface it.
             println!(
-                "Warning: reference to undefined variable {} in {:?}.",
+                "warning: reference to undefined variable {} in {:?}",
                 name, env
             );
             let index = env.define_toplevel(name, afi);

@@ -14,6 +14,7 @@
 
 extern crate bitvec;
 extern crate core;
+extern crate log;
 extern crate num_bigint;
 extern crate num_complex;
 extern crate num_integer;

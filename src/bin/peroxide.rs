@@ -14,7 +14,9 @@
 
 extern crate clap;
 extern crate core;
+extern crate log;
 extern crate peroxide;
+extern crate pretty_env_logger;
 extern crate rustyline;
 
 use std::env;
@@ -27,10 +29,11 @@ use peroxide::repl::{FileRepl, GetLineError, ReadlineRepl, Repl, StdIoRepl};
 use peroxide::Interpreter;
 
 fn main() {
+    pretty_env_logger::init();
     let args: Vec<String> = env::args().collect();
     match do_main(args) {
         Err(e) => {
-            println!("Error: {}", e);
+            println!("error: {}", e);
             std::process::exit(1)
         }
         Ok(()) => std::process::exit(0),
