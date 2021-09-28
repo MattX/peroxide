@@ -14,7 +14,7 @@
 
 extern crate peroxide;
 
-use peroxide::heap::RootPtr;
+use peroxide::heap::{GcMode, RootPtr};
 use peroxide::read::read_many;
 use peroxide::value::Value;
 use peroxide::Interpreter;
@@ -49,7 +49,7 @@ fn magic_execute_to_vec(code: &str, init: bool) -> Result<Vec<Value>, String> {
 }
 
 fn make_interpreter(init: bool) -> Interpreter {
-    let interpreter = Interpreter::new();
+    let interpreter = Interpreter::new(GcMode::Normal);
     if init {
         interpreter.initialize("src/scheme-lib/init.scm").unwrap();
     }

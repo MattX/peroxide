@@ -18,8 +18,10 @@ extern crate peroxide;
 extern crate rustyline;
 
 use std::env;
+use std::str::FromStr;
 
 use clap::{App, Arg};
+use peroxide::heap::GcMode;
 use peroxide::lex::{SegmentationResult, Token};
 use peroxide::repl::{FileRepl, GetLineError, ReadlineRepl, Repl, StdIoRepl};
 use peroxide::Interpreter;
@@ -37,7 +39,7 @@ fn main() {
 
 fn do_main(args: Vec<String>) -> Result<(), String> {
     let options = parse_args(&args.iter().map(|x| &**x).collect::<Vec<_>>())
-        .map_err(|e| format!("Could not parse arguments: {}", e))?;
+        .map_err(|e| format!("could not parse arguments: {}", e))?;
 
     let silent = options.input_file.is_some();
     let mut repl: Box<dyn Repl> = match options.input_file {
@@ -51,11 +53,10 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
         }
     };
 
-    let interpreter = Interpreter::new();
+    let interpreter = Interpreter::new(options.gc_mode);
     let interruptor_clone = interpreter.interruptor();
 
     ctrlc::set_handler(move || {
-        println!("Ctrl+C received!");
         interruptor_clone.interrupt();
     })
     .map_err(|e| format!("error setting Ctrl+C handler: {}", e.to_string()))?;
@@ -154,6 +155,7 @@ struct Options {
     pub enable_readline: bool,
     pub no_std: bool,
     pub input_file: Option<String>,
+    pub gc_mode: GcMode,
 }
 
 fn parse_args(args: &[&str]) -> Result<Options, String> {
@@ -170,6 +172,12 @@ fn parse_args(args: &[&str]) -> Result<Options, String> {
                 .long("no-readline")
                 .help("Disable readline library"),
         )
+        .arg(
+            Arg::with_name("gc-mode")
+                .long("gc-mode")
+                .possible_values(&["off", "normal", "debug", "debug-heavy"])
+                .default_value("normal"),
+        )
         .arg(Arg::with_name("input-file").help("Sets the input file to use"))
         .get_matches_from(args);
 
@@ -177,5 +185,6 @@ fn parse_args(args: &[&str]) -> Result<Options, String> {
         enable_readline: !matches.is_present("no-readline"),
         no_std: matches.is_present("no-std"),
         input_file: matches.value_of("input-file").map(|v| v.to_string()),
+        gc_mode: GcMode::from_str(matches.value_of("gc-mode").unwrap()).unwrap(),
     })
 }

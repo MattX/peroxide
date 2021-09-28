@@ -95,12 +95,10 @@ impl Arena {
             }
         }
     }
-}
 
-impl Default for Arena {
-    fn default() -> Self {
+    pub fn with_gc_mode(gc_mode: heap::GcMode) -> Arena {
         let mut roots = Vec::new();
-        let values = heap::RHeap::with_gc_mode(heap::GcMode::Normal);
+        let values = heap::RHeap::with_gc_mode(gc_mode);
 
         macro_rules! root {
             ($i: ident, $x: expr) => {
@@ -128,6 +126,12 @@ impl Default for Arena {
             t,
             roots,
         }
+    }
+}
+
+impl Default for Arena {
+    fn default() -> Self {
+        Self::with_gc_mode(heap::GcMode::Normal)
     }
 }
 

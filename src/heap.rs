@@ -36,6 +36,7 @@ use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::{Rc, Weak};
+use std::str::FromStr;
 
 use bitvec::prelude::{BitBox, BitVec};
 use value::Value;
@@ -60,6 +61,20 @@ impl GcMode {
 
     fn is_normal(self) -> bool {
         self == GcMode::DebugNormal || self == GcMode::Normal
+    }
+}
+
+impl FromStr for GcMode {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "off" => Ok(GcMode::Off),
+            "normal" => Ok(GcMode::Normal),
+            "debug" => Ok(GcMode::DebugNormal),
+            "debug-heavy" => Ok(GcMode::DebugHeavy),
+            _ => Err(()),
+        }
     }
 }
 
