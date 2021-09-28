@@ -140,7 +140,7 @@ impl heap::Inventory for Value {
             Value::Port(p) => p.inventory(v),
             Value::Continuation(c) => c.inventory(v),
             Value::CodeBlock(c) => c.inventory(v),
-            Value::Located(p, _loc) => p.inventory(v),
+            Value::Located(p, _loc) => v.push(*p),
             _ => (),
         }
     }
