@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+extern crate clap;
 extern crate core;
 extern crate peroxide;
 extern crate rustyline;
 
 use std::env;
 
+use clap::{App, Arg};
 use peroxide::lex::{SegmentationResult, Token};
 use peroxide::repl::{FileRepl, GetLineError, ReadlineRepl, Repl, StdIoRepl};
 use peroxide::Interpreter;
@@ -154,21 +156,26 @@ struct Options {
     pub input_file: Option<String>,
 }
 
-// TODO emit sensible error / warning messages
 fn parse_args(args: &[&str]) -> Result<Options, String> {
-    let (mut positional, flags): (Vec<&str>, Vec<&str>) =
-        args.iter().skip(1).partition(|s| !s.starts_with("--"));
+    let matches = App::new("Peroxide")
+        .version("0.1")
+        .author("Matthieu Felix <matthieufelix@gmail.com>")
+        .arg(
+            Arg::with_name("no-std")
+                .long("no-std")
+                .help("Do not load the standard library"),
+        )
+        .arg(
+            Arg::with_name("no-readline")
+                .long("no-readline")
+                .help("Disable readline library"),
+        )
+        .arg(Arg::with_name("input-file").help("Sets the input file to use"))
+        .get_matches_from(args);
 
-    let enable_readline = !flags.iter().any(|&x| x == "--no-readline");
-    let no_std = flags.iter().any(|&x| x == "--no-std");
-    let input_file = if positional.len() <= 1 {
-        positional.pop().map(ToString::to_string)
-    } else {
-        return Err("Too many positional arguments.".into());
-    };
     Ok(Options {
-        enable_readline,
-        no_std,
-        input_file,
+        enable_readline: !matches.is_present("no-readline"),
+        no_std: matches.is_present("no-std"),
+        input_file: matches.value_of("input-file").map(|v| v.to_string()),
     })
 }
