@@ -226,7 +226,7 @@ pub fn parse(
             Source::from(*locator.clone()),
         ),
         _ => Ok(SyntaxElement::Quote(Box::new(Quote {
-            quoted: strip_locators(arena, arena.root(value).pp()),
+            quoted: strip_locators(arena, value),
         }))
         .with_source(source)),
     }
@@ -305,10 +305,10 @@ fn parse_quote(
     if rest.len() != 1 {
         Err(format!("quote expected 1 argument, got {}", rest.len()))
     } else if syntax {
-        let unlocated = strip_locators(arena, arena.root(rest[0]).pp());
+        let unlocated = strip_locators(arena, rest[0]);
         Ok(SyntaxElement::Quote(Box::new(Quote { quoted: unlocated })).with_source(source))
     } else {
-        let unlocated = strip_locators(arena, arena.root(rest[0]).pp());
+        let unlocated = strip_locators(arena, rest[0]);
         let quoted = arena.root(strip_syntactic_closure(env, unlocated.pp()));
         Ok(SyntaxElement::Quote(Box::new(Quote { quoted })).with_source(source))
     }
@@ -840,7 +840,7 @@ fn expand_macro_full(
     source: Source,
 ) -> Result<(PoolPtr, Source), String> {
     // TODO should we just take in a RootPtr instead of rooting here?
-    let expr = strip_locators(arena, arena.root(expr).pp());
+    let expr = strip_locators(arena, expr);
     let mut source = Source::Macro {
         macro_source: mac.source.clone(),
         code_source: Box::new(source),

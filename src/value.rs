@@ -430,10 +430,6 @@ pub fn strip_locators(arena: &Arena, value: PoolPtr) -> RootPtr {
             )))
         }
         Value::Located(v, _) => strip_locators(arena, *v),
-        // Value::SyntacticClosure(SyntacticClosure { closed_env, free_variables, expr }) => {
-        //     let inner_stripped = strip_locators(arena, *expr);
-        //     arena.insert_rooted(Value::SyntacticClosure(SyntacticClosure { closed_env: RefCell::new(closed_env.borrow().clone()), free_variables: free_variables.clone(), expr: inner_stripped.pp() }))
-        // }
         _ => arena.root(value),
     }
 }
