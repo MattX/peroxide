@@ -165,15 +165,22 @@ impl Interpreter {
                 .len(),
         }));
         let read = strip_locators(&self.arena, read.pp());
-        let syntax_tree = ast::parse(&self.arena, self, &cloned_env, &global_af_info, read.pp())
-            .map_err(|e| format!("syntax error: {}", e))?;
+        let syntax_tree = ast::parse(
+            &self.arena,
+            self,
+            &cloned_env,
+            &global_af_info,
+            read.pp(),
+            ast::Source::Absent,
+        )
+        .map_err(|e| format!("syntax error: {}", e))?;
         self.global_frame
             .pp()
             .get_activation_frame()
             .borrow_mut()
             .ensure_index(&self.arena, global_af_info.borrow().entries);
         // println!(" => {:?}", syntax_tree);
-        self.compile_run(&syntax_tree)
+        self.compile_run(&syntax_tree.element)
     }
 
     pub fn compile_run(&self, syntax_tree: &SyntaxElement) -> Result<RootPtr, String> {

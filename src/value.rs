@@ -231,16 +231,28 @@ impl Value {
                     result.push(car_r.get());
                     p = cdr_r.get().long_lived();
                 }
+                Value::Located(val, _locator) => {
+                    p = val.long_lived();
+                }
                 Value::EmptyList => break,
                 _ => {
                     return Err(format!(
-                        "Converting list to vec: {} is not a proper list",
+                        "converting list to vec: {} is not a proper list",
                         self.pretty_print()
                     ));
                 }
             }
         }
         Ok(result)
+    }
+
+    /// Returns a pointer to the first value that is not a locator
+    pub fn strip_locator(&self) -> &Value {
+        let mut v = self;
+        while let Value::Located(p, _locator) = v {
+            v = &*p;
+        }
+        v
     }
 
     pub fn truthy(&self) -> bool {

@@ -15,7 +15,7 @@
 use std::cell::RefCell;
 
 use arena::Arena;
-use ast::{Lambda, SyntaxElement};
+use ast::{Lambda, LocatedSyntaxElement, SyntaxElement};
 use environment::RcEnv;
 use heap::{Inventory, PoolPtr, PtrVec};
 use value::Value;
@@ -98,15 +98,15 @@ pub fn compile(arena: &Arena, tree: &SyntaxElement, code: &mut CodeBlock, tail: 
             code.push(Instruction::Constant(idx));
         }
         SyntaxElement::If(i) => {
-            compile(arena, &i.cond, code, false, rv);
+            compile(arena, &i.cond.element, code, false, rv);
             let cond_jump = code.code_size();
             code.push(Instruction::NoOp); // Is rewritten as a conditional jump below
-            compile(arena, &i.t, code, tail, rv);
+            compile(arena, &i.t.element, code, tail, rv);
             let mut true_end = code.code_size();
             if let Some(ref f) = i.f {
                 code.push(Instruction::NoOp);
                 true_end += 1;
-                compile(arena, f, code, tail, rv);
+                compile(arena, &f.element, code, tail, rv);
                 let jump_offset = code.code_size() - true_end;
                 code.replace(true_end - 1, Instruction::Jump(jump_offset));
             }
@@ -116,7 +116,7 @@ pub fn compile(arena: &Arena, tree: &SyntaxElement, code: &mut CodeBlock, tail: 
             compile_sequence(arena, &b.expressions, code, tail, rv);
         }
         SyntaxElement::Set(s) => {
-            compile(arena, &s.value, code, false, rv);
+            compile(arena, &s.value.element, code, false, rv);
             code.push(make_set_instruction(s.altitude, s.depth, s.index));
         }
         SyntaxElement::Reference(r) => {
@@ -127,10 +127,10 @@ pub fn compile(arena: &Arena, tree: &SyntaxElement, code: &mut CodeBlock, tail: 
             code.push(Instruction::CreateClosure(code.code_blocks.len() - 1));
         }
         SyntaxElement::Application(a) => {
-            compile(arena, &a.function, code, false, rv);
+            compile(arena, &a.function.element, code, false, rv);
             code.push(Instruction::PushValue);
             for instr in a.args.iter() {
-                compile(arena, instr, code, false, rv);
+                compile(arena, &instr.element, code, false, rv);
                 code.push(Instruction::PushValue);
             }
             code.push(Instruction::CreateFrame(a.args.len()));
@@ -148,18 +148,18 @@ pub fn compile(arena: &Arena, tree: &SyntaxElement, code: &mut CodeBlock, tail: 
 
 fn compile_sequence(
     arena: &Arena,
-    expressions: &[SyntaxElement],
+    expressions: &[LocatedSyntaxElement],
     code: &mut CodeBlock,
     tail: bool,
     rv: PoolPtr,
 ) {
     for instr in expressions[..expressions.len() - 1].iter() {
-        compile(arena, instr, code, false, rv);
+        compile(arena, &instr.element, code, false, rv);
     }
     compile(
         arena,
         // This should have been caught at the syntax step.
-        expressions.last().expect("empty sequence"),
+        &expressions.last().expect("empty sequence").element,
         code,
         tail,
         rv,
