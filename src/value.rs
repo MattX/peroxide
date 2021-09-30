@@ -27,7 +27,7 @@ use num_complex::Complex;
 use num_rational::BigRational;
 use primitives::{Port, Primitive, SyntacticClosure};
 use vm::Continuation;
-use {heap, util};
+use {heap, util, File};
 
 // TODO box some of these, values are currently 56 bytes long oh no
 // TODO remove PartialEq and Clone. Clone should only be used in the numeric primitives library.
@@ -385,24 +385,21 @@ pub fn equal(left: PoolPtr, right: PoolPtr) -> bool {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Locator {
-    pub file_name: Rc<String>,
+    pub file: Rc<File>,
     pub range: CodeRange,
 }
 
 impl Locator {
-    pub fn new(file_name: impl Into<String>, range: CodeRange) -> Locator {
-        Locator {
-            file_name: Rc::new(file_name.into()),
-            range,
-        }
+    pub fn new(file: Rc<File>, range: CodeRange) -> Locator {
+        Locator { file, range }
     }
 }
 
 impl Display for Locator {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.file_name, self.range)
+        write!(f, "{}:{}", &self.file.name, self.range)
     }
 }
 

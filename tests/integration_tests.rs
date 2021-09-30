@@ -14,27 +14,24 @@
 
 extern crate peroxide;
 
-use std::rc::Rc;
-
 use peroxide::error::locate_message;
 use peroxide::heap::{GcMode, RootPtr};
 use peroxide::read::{NoParseResult, Reader};
 use peroxide::value::Value;
-use peroxide::Interpreter;
+use peroxide::{File, Interpreter};
 
 fn execute(vm_state: &Interpreter, code: &str) -> Result<Value, String> {
     execute_rooted(vm_state, code).map(|e| (*e.pp()).clone())
 }
 
 fn execute_rooted(vm_state: &Interpreter, code: &str) -> Result<RootPtr, String> {
-    let reader = Reader::new(&vm_state.arena, true, Rc::new("<integ>".to_string()));
+    let file = File::new("<integ test>".to_string(), code.to_string());
+    let reader = Reader::new(&vm_state.arena, true, file);
     let mut results: Vec<_> = reader
         .read_many(code)
         .map_err(|e| match e {
             NoParseResult::Nothing => "standard library: empty file".to_string(),
-            NoParseResult::LocatedParseError { msg, locator } => {
-                locate_message(code, &locator, &msg)
-            }
+            NoParseResult::LocatedParseError { msg, locator } => locate_message(&locator, &msg),
         })?
         .into_iter()
         .map(|read| vm_state.parse_compile_run(read.ptr))

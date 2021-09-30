@@ -30,7 +30,7 @@ use peroxide::lex::{PositionedToken, SegmentationResult};
 use peroxide::read::Reader;
 use peroxide::repl::{FileRepl, GetLineError, ReadlineRepl, Repl, StdIoRepl};
 use peroxide::value::Locator;
-use peroxide::Interpreter;
+use peroxide::{File, Interpreter};
 
 fn main() {
     pretty_env_logger::init();
@@ -93,7 +93,7 @@ fn handle_one_expr(
     vm_state: &Interpreter,
     silent: bool,
 ) -> Result<bool, String> {
-    let mut current_expr_string: Vec<String> = Vec::new();
+    let mut current_expr_string: String = String::new();
     let mut exprs: Vec<Vec<PositionedToken>> = Vec::new();
     let mut pending_expr: Vec<PositionedToken> = Vec::new();
     let mut depth: u64 = 0;
@@ -116,8 +116,13 @@ fn handle_one_expr(
         };
 
         let line = line_opt.unwrap();
-        let mut tokenize_result = peroxide::lex::lex(&line)
-            .map_err(|e| locate_message(&line, &Locator::new("<repl>", e.location), &e.msg))?;
+        current_expr_string += &line;
+        current_expr_string += "\n";
+        let line_file = File::new("<repl>", current_expr_string.to_string());
+        let mut tokenize_result =
+            peroxide::lex::lex_line(&line, current_expr_string.lines().count() as u32).map_err(
+                |e| locate_message(&Locator::new(line_file.clone(), e.location), &e.msg),
+            )?;
         pending_expr.append(&mut tokenize_result);
 
         let SegmentationResult {
@@ -125,9 +130,8 @@ fn handle_one_expr(
             remainder,
             depth: new_depth,
         } = peroxide::lex::segment(pending_expr)
-            .map_err(|e| locate_message(&line, &Locator::new("<repl>", e.location), &e.msg))?;
+            .map_err(|e| locate_message(&Locator::new(line_file.clone(), e.location), &e.msg))?;
         exprs.append(&mut segments);
-        current_expr_string.push(line);
 
         if remainder.is_empty() {
             break;
@@ -137,14 +141,24 @@ fn handle_one_expr(
         pending_expr = remainder;
     }
 
-    repl.add_to_history(&current_expr_string.join("\n"));
-    let _ = rep(vm_state, exprs, silent);
+    repl.add_to_history(&current_expr_string);
+    let _ = rep(
+        vm_state,
+        File::new("<repl>", current_expr_string),
+        exprs,
+        silent,
+    );
     Ok(true)
 }
 
-fn rep(vm_state: &Interpreter, toks: Vec<Vec<PositionedToken>>, silent: bool) -> Result<(), ()> {
+fn rep(
+    vm_state: &Interpreter,
+    file: Rc<File>,
+    toks: Vec<Vec<PositionedToken>>,
+    silent: bool,
+) -> Result<(), ()> {
     for token_vector in toks {
-        let parse_value = Reader::new(&vm_state.arena, true, Rc::new("<repl>".to_string()))
+        let parse_value = Reader::new(&vm_state.arena, true, file.clone())
             .read_tokens(&token_vector)
             .map_err(|e| println!("parse error: {:?}", e))?;
 

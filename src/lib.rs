@@ -137,13 +137,12 @@ impl Interpreter {
 
     pub fn initialize(&self, fname: &str) -> Result<(), String> {
         let contents = fs::read_to_string(fname).map_err(|e| e.to_string())?;
-        let values = Reader::new(&self.arena, true, Rc::new("<stdlib>".to_string()))
-            .read_many(&contents)
+        let file = File::new(fname.to_string(), contents);
+        let values = Reader::new(&self.arena, true, file.clone())
+            .read_many(&file.source)
             .map_err(|e| match e {
                 NoParseResult::Nothing => "standard library: empty file".to_string(),
-                NoParseResult::LocatedParseError { msg, locator } => {
-                    locate_message(&contents, &locator, &msg)
-                }
+                NoParseResult::LocatedParseError { msg, locator } => locate_message(&locator, &msg),
             })?;
         //println!("Values: {:?}", values);
         for v in values.into_iter() {
@@ -157,13 +156,11 @@ impl Interpreter {
     pub fn run(&mut self, file: File) -> Result<Vec<RootPtr>, String> {
         self.files.push(Rc::new(file));
         let file = self.files.last().unwrap();
-        let values = Reader::new(&self.arena, true, Rc::new(file.name.clone()))
+        let values = Reader::new(&self.arena, true, file.clone())
             .read_many(&file.source)
             .map_err(|e| match e {
                 NoParseResult::Nothing => format!("{}: empty file", &file.name),
-                NoParseResult::LocatedParseError { msg, locator } => {
-                    locate_message(&file.source, &locator, &msg)
-                }
+                NoParseResult::LocatedParseError { msg, locator } => locate_message(&locator, &msg),
             })?;
         values
             .into_iter()
@@ -204,8 +201,17 @@ impl Interpreter {
 }
 
 /// Represents an input file or other textual input source, such as a REPL segment.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct File {
-    name: String,
-    source: String,
+    pub name: String,
+    pub source: String,
+}
+
+impl File {
+    pub fn new(name: impl Into<String>, source: impl Into<String>) -> Rc<File> {
+        Rc::new(File {
+            name: name.into(),
+            source: source.into(),
+        })
+    }
 }

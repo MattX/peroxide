@@ -28,7 +28,7 @@ pub struct SourceFileLocator {
     pub range: CodeRange,
 }
 
-pub fn locate_message(source: &str, locator: &Locator, msg: &str) -> String {
+pub fn locate_message(locator: &Locator, msg: &str) -> String {
     let mut output = String::new();
 
     let max_num_line_width = locator.range.end.0.to_string().chars().count();
@@ -38,7 +38,7 @@ pub fn locate_message(source: &str, locator: &Locator, msg: &str) -> String {
     writeln!(output, "{}--> {}", prefix, locator).unwrap();
     writeln!(output, "{} |", prefix).unwrap();
 
-    for (i_line, line) in source.lines().enumerate() {
+    for (i_line, line) in locator.file.source.lines().enumerate() {
         if i_line + 1 < locator.range.start.0 as usize {
             continue;
         } else if i_line + 1 > locator.range.end.0 as usize {

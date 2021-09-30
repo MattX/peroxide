@@ -164,7 +164,12 @@ impl NumValue {
 
 /// Turns an str slice into a vector of tokens, or fails with an error message.
 pub fn lex(input: &str) -> Result<Vec<PositionedToken>, LexError> {
-    let mut it = positioned_chars(input);
+    lex_line(input, 1)
+}
+
+/// Like `lex`, but allows specifying the first line index. Used from the REPL.
+pub fn lex_line(input: &str, start_line: u32) -> Result<Vec<PositionedToken>, LexError> {
+    let mut it = positioned_chars(input, start_line);
     let mut tokens: Vec<PositionedToken> = Vec::new();
     loop {
         consume_leading_spaces(&mut it);
@@ -277,9 +282,9 @@ impl<'a> PositionedChars<'a> {
     }
 }
 
-fn positioned_chars(s: &str) -> PositionedChars {
+fn positioned_chars(s: &str, start_line: u32) -> PositionedChars {
     PositionedChars {
-        line: 1,
+        line: start_line,
         column: 0,
         characters: s.chars(),
         next_item: None,
@@ -1000,7 +1005,7 @@ mod tests {
 
     #[test]
     fn test_char_iterator() {
-        let mut it = positioned_chars("ab\ncdefghijklm");
+        let mut it = positioned_chars("ab\ncdefghijklm", 1);
         assert_eq!(it.peek().cloned(), Some(((1, 1), 'a')));
         assert_eq!(it.peek().cloned(), Some(((1, 1), 'a')));
         assert_eq!(it.last_position(), (1, 0));

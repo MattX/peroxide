@@ -22,12 +22,12 @@ use std::rc::Rc;
 
 use arena::Arena;
 use heap::RootPtr;
-use lex;
 use lex::{CodeRange, NumValue, PositionedToken, Token};
 use num_complex::Complex;
 use num_traits::cast::ToPrimitive;
 use util::simplify_numeric;
 use value::{Locator, Value};
+use {lex, File};
 
 #[derive(Debug)]
 pub enum NoParseResult {
@@ -46,15 +46,15 @@ pub struct Reader<'ar> {
 
     /// If true, insert [`Value::Locator`] objects at each level.
     locate: bool,
-    file_name: Rc<String>,
+    file: Rc<File>,
 }
 
 impl<'ar> Reader<'ar> {
-    pub fn new(arena: &'ar Arena, locate: bool, file_name: Rc<String>) -> Self {
+    pub fn new(arena: &'ar Arena, locate: bool, file: Rc<File>) -> Self {
         Self {
             arena,
             locate,
-            file_name,
+            file,
         }
     }
 
@@ -298,7 +298,7 @@ impl<'ar> Reader<'ar> {
     /// Convenience method to create a [`Locator`] with the current file name.
     fn locator(&self, range: CodeRange) -> Locator {
         Locator {
-            file_name: self.file_name.clone(),
+            file: self.file.clone(),
             range,
         }
     }
