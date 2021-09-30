@@ -16,7 +16,7 @@ extern crate peroxide;
 
 use peroxide::error::locate_message;
 use peroxide::heap::{GcMode, RootPtr};
-use peroxide::read::{NoParseResult, Reader};
+use peroxide::read::{NoReadResult, Reader};
 use peroxide::value::Value;
 use peroxide::{File, Interpreter};
 
@@ -30,10 +30,8 @@ fn execute_rooted(vm_state: &Interpreter, code: &str) -> Result<RootPtr, String>
     let mut results: Vec<_> = reader
         .read_many(code)
         .map_err(|e| match e {
-            NoParseResult::Nothing => "standard library: empty file".to_string(),
-            NoParseResult::LocatedParseError { msg, locator } => {
-                locate_message(&locator, "syntax", &msg)
-            }
+            NoReadResult::Nothing => "standard library: empty file".to_string(),
+            NoReadResult::ReadError { msg, locator } => locate_message(&locator, "syntax", &msg),
         })?
         .into_iter()
         .map(|read| vm_state.parse_compile_run(read.ptr))

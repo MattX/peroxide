@@ -35,7 +35,7 @@ use ast::SyntaxElement;
 use environment::{ActivationFrame, ActivationFrameInfo, Environment, RcEnv};
 use error::{error_with_source, locate_message};
 use heap::{GcMode, RootPtr};
-use read::{NoParseResult, Reader};
+use read::{NoReadResult, Reader};
 use value::Value;
 
 pub mod arena;
@@ -141,8 +141,8 @@ impl Interpreter {
         let values = Reader::new(&self.arena, true, file.clone())
             .read_many(&file.source)
             .map_err(|e| match e {
-                NoParseResult::Nothing => "standard library: empty file".to_string(),
-                NoParseResult::LocatedParseError { msg, locator } => {
+                NoReadResult::Nothing => "standard library: empty file".to_string(),
+                NoReadResult::ReadError { msg, locator } => {
                     locate_message(&locator, "syntax", &msg)
                 }
             })?;
@@ -161,8 +161,8 @@ impl Interpreter {
         let values = Reader::new(&self.arena, true, file.clone())
             .read_many(&file.source)
             .map_err(|e| match e {
-                NoParseResult::Nothing => format!("{}: empty file", &file.name),
-                NoParseResult::LocatedParseError { msg, locator } => {
+                NoReadResult::Nothing => format!("{}: empty file", &file.name),
+                NoReadResult::ReadError { msg, locator } => {
                     locate_message(&locator, "syntax", &msg)
                 }
             })?;

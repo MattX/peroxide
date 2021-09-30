@@ -27,7 +27,7 @@ use peroxide::error::locate_message;
 use clap::{App, Arg};
 use peroxide::heap::GcMode;
 use peroxide::lex::{PositionedToken, SegmentationResult};
-use peroxide::read::{NoParseResult, Reader};
+use peroxide::read::{NoReadResult, Reader};
 use peroxide::repl::{FileRepl, GetLineError, ReadlineRepl, Repl, StdIoRepl};
 use peroxide::value::Locator;
 use peroxide::{File, Interpreter};
@@ -172,8 +172,8 @@ fn rep(
         let parse_value = Reader::new(&vm_state.arena, true, file.clone())
             .read_tokens(&token_vector)
             .map_err(|e| match e {
-                NoParseResult::Nothing => println!("parse error: no tokens read"),
-                NoParseResult::LocatedParseError { msg, locator } => {
+                NoReadResult::Nothing => println!("parse error: no tokens read"),
+                NoReadResult::ReadError { msg, locator } => {
                     println!("{}", locate_message(&locator, "syntax", &msg))
                 }
             })?;

@@ -30,13 +30,13 @@ use value::{Locator, Value};
 use {lex, File};
 
 #[derive(Debug)]
-pub enum NoParseResult {
+pub enum NoReadResult {
     Nothing,
-    LocatedParseError { msg: String, locator: Locator },
+    ReadError { msg: String, locator: Locator },
 }
 
 #[derive(Debug, Clone)]
-pub struct ParseResult {
+pub struct ReadResult {
     pub ptr: RootPtr,
     pub range: CodeRange,
 }
@@ -58,9 +58,9 @@ impl<'ar> Reader<'ar> {
         }
     }
 
-    pub fn read_tokens(&self, tokens: &[PositionedToken]) -> Result<ParseResult, NoParseResult> {
+    pub fn read_tokens(&self, tokens: &[PositionedToken]) -> Result<ReadResult, NoReadResult> {
         if tokens.is_empty() {
-            return Err(NoParseResult::Nothing);
+            return Err(NoReadResult::Nothing);
         }
 
         let mut it = tokens.iter().peekable();
@@ -78,7 +78,7 @@ impl<'ar> Reader<'ar> {
     //     self.read_tokens(&tokens).map_err(|e| format!("{:?}", e))
     // }
 
-    pub fn read_many(&self, code: &str) -> Result<Vec<ParseResult>, NoParseResult> {
+    pub fn read_many(&self, code: &str) -> Result<Vec<ReadResult>, NoReadResult> {
         let tokens = lex::lex(code).map_err(|e| self.error(e.msg, e.location))?;
         let segments = lex::segment(tokens).map_err(|e| self.error(e.msg, e.location))?;
         if !segments.remainder.is_empty() {
@@ -99,7 +99,7 @@ impl<'ar> Reader<'ar> {
             .collect::<Result<Vec<_>, _>>()
     }
 
-    fn do_read<'a, 'b, I>(&self, it: &'a mut Peekable<I>) -> Result<ParseResult, NoParseResult>
+    fn do_read<'a, 'b, I>(&self, it: &'a mut Peekable<I>) -> Result<ReadResult, NoReadResult>
     where
         I: Iterator<Item = &'b PositionedToken>,
     {
@@ -140,7 +140,7 @@ impl<'ar> Reader<'ar> {
         it: &'a mut Peekable<I>,
         start: Option<CodeRange>,
         prev: CodeRange,
-    ) -> Result<ParseResult, NoParseResult>
+    ) -> Result<ReadResult, NoReadResult>
     where
         I: Iterator<Item = &'b PositionedToken>,
     {
@@ -190,7 +190,7 @@ impl<'ar> Reader<'ar> {
         &self,
         it: &'a mut Peekable<I>,
         start: CodeRange,
-    ) -> Result<ParseResult, NoParseResult>
+    ) -> Result<ReadResult, NoReadResult>
     where
         I: Iterator<Item = &'b PositionedToken>,
     {
@@ -230,7 +230,7 @@ impl<'ar> Reader<'ar> {
         &self,
         it: &'a mut Peekable<I>,
         start: CodeRange,
-    ) -> Result<ParseResult, NoParseResult>
+    ) -> Result<ReadResult, NoReadResult>
     where
         I: Iterator<Item = &'b PositionedToken>,
     {
@@ -265,7 +265,7 @@ impl<'ar> Reader<'ar> {
         it: &'a mut Peekable<I>,
         prefix: &'static str,
         start: CodeRange,
-    ) -> Result<ParseResult, NoParseResult>
+    ) -> Result<ReadResult, NoReadResult>
     where
         I: Iterator<Item = &'b PositionedToken>,
     {
@@ -284,7 +284,7 @@ impl<'ar> Reader<'ar> {
         ))
     }
 
-    fn insert_positioned(&self, v: Value, range: CodeRange) -> ParseResult {
+    fn insert_positioned(&self, v: Value, range: CodeRange) -> ReadResult {
         let inner = self.arena.insert_rooted(v);
         let ptr = if self.locate {
             self.arena
@@ -292,7 +292,7 @@ impl<'ar> Reader<'ar> {
         } else {
             inner
         };
-        ParseResult { ptr, range }
+        ReadResult { ptr, range }
     }
 
     /// Convenience method to create a [`Locator`] with the current file name.
@@ -303,8 +303,8 @@ impl<'ar> Reader<'ar> {
         }
     }
 
-    fn error(&self, msg: impl Into<String>, range: CodeRange) -> NoParseResult {
-        NoParseResult::LocatedParseError {
+    fn error(&self, msg: impl Into<String>, range: CodeRange) -> NoReadResult {
+        NoReadResult::ReadError {
             msg: msg.into(),
             locator: self.locator(range),
         }
@@ -332,7 +332,7 @@ pub fn read_num_token(t: &NumValue) -> Value {
             (NumValue::Integer(real), NumValue::Integer(imag)) => {
                 Value::ComplexInteger(Box::new(Complex::new(real.clone(), imag.clone())))
             }
-            _ => panic!("Complex numbers in rectangular NumValue"),
+            _ => panic!("complex numbers in rectangular NumValue"),
         },
     };
     simplify_numeric(equalized)
