@@ -31,7 +31,9 @@ fn execute_rooted(vm_state: &Interpreter, code: &str) -> Result<RootPtr, String>
         .read_many(code)
         .map_err(|e| match e {
             NoParseResult::Nothing => "standard library: empty file".to_string(),
-            NoParseResult::LocatedParseError { msg, locator } => locate_message(&locator, &msg),
+            NoParseResult::LocatedParseError { msg, locator } => {
+                locate_message(&locator, "syntax", &msg)
+            }
         })?
         .into_iter()
         .map(|read| vm_state.parse_compile_run(read.ptr))

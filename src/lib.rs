@@ -33,7 +33,7 @@ use std::sync::Arc;
 use arena::Arena;
 use ast::SyntaxElement;
 use environment::{ActivationFrame, ActivationFrameInfo, Environment, RcEnv};
-use error::locate_message;
+use error::{error_with_source, locate_message};
 use heap::{GcMode, RootPtr};
 use read::{NoParseResult, Reader};
 use value::Value;
@@ -142,7 +142,9 @@ impl Interpreter {
             .read_many(&file.source)
             .map_err(|e| match e {
                 NoParseResult::Nothing => "standard library: empty file".to_string(),
-                NoParseResult::LocatedParseError { msg, locator } => locate_message(&locator, &msg),
+                NoParseResult::LocatedParseError { msg, locator } => {
+                    locate_message(&locator, "syntax", &msg)
+                }
             })?;
         //println!("Values: {:?}", values);
         for v in values.into_iter() {
@@ -160,7 +162,9 @@ impl Interpreter {
             .read_many(&file.source)
             .map_err(|e| match e {
                 NoParseResult::Nothing => format!("{}: empty file", &file.name),
-                NoParseResult::LocatedParseError { msg, locator } => locate_message(&locator, &msg),
+                NoParseResult::LocatedParseError { msg, locator } => {
+                    locate_message(&locator, "syntax", &msg)
+                }
             })?;
         values
             .into_iter()
@@ -182,7 +186,7 @@ impl Interpreter {
                 .len(),
         }));
         let syntax_tree = ast::parse(self, &global_af_info, read.pp())
-            .map_err(|e| format!("syntax error: {}", e))?;
+            .map_err(|e| error_with_source(&e.source, "syntax", &e.msg))?;
         self.global_frame
             .pp()
             .get_activation_frame()

@@ -27,7 +27,7 @@ use peroxide::error::locate_message;
 use clap::{App, Arg};
 use peroxide::heap::GcMode;
 use peroxide::lex::{PositionedToken, SegmentationResult};
-use peroxide::read::Reader;
+use peroxide::read::{NoParseResult, Reader};
 use peroxide::repl::{FileRepl, GetLineError, ReadlineRepl, Repl, StdIoRepl};
 use peroxide::value::Locator;
 use peroxide::{File, Interpreter};
@@ -109,7 +109,7 @@ fn handle_one_expr(
             Err(GetLineError::Eof) => return Ok(false),
             Err(GetLineError::Interrupted) => return Ok(false),
             Err(GetLineError::Err(s)) => {
-                println!("Readline error: {}", s);
+                println!("readline error: {}", s);
                 return Ok(true);
             }
             Ok(_) => (),
@@ -121,7 +121,13 @@ fn handle_one_expr(
         let line_file = File::new("<repl>", current_expr_string.to_string());
         let mut tokenize_result =
             peroxide::lex::lex_line(&line, current_expr_string.lines().count() as u32).map_err(
-                |e| locate_message(&Locator::new(line_file.clone(), e.location), &e.msg),
+                |e| {
+                    locate_message(
+                        &Locator::new(line_file.clone(), e.location),
+                        "syntax",
+                        &e.msg,
+                    )
+                },
             )?;
         pending_expr.append(&mut tokenize_result);
 
@@ -129,8 +135,13 @@ fn handle_one_expr(
             mut segments,
             remainder,
             depth: new_depth,
-        } = peroxide::lex::segment(pending_expr)
-            .map_err(|e| locate_message(&Locator::new(line_file.clone(), e.location), &e.msg))?;
+        } = peroxide::lex::segment(pending_expr).map_err(|e| {
+            locate_message(
+                &Locator::new(line_file.clone(), e.location),
+                "syntax",
+                &e.msg,
+            )
+        })?;
         exprs.append(&mut segments);
 
         if remainder.is_empty() {
@@ -160,7 +171,12 @@ fn rep(
     for token_vector in toks {
         let parse_value = Reader::new(&vm_state.arena, true, file.clone())
             .read_tokens(&token_vector)
-            .map_err(|e| println!("parse error: {:?}", e))?;
+            .map_err(|e| match e {
+                NoParseResult::Nothing => println!("parse error: no tokens read"),
+                NoParseResult::LocatedParseError { msg, locator } => {
+                    println!("{}", locate_message(&locator, "syntax", &msg))
+                }
+            })?;
 
         match vm_state.parse_compile_run(parse_value.ptr) {
             Ok(v) => {
