@@ -173,7 +173,6 @@ impl Interpreter {
 
     /// High-level interface to parse, compile, and run a value that's been read.
     pub fn parse_compile_run(&self, read: RootPtr) -> Result<RootPtr, String> {
-        let cloned_env = self.global_environment.clone();
         let global_af_info = Rc::new(RefCell::new(ActivationFrameInfo {
             parent: None,
             altitude: 0,
@@ -185,15 +184,8 @@ impl Interpreter {
                 .values
                 .len(),
         }));
-        let syntax_tree = ast::parse(
-            &self.arena,
-            self,
-            &cloned_env,
-            &global_af_info,
-            read.pp(),
-            ast::Source::Absent,
-        )
-        .map_err(|e| format!("syntax error: {}", e))?;
+        let syntax_tree = ast::parse(self, &global_af_info, read.pp())
+            .map_err(|e| format!("syntax error: {}", e))?;
         self.global_frame
             .pp()
             .get_activation_frame()

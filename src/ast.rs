@@ -119,6 +119,7 @@ pub struct Reference {
 
 #[derive(Debug)]
 pub struct Quote {
+    // Needs to be a `RootPtr` because AST structures are never traversed by the GC.
     pub quoted: RootPtr,
 }
 
@@ -184,342 +185,6 @@ struct Formals {
     pub rest: Option<DefineTarget>,
 }
 
-/// Parses an expression into an AST (aka `SyntaxElement`)
-///
-/// Annoyingly enough, we need a full `Interpreter` passed everywhere here, because macros
-/// need to be executed and can add new code.
-///
-/// **parse() requires `value` to be rooted**, but it won't tell you that because it's sneaky.
-/// `value` isn't a `RootPtr` just because it would be expensive to root and unroot values
-/// constantly during parsing. Since the top-level value representing the expression to parse is
-/// rooted, we can get away with not rooting stuff as we go down the expression.
-pub fn parse(
-    arena: &Arena,
-    vms: &Interpreter,
-    env: &RcEnv,
-    af_info: &RcAfi,
-    value: PoolPtr,
-    source: Source,
-) -> Result<LocatedSyntaxElement, String> {
-    // TODO remove the hold? It says just above that we don't need it...
-    let _value_hold = arena.root(value);
-    let (env, value) = resolve_syntactic_closure(arena, env, value)?;
-    match &*value {
-        Value::Symbol(s) => Ok(SyntaxElement::Reference(Box::new(construct_reference(
-            &env, af_info, s,
-        )?))
-        .with_source(source)),
-        Value::EmptyList => Err("cannot evaluate empty list".into()),
-        Value::Pair(car, cdr) => {
-            let car = car.get();
-            let cdr = cdr.get();
-            parse_pair(arena, vms, &env, af_info, car, cdr, source)
-        }
-        // TODO when we're parsing the results of a macro, we might want to / need to do something
-        //      different with locators?
-        Value::Located(ptr, locator) => parse(
-            arena,
-            vms,
-            &env,
-            af_info,
-            *ptr,
-            Source::from(*locator.clone()),
-        ),
-        _ => Ok(SyntaxElement::Quote(Box::new(Quote {
-            quoted: strip_locators(arena, value),
-        }))
-        .with_source(source)),
-    }
-}
-
-fn construct_reference(env: &RcEnv, afi: &RcAfi, name: &str) -> Result<Reference, String> {
-    let mut env = env.borrow_mut();
-    match env.get(name) {
-        Some(EnvironmentValue::Variable(v)) => Ok(Reference {
-            altitude: v.altitude,
-            depth: afi.borrow().altitude - v.altitude,
-            index: v.index,
-        }),
-        Some(EnvironmentValue::Macro(_)) => Err(format!(
-            "illegal reference to {}, which is a macro, not a variable",
-            name
-        )),
-        None => {
-            // TODO: remove this, or find a better way to surface it.
-            println!(
-                "warning: reference to undefined variable {} in {:?}",
-                name, env
-            );
-            let index = env.define_toplevel(name, afi);
-            Ok(Reference {
-                altitude: 0,
-                depth: afi.borrow().altitude,
-                index,
-            })
-        }
-    }
-}
-
-fn parse_pair(
-    arena: &Arena,
-    vms: &Interpreter,
-    env: &RcEnv,
-    af_info: &RcAfi,
-    car: PoolPtr,
-    cdr: PoolPtr,
-    source: Source,
-) -> Result<LocatedSyntaxElement, String> {
-    let rest = cdr.list_to_vec()?;
-    let (car_env, resolved_car) = resolve_syntactic_closure(arena, env, car)?;
-    match &*resolved_car.strip_locator() {
-        Value::Symbol(s) => match match_symbol(&car_env, s) {
-            Symbol::Quote => parse_quote(arena, env, &rest, false, source),
-            Symbol::SyntaxQuote => parse_quote(arena, env, &rest, true, source),
-            Symbol::If => parse_if(arena, vms, env, af_info, &rest, source),
-            Symbol::Begin => parse_begin(arena, vms, env, af_info, &rest, source),
-            Symbol::Lambda => parse_lambda(arena, vms, env, af_info, &rest, source),
-            Symbol::Set => parse_set(arena, vms, env, af_info, &rest, source),
-            Symbol::Define => parse_define(arena, vms, env, af_info, &rest, source),
-            Symbol::DefineSyntax => parse_define_syntax(arena, vms, env, af_info, &rest, source),
-            Symbol::LetSyntax => parse_let_syntax(arena, vms, env, af_info, &rest, false, source),
-            Symbol::LetrecSyntax => parse_let_syntax(arena, vms, env, af_info, &rest, true, source),
-            Symbol::Macro(m) => {
-                // TODO fix this to avoid reconstructing the pair
-                let expr = arena.insert(Value::Pair(Cell::new(car), Cell::new(cdr)));
-                let (expanded, src) = expand_macro_full(arena, vms, env, m, expr, source)?;
-                parse(arena, vms, env, af_info, expanded, src)
-            }
-            _ => parse_application(arena, vms, env, af_info, car, &rest, source),
-        },
-        _ => parse_application(arena, vms, env, af_info, car, &rest, source),
-    }
-}
-
-fn parse_quote(
-    arena: &Arena,
-    env: &RcEnv,
-    rest: &[PoolPtr],
-    syntax: bool,
-    source: Source,
-) -> Result<LocatedSyntaxElement, String> {
-    if rest.len() != 1 {
-        Err(format!("quote expected 1 argument, got {}", rest.len()))
-    } else if syntax {
-        let unlocated = strip_locators(arena, rest[0]);
-        Ok(SyntaxElement::Quote(Box::new(Quote { quoted: unlocated })).with_source(source))
-    } else {
-        let unlocated = strip_locators(arena, rest[0]);
-        let quoted = arena.root(strip_syntactic_closure(env, unlocated.pp()));
-        Ok(SyntaxElement::Quote(Box::new(Quote { quoted })).with_source(source))
-    }
-}
-
-fn parse_if(
-    arena: &Arena,
-    vms: &Interpreter,
-    env: &RcEnv,
-    af_info: &RcAfi,
-    rest: &[PoolPtr],
-    source: Source,
-) -> Result<LocatedSyntaxElement, String> {
-    check_len(rest, Some(2), Some(3))?;
-    let cond = parse(arena, vms, env, af_info, rest[0], source.clone())?;
-    let t = parse(arena, vms, env, af_info, rest[1], source.clone())?;
-    let f_s: Option<Result<_, _>> = rest
-        .get(2)
-        .map(|e| parse(arena, vms, env, af_info, *e, source.clone()));
-
-    // This dark magic swaps the option and the result (then `?`s the result)
-    // https://doc.rust-lang.org/rust-by-example/error/multiple_error_types/option_result.html
-    let f: Option<_> = f_s.map_or(Ok(None), |r| r.map(Some))?;
-    Ok(SyntaxElement::If(Box::new(If { cond, t, f })).with_source(source))
-}
-
-fn parse_begin(
-    arena: &Arena,
-    vms: &Interpreter,
-    env: &RcEnv,
-    af_info: &RcAfi,
-    rest: &[PoolPtr],
-    source: Source,
-) -> Result<LocatedSyntaxElement, String> {
-    check_len(rest, Some(1), None)?;
-    let expressions = rest
-        .iter()
-        .map(|e| parse(arena, vms, env, af_info, *e, source.clone()))
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(SyntaxElement::Begin(Box::new(Begin { expressions })).with_source(source))
-}
-
-fn parse_lambda(
-    arena: &Arena,
-    vms: &Interpreter,
-    env: &RcEnv,
-    af_info: &RcAfi,
-    rest: &[PoolPtr],
-    source: Source,
-) -> Result<LocatedSyntaxElement, String> {
-    check_len(rest, Some(2), None)?;
-    parse_split_lambda(
-        arena,
-        vms,
-        env,
-        af_info,
-        rest[0],
-        &rest[1..rest.len()],
-        None,
-        source,
-    )
-}
-
-fn parse_split_lambda(
-    arena: &Arena,
-    vms: &Interpreter,
-    outer_env: &RcEnv,
-    af_info: &RcAfi,
-    formals: PoolPtr,
-    body: &[PoolPtr],
-    name: Option<String>,
-    source: Source,
-) -> Result<LocatedSyntaxElement, String> {
-    let formals = parse_formals(formals)?;
-    let inner_afi = environment::extend_af_info(af_info);
-    let raw_env = Environment::new(Some(outer_env.clone()));
-    let inner_env = Rc::new(RefCell::new(raw_env));
-    let mut targets = Vec::new();
-
-    // TODO check that the formals are all distinct.
-    for define_target in formals.values.iter() {
-        define_in_env(arena, &inner_env, &inner_afi, define_target, true);
-        targets.push(define_target.clone());
-    }
-    if let Some(define_target) = &formals.rest {
-        define_in_env(arena, &inner_env, &inner_afi, define_target, true);
-        targets.push(define_target.clone());
-    }
-    let (unparsed_defines, rest) =
-        collect_internal_defines(arena, vms, &inner_env, body, source.clone())?;
-    for define_data in unparsed_defines.iter() {
-        define_in_env(arena, &inner_env, &inner_afi, &define_data.target, false);
-        targets.push(define_data.target.clone());
-    }
-
-    let defines = unparsed_defines
-        .iter()
-        .map(|define_data| {
-            let value = define_data.value.parse(
-                arena,
-                vms,
-                &inner_env,
-                &inner_afi,
-                define_data.target.get_name(),
-                source.clone(),
-            )?;
-            if let Some(EnvironmentValue::Variable(v)) = get_in_env(&inner_env, &define_data.target)
-            {
-                Ok(SyntaxElement::Set(Box::new(Set {
-                    altitude: v.altitude,
-                    depth: inner_afi.borrow().altitude - v.altitude,
-                    index: v.index,
-                    value,
-                }))
-                .with_source(define_data.source.clone()))
-            } else {
-                panic!(
-                    "expected {} in {:?} to be a variable, was {:?}",
-                    define_data.target.show(),
-                    inner_env,
-                    get_in_env(&inner_env, &define_data.target)
-                );
-            }
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-
-    let expressions = rest
-        .iter()
-        .map(|e| parse(arena, vms, &inner_env, &inner_afi, *e, source.clone()))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    pop_envs(arena, &targets);
-    if expressions.is_empty() {
-        return Err("Lambda cannot have empty body".into());
-    }
-    Ok(SyntaxElement::Lambda(Box::new(Lambda {
-        env: inner_env,
-        arity: formals.values.len(),
-        dotted: formals.rest.is_some(),
-        defines,
-        expressions,
-        name,
-    }))
-    .with_source(source))
-}
-
-fn parse_set(
-    arena: &Arena,
-    vms: &Interpreter,
-    env: &RcEnv,
-    af_info: &RcAfi,
-    rest: &[PoolPtr],
-    source: Source,
-) -> Result<LocatedSyntaxElement, String> {
-    check_len(rest, Some(2), Some(2))?;
-    if let Some(dt) = get_define_target(rest[0]) {
-        let value = parse(arena, vms, env, af_info, rest[1], source.clone())?;
-        match get_in_env(env, &dt) {
-            Some(EnvironmentValue::Variable(v)) => Ok(SyntaxElement::Set(Box::new(Set {
-                altitude: v.altitude,
-                depth: af_info.borrow().altitude - v.altitude,
-                index: v.index,
-                value,
-            }))
-            .with_source(source)),
-            Some(_) => Err(format!("trying to set non-variable `{}`", dt.get_name())),
-            None => Err(format!("trying to set undefined value `{}`", dt.get_name())),
-        }
-    } else {
-        Err(format!(
-            "expected symbol as target of set!, got `{}`",
-            rest[0].pretty_print()
-        ))
-    }
-}
-
-/// Parses toplevel defines. Inner defines have different semantics and are parsed differently
-/// (see [`collect_internal_defines`]).
-fn parse_define(
-    arena: &Arena,
-    vms: &Interpreter,
-    env: &RcEnv,
-    af_info: &RcAfi,
-    rest: &[PoolPtr],
-    source: Source,
-) -> Result<LocatedSyntaxElement, String> {
-    // TODO the actual check should not be on activation frame altitude, but on syntactic
-    //      toplevelness. (eg `(define x (define y 1))` should not work).
-    if af_info.borrow().altitude != 0 {
-        return Err(format!(
-            "define in illegal position: {}",
-            list_from_vec(arena, rest).pretty_print()
-        ));
-    }
-    let define_data = get_define_data(rest, source.clone())?;
-
-    // TODO: don't do this and instead allow defining syncloses at top level?
-    let symbol = define_data.target.coerce_symbol();
-    let index = env.borrow_mut().define_if_absent(&symbol, af_info, false);
-    let value = define_data
-        .value
-        .parse(arena, vms, env, af_info, symbol, source.clone())?;
-    Ok(SyntaxElement::Set(Box::new(Set {
-        altitude: 0,
-        depth: af_info.borrow().altitude,
-        index,
-        value,
-    }))
-    .with_source(source))
-}
-
 #[derive(Debug, Clone)]
 enum DefineTarget {
     Bare(String),
@@ -562,345 +227,11 @@ enum DefineValue {
     },
 }
 
-impl DefineValue {
-    pub fn parse(
-        &self,
-        arena: &Arena,
-        vms: &Interpreter,
-        env: &RcEnv,
-        af_info: &RcAfi,
-        name: String,
-        source: Source,
-    ) -> Result<LocatedSyntaxElement, String> {
-        match self {
-            DefineValue::Value(v) => parse(arena, vms, env, af_info, *v, source),
-            DefineValue::Lambda { formals, body } => {
-                parse_split_lambda(arena, vms, env, af_info, *formals, body, Some(name), source)
-            }
-        }
-    }
-}
-
 #[derive(Debug)]
 struct DefineData {
     pub target: DefineTarget,
     pub value: DefineValue,
     pub source: Source,
-}
-
-fn get_define_data(rest: &[PoolPtr], source: Source) -> Result<DefineData, String> {
-    let res = if let Some(target) = get_define_target(rest[0]) {
-        check_len(rest, Some(2), Some(2))?;
-        DefineData {
-            target,
-            value: DefineValue::Value(rest[1]),
-            source,
-        }
-    } else {
-        get_lambda_define_value(rest, source)?
-    };
-    Ok(res)
-}
-
-/// Helper method to parse direct lambda defines `(define (x y z) y z)`.
-fn get_lambda_define_value(rest: &[PoolPtr], source: Source) -> Result<DefineData, String> {
-    check_len(rest, Some(2), None)?;
-    if let Value::Pair(car, cdr) = &*rest[0].strip_locator() {
-        if let Value::Symbol(s) = &*car.get().strip_locator() {
-            let variable = s.clone();
-            Ok(DefineData {
-                target: DefineTarget::Bare(variable),
-                value: DefineValue::Lambda {
-                    formals: cdr.get(),
-                    body: rest[1..rest.len()].to_vec(),
-                },
-                source,
-            })
-        } else {
-            Err(format!(
-                "expected symbol for method name in define method, got `{}`",
-                car.get().pretty_print()
-            ))
-        }
-    } else {
-        Err(format!(
-            "expected symbol or formals as target of define, got `{}`",
-            rest[0].pretty_print()
-        ))
-    }
-}
-
-fn parse_application(
-    arena: &Arena,
-    vms: &Interpreter,
-    env: &RcEnv,
-    af_info: &RcAfi,
-    fun: PoolPtr,
-    rest: &[PoolPtr],
-    source: Source,
-) -> Result<LocatedSyntaxElement, String> {
-    let function = parse(arena, vms, env, af_info, fun, source.clone())?;
-    let args = rest
-        .iter()
-        .map(|e| parse(arena, vms, env, af_info, *e, source.clone()))
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(SyntaxElement::Application(Box::new(Application { function, args })).with_source(source))
-}
-
-fn parse_formals(formals: PoolPtr) -> Result<Formals, String> {
-    let mut values = Vec::new();
-    let mut formal = formals;
-    loop {
-        if let Some(dt) = get_define_target(formal) {
-            return Ok(Formals {
-                values,
-                rest: Some(dt),
-            });
-        } else {
-            match &*formal.strip_locator() {
-                Value::EmptyList => return Ok(Formals { values, rest: None }),
-                Value::Pair(car, cdr) => {
-                    if let Some(dt) = get_define_target(car.get()) {
-                        values.push(dt);
-                        formal = cdr.get();
-                    } else {
-                        return Err(format!("malformed formals: {}", formals.pretty_print()));
-                    }
-                }
-                _ => {
-                    return Err(format!("malformed formals: {}", formals.pretty_print()));
-                }
-            }
-        }
-    }
-}
-
-fn parse_define_syntax(
-    arena: &Arena,
-    vms: &Interpreter,
-    env: &RcEnv,
-    af_info: &RcAfi,
-    rest: &[PoolPtr],
-    source: Source,
-) -> Result<LocatedSyntaxElement, String> {
-    // TODO the actual check should not be on activation frame altitude, but on syntactic
-    //      toplevelness. (eg `(define x (define y 1))` should not work).
-    if af_info.borrow().altitude != 0 {
-        return Err("Illegally placed define-syntax.".into());
-    }
-    check_len(rest, Some(2), Some(2))?;
-
-    let symbol = rest[0]
-        .strip_locator()
-        .try_get_symbol()
-        .ok_or_else(|| {
-            format!(
-                "define-syntax: target must be symbol, not {}.",
-                rest[0].pretty_print()
-            )
-        })?
-        .to_string();
-    let mac = make_macro(arena, env, af_info, vms, rest[1])?;
-    env.borrow_mut()
-        .define_macro(&symbol, mac, env.clone(), source.clone());
-
-    // TODO remove this somehow
-    Ok(SyntaxElement::Quote(Box::new(Quote {
-        quoted: arena.root(arena.unspecific),
-    }))
-    .with_source(source))
-}
-
-fn parse_let_syntax(
-    arena: &Arena,
-    vms: &Interpreter,
-    env: &RcEnv,
-    af_info: &RcAfi,
-    rest: &[PoolPtr],
-    rec: bool,
-    source: Source,
-) -> Result<LocatedSyntaxElement, String> {
-    check_len(rest, Some(2), None)?;
-    let bindings = rest[0].list_to_vec()?;
-    let inner_env = Rc::new(RefCell::new(Environment::new(Some(env.clone()))));
-    let definition_env = if rec { env } else { &inner_env };
-    for b in bindings.iter() {
-        let binding = b.list_to_vec()?;
-        check_len(&binding, Some(2), Some(2))?;
-
-        let symbol = binding[0]
-            .strip_locator()
-            .try_get_symbol()
-            .ok_or_else(|| {
-                format!(
-                    "let-syntax: target must be symbol, not {}.",
-                    rest[0].pretty_print()
-                )
-            })?
-            .to_string();
-        let mac = make_macro(arena, env, af_info, vms, binding[1])?;
-        inner_env
-            .borrow_mut()
-            .define_macro(&symbol, mac, definition_env.clone(), source.clone());
-    }
-
-    // Letrec and letrec syntax are allowed to have internal defines for some reason. We just
-    // create a lambda with no args and the body, and apply it immediately with no args.
-    let lambda = parse_split_lambda(
-        arena,
-        vms,
-        &inner_env,
-        af_info,
-        arena.empty_list,
-        &rest[1..],
-        Some("[let-syntax inner lambda]".into()),
-        source.clone(),
-    )?;
-    Ok(SyntaxElement::Application(Box::new(Application {
-        function: lambda,
-        args: vec![],
-    }))
-    .with_source(source))
-}
-
-fn make_macro(
-    arena: &Arena,
-    env: &RcEnv,
-    af_info: &RcAfi,
-    vms: &Interpreter,
-    val: PoolPtr,
-) -> Result<RootPtr, String> {
-    let mac = parse_compile_run_macro(arena, env, af_info, vms, val)?;
-    let mac = arena.root(mac);
-    match &*mac {
-        Value::Lambda { code, .. } => {
-            let code = code.get_code_block();
-            if code.arity != 3 || code.dotted {
-                Err("macro lambda must take exactly 3 arguments".into())
-            } else {
-                Ok(mac)
-            }
-        }
-        _ => Err(format!(
-            "macro must be a lambda, is {}",
-            mac.pp().pretty_print()
-        )),
-    }
-}
-
-/// Like parse_compile_run, but it creates a fake environment to evaluate the macro in.
-// TODO: refactor common code with parse_compile_run
-fn parse_compile_run_macro(
-    arena: &Arena,
-    env: &RcEnv,
-    af_info: &RcAfi,
-    vms: &Interpreter,
-    val: PoolPtr,
-) -> Result<PoolPtr, String> {
-    let syntax_tree = parse(arena, vms, env, af_info, val, Source::Absent)
-        .map_err(|e| format!("syntax error: {}", e))?;
-    vms.global_frame
-        .pp()
-        .get_activation_frame()
-        .borrow_mut()
-        .ensure_index(arena, get_toplevel_afi(af_info).borrow().entries);
-
-    let frame = make_frame(arena, vms.global_frame.pp(), af_info);
-
-    let code =
-        compile::compile_toplevel(arena, &syntax_tree.element, vms.global_environment.clone());
-    // println!(" => {:?}", &state.code[start_pc..state.code.len()]);
-    let code = arena.root(code);
-    vm::run(code, 0, frame, vms)
-        .map(|v| v.pp())
-        .map_err(|e| format!("runtime error: {}", e.pp().pretty_print()))
-}
-
-fn make_frame(arena: &Arena, global_frame: PoolPtr, af_info: &RcAfi) -> PoolPtr {
-    let parent = if let Some(p) = af_info.borrow().parent.clone() {
-        p
-    } else {
-        return global_frame;
-    };
-    let entries = af_info.borrow().entries;
-    let mut frame = ActivationFrame {
-        parent: Some(make_frame(arena, global_frame, &parent)),
-        values: Vec::with_capacity(entries),
-    };
-    frame.values.resize(entries, arena.undefined);
-    arena.insert(Value::ActivationFrame(RefCell::new(frame)))
-}
-
-fn expand_macro_full(
-    arena: &Arena,
-    vms: &Interpreter,
-    env: &RcEnv,
-    mac: Macro,
-    expr: PoolPtr,
-    source: Source,
-) -> Result<(PoolPtr, Source), String> {
-    // TODO should we just take in a RootPtr instead of rooting here?
-    let expr = strip_locators(arena, expr);
-    let mut source = Source::Macro {
-        macro_source: mac.source.clone(),
-        code_source: Box::new(source),
-    };
-    let mut expanded = expand_macro(arena, vms, env, mac, expr)?;
-    let mut macro_count = 0;
-    while let Some(m) = get_macro(arena, env, expanded.pp()) {
-        macro_count += 1;
-        if macro_count > MAX_MACRO_EXPANSION {
-            return Err("maximum macro expansion depth reached".into());
-        }
-        source = Source::Macro {
-            macro_source: m.source.clone(),
-            code_source: Box::new(source),
-        };
-        expanded = expand_macro(arena, vms, env, m, expanded)?;
-    }
-    Ok((expanded.pp(), source))
-}
-
-fn expand_macro(
-    arena: &Arena,
-    vms: &Interpreter,
-    env: &RcEnv,
-    mac: Macro,
-    expr: RootPtr,
-) -> Result<RootPtr, String> {
-    let definition_environment = Value::Environment(mac.definition_environment.clone());
-    let usage_environment = Value::Environment(env.clone());
-    let syntax_tree = SyntaxElement::Application(Box::new(Application {
-        function: SyntaxElement::Quote(Box::new(Quote { quoted: mac.lambda })).into(),
-        args: vec![
-            SyntaxElement::Quote(Box::new(Quote { quoted: expr })).into(),
-            SyntaxElement::Quote(Box::new(Quote {
-                quoted: arena.insert_rooted(usage_environment),
-            }))
-            .into(),
-            SyntaxElement::Quote(Box::new(Quote {
-                quoted: arena.insert_rooted(definition_environment),
-            }))
-            .into(),
-        ],
-    }));
-    vms.compile_run(&syntax_tree)
-}
-
-fn get_macro(arena: &Arena, env: &RcEnv, expr: PoolPtr) -> Option<Macro> {
-    match &*expr.strip_locator() {
-        Value::Pair(car, _cdr) => {
-            let (res_env, res_car) = resolve_syntactic_closure(arena, env, car.get()).unwrap();
-            match &*res_car.strip_locator() {
-                Value::Symbol(s) => match match_symbol(&res_env, s) {
-                    Symbol::Macro(m) => Some(m),
-                    _ => None,
-                },
-                _ => None,
-            }
-        }
-        _ => None,
-    }
 }
 
 enum Symbol {
@@ -916,6 +247,658 @@ enum Symbol {
     LetrecSyntax,
     Macro(Macro),
     Variable,
+}
+
+/// Structure holding common values for the AST parser
+struct Parser<'a> {
+    interpreter: &'a Interpreter,
+}
+
+// TODO can almost certainly remove the AF Info and reconstruct it from interpreter?
+pub fn parse(
+    interpreter: &Interpreter,
+    global_af_info: &RcAfi,
+    value: PoolPtr,
+) -> Result<LocatedSyntaxElement, String> {
+    let parser = Parser { interpreter };
+    parser.parse_val(
+        &interpreter.global_environment,
+        global_af_info,
+        value,
+        Source::Absent,
+    )
+}
+
+impl<'a> Parser<'a> {
+    /// Parses an expression into an AST (aka `SyntaxElement`)
+    ///
+    /// Annoyingly enough, we need a full `Interpreter` passed everywhere here, because macros
+    /// need to be executed and can add new code.
+    ///
+    /// **parse() requires `value` to be rooted**, but it won't tell you that because it's sneaky.
+    /// `value` isn't a `RootPtr` just because it would be expensive to root and unroot values
+    /// constantly during parsing. Since the top-level value representing the expression to parse is
+    /// rooted, we can get away with not rooting stuff as we go down the expression.
+    fn parse_val(
+        &self,
+        env: &RcEnv,
+        af_info: &RcAfi,
+        value: PoolPtr,
+        source: Source,
+    ) -> Result<LocatedSyntaxElement, String> {
+        // TODO remove the hold? It says just above that we don't need it...
+        let _value_hold = self.interpreter.arena.root(value);
+        let (env, value) = resolve_syntactic_closure(env, value)?;
+        match &*value {
+            Value::Symbol(s) => Ok(SyntaxElement::Reference(Box::new(construct_reference(
+                &env, af_info, s,
+            )?))
+            .with_source(source)),
+            Value::EmptyList => Err("cannot evaluate empty list".into()),
+            Value::Pair(car, cdr) => {
+                let car = car.get();
+                let cdr = cdr.get();
+                self.parse_pair(&env, af_info, car, cdr, source)
+            }
+            // TODO when we're parsing the results of a macro, we might want to / need to do something
+            //      different with locators?
+            Value::Located(ptr, locator) => {
+                self.parse_val(&env, af_info, *ptr, Source::from(*locator.clone()))
+            }
+            _ => Ok(SyntaxElement::Quote(Box::new(Quote {
+                quoted: strip_locators(&self.interpreter.arena, value),
+            }))
+            .with_source(source)),
+        }
+    }
+
+    fn parse_pair(
+        &self,
+        env: &RcEnv,
+        af_info: &RcAfi,
+        car: PoolPtr,
+        cdr: PoolPtr,
+        source: Source,
+    ) -> Result<LocatedSyntaxElement, String> {
+        let rest = cdr.list_to_vec()?;
+        let (car_env, resolved_car) = resolve_syntactic_closure(env, car)?;
+        match &*resolved_car.strip_locator() {
+            Value::Symbol(s) => match match_symbol(&car_env, s) {
+                Symbol::Quote => self.parse_quote(env, &rest, false, source),
+                Symbol::SyntaxQuote => self.parse_quote(env, &rest, true, source),
+                Symbol::If => self.parse_if(env, af_info, &rest, source),
+                Symbol::Begin => self.parse_begin(env, af_info, &rest, source),
+                Symbol::Lambda => self.parse_lambda(env, af_info, &rest, source),
+                Symbol::Set => self.parse_set(env, af_info, &rest, source),
+                Symbol::Define => self.parse_define(env, af_info, &rest, source),
+                Symbol::DefineSyntax => self.parse_define_syntax(env, af_info, &rest, source),
+                Symbol::LetSyntax => self.parse_let_syntax(env, af_info, &rest, false, source),
+                Symbol::LetrecSyntax => self.parse_let_syntax(env, af_info, &rest, true, source),
+                Symbol::Macro(m) => {
+                    // TODO fix this to avoid reconstructing the pair
+                    let expr = self
+                        .interpreter
+                        .arena
+                        .insert(Value::Pair(Cell::new(car), Cell::new(cdr)));
+                    let (expanded, src) = self.expand_macro_full(env, m, expr, source)?;
+                    self.parse_val(env, af_info, expanded, src)
+                }
+                _ => self.parse_application(env, af_info, car, &rest, source),
+            },
+            _ => self.parse_application(env, af_info, car, &rest, source),
+        }
+    }
+
+    fn parse_quote(
+        &self,
+        env: &RcEnv,
+        rest: &[PoolPtr],
+        syntax: bool,
+        source: Source,
+    ) -> Result<LocatedSyntaxElement, String> {
+        if rest.len() != 1 {
+            Err(format!("quote expected 1 argument, got {}", rest.len()))
+        } else if syntax {
+            let unlocated = strip_locators(&self.interpreter.arena, rest[0]);
+            Ok(SyntaxElement::Quote(Box::new(Quote { quoted: unlocated })).with_source(source))
+        } else {
+            let unlocated = strip_locators(&self.interpreter.arena, rest[0]);
+            let quoted = self
+                .interpreter
+                .arena
+                .root(strip_syntactic_closure(env, unlocated.pp()));
+            Ok(SyntaxElement::Quote(Box::new(Quote { quoted })).with_source(source))
+        }
+    }
+
+    fn parse_if(
+        &self,
+        env: &RcEnv,
+        af_info: &RcAfi,
+        rest: &[PoolPtr],
+        source: Source,
+    ) -> Result<LocatedSyntaxElement, String> {
+        check_len(rest, Some(2), Some(3))?;
+        let cond = self.parse_val(env, af_info, rest[0], source.clone())?;
+        let t = self.parse_val(env, af_info, rest[1], source.clone())?;
+        let f_s: Option<Result<_, _>> = rest
+            .get(2)
+            .map(|e| self.parse_val(env, af_info, *e, source.clone()));
+
+        // This dark magic swaps the option and the result (then `?`s the result)
+        // https://doc.rust-lang.org/rust-by-example/error/multiple_error_types/option_result.html
+        let f: Option<_> = f_s.map_or(Ok(None), |r| r.map(Some))?;
+        Ok(SyntaxElement::If(Box::new(If { cond, t, f })).with_source(source))
+    }
+
+    fn parse_begin(
+        &self,
+        env: &RcEnv,
+        af_info: &RcAfi,
+        rest: &[PoolPtr],
+        source: Source,
+    ) -> Result<LocatedSyntaxElement, String> {
+        check_len(rest, Some(1), None)?;
+        let expressions = rest
+            .iter()
+            .map(|e| self.parse_val(env, af_info, *e, source.clone()))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(SyntaxElement::Begin(Box::new(Begin { expressions })).with_source(source))
+    }
+
+    fn parse_lambda(
+        &self,
+        env: &RcEnv,
+        af_info: &RcAfi,
+        rest: &[PoolPtr],
+        source: Source,
+    ) -> Result<LocatedSyntaxElement, String> {
+        check_len(rest, Some(2), None)?;
+        self.parse_split_lambda(env, af_info, rest[0], &rest[1..rest.len()], None, source)
+    }
+
+    // TODO rename and document
+    fn parse_split_lambda(
+        &self,
+        outer_env: &RcEnv,
+        af_info: &RcAfi,
+        formals: PoolPtr,
+        body: &[PoolPtr],
+        name: Option<String>,
+        source: Source,
+    ) -> Result<LocatedSyntaxElement, String> {
+        let formals = parse_formals(formals)?;
+        let inner_afi = environment::extend_af_info(af_info);
+        let raw_env = Environment::new(Some(outer_env.clone()));
+        let inner_env = Rc::new(RefCell::new(raw_env));
+        let mut targets = Vec::new();
+
+        // TODO check that the formals are all distinct.
+        for define_target in formals.values.iter() {
+            define_in_env(
+                &self.interpreter.arena,
+                &inner_env,
+                &inner_afi,
+                define_target,
+                true,
+            );
+            targets.push(define_target.clone());
+        }
+        if let Some(define_target) = &formals.rest {
+            define_in_env(
+                &self.interpreter.arena,
+                &inner_env,
+                &inner_afi,
+                define_target,
+                true,
+            );
+            targets.push(define_target.clone());
+        }
+        let (unparsed_defines, rest) =
+            self.collect_internal_defines(&inner_env, body, source.clone())?;
+        for define_data in unparsed_defines.iter() {
+            define_in_env(
+                &self.interpreter.arena,
+                &inner_env,
+                &inner_afi,
+                &define_data.target,
+                false,
+            );
+            targets.push(define_data.target.clone());
+        }
+
+        let defines = unparsed_defines
+            .iter()
+            .map(|define_data| {
+                let value = self.parse_define_value(
+                    &inner_env,
+                    &inner_afi,
+                    define_data.target.get_name(),
+                    &define_data.value,
+                    source.clone(),
+                )?;
+                if let Some(EnvironmentValue::Variable(v)) =
+                    get_in_env(&inner_env, &define_data.target)
+                {
+                    Ok(SyntaxElement::Set(Box::new(Set {
+                        altitude: v.altitude,
+                        depth: inner_afi.borrow().altitude - v.altitude,
+                        index: v.index,
+                        value,
+                    }))
+                    .with_source(define_data.source.clone()))
+                } else {
+                    panic!(
+                        "expected {} in {:?} to be a variable, was {:?}",
+                        define_data.target.show(),
+                        inner_env,
+                        get_in_env(&inner_env, &define_data.target)
+                    );
+                }
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+
+        let expressions = rest
+            .iter()
+            .map(|e| self.parse_val(&inner_env, &inner_afi, *e, source.clone()))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        pop_envs(&self.interpreter.arena, &targets);
+        if expressions.is_empty() {
+            return Err("Lambda cannot have empty body".into());
+        }
+        Ok(SyntaxElement::Lambda(Box::new(Lambda {
+            env: inner_env,
+            arity: formals.values.len(),
+            dotted: formals.rest.is_some(),
+            defines,
+            expressions,
+            name,
+        }))
+        .with_source(source))
+    }
+
+    fn parse_set(
+        &self,
+        env: &RcEnv,
+        af_info: &RcAfi,
+        rest: &[PoolPtr],
+        source: Source,
+    ) -> Result<LocatedSyntaxElement, String> {
+        check_len(rest, Some(2), Some(2))?;
+        if let Some(dt) = get_define_target(rest[0]) {
+            let value = self.parse_val(env, af_info, rest[1], source.clone())?;
+            match get_in_env(env, &dt) {
+                Some(EnvironmentValue::Variable(v)) => Ok(SyntaxElement::Set(Box::new(Set {
+                    altitude: v.altitude,
+                    depth: af_info.borrow().altitude - v.altitude,
+                    index: v.index,
+                    value,
+                }))
+                .with_source(source)),
+                Some(_) => Err(format!("trying to set non-variable `{}`", dt.get_name())),
+                None => Err(format!("trying to set undefined value `{}`", dt.get_name())),
+            }
+        } else {
+            Err(format!(
+                "expected symbol as target of set!, got `{}`",
+                rest[0].pretty_print()
+            ))
+        }
+    }
+
+    /// Parses toplevel defines. Inner defines have different semantics and are parsed differently
+    /// (see [`collect_internal_defines`]).
+    fn parse_define(
+        &self,
+        env: &RcEnv,
+        af_info: &RcAfi,
+        rest: &[PoolPtr],
+        source: Source,
+    ) -> Result<LocatedSyntaxElement, String> {
+        // TODO the actual check should not be on activation frame altitude, but on syntactic
+        //      toplevelness. (eg `(define x (define y 1))` should not work).
+        if af_info.borrow().altitude != 0 {
+            return Err(format!(
+                "define in illegal position: {}",
+                list_from_vec(&self.interpreter.arena, rest).pretty_print()
+            ));
+        }
+        let define_data = get_define_data(rest, source.clone())?;
+
+        // TODO: don't do this and instead allow defining syncloses at top level?
+        let symbol = define_data.target.coerce_symbol();
+        let index = env.borrow_mut().define_if_absent(&symbol, af_info, false);
+        let value =
+            self.parse_define_value(env, af_info, symbol, &define_data.value, source.clone())?;
+        Ok(SyntaxElement::Set(Box::new(Set {
+            altitude: 0,
+            depth: af_info.borrow().altitude,
+            index,
+            value,
+        }))
+        .with_source(source))
+    }
+
+    fn parse_application(
+        &self,
+        env: &RcEnv,
+        af_info: &RcAfi,
+        fun: PoolPtr,
+        rest: &[PoolPtr],
+        source: Source,
+    ) -> Result<LocatedSyntaxElement, String> {
+        let function = self.parse_val(env, af_info, fun, source.clone())?;
+        let args = rest
+            .iter()
+            .map(|e| self.parse_val(env, af_info, *e, source.clone()))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(
+            SyntaxElement::Application(Box::new(Application { function, args }))
+                .with_source(source),
+        )
+    }
+
+    fn parse_define_syntax(
+        &self,
+        env: &RcEnv,
+        af_info: &RcAfi,
+        rest: &[PoolPtr],
+        source: Source,
+    ) -> Result<LocatedSyntaxElement, String> {
+        // TODO the actual check should not be on activation frame altitude, but on syntactic
+        //      toplevelness. (eg `(define x (define y 1))` should not work).
+        if af_info.borrow().altitude != 0 {
+            return Err("illegally placed define-syntax.".into());
+        }
+        check_len(rest, Some(2), Some(2))?;
+
+        let symbol = rest[0]
+            .strip_locator()
+            .try_get_symbol()
+            .ok_or_else(|| {
+                format!(
+                    "define-syntax: target must be symbol, not {}.",
+                    rest[0].pretty_print()
+                )
+            })?
+            .to_string();
+        let mac = self.make_macro(env, af_info, rest[1])?;
+        env.borrow_mut()
+            .define_macro(&symbol, mac, env.clone(), source.clone());
+
+        // TODO remove this somehow
+        Ok(SyntaxElement::Quote(Box::new(Quote {
+            quoted: self
+                .interpreter
+                .arena
+                .root(self.interpreter.arena.unspecific),
+        }))
+        .with_source(source))
+    }
+
+    fn parse_let_syntax(
+        &self,
+        env: &RcEnv,
+        af_info: &RcAfi,
+        rest: &[PoolPtr],
+        rec: bool,
+        source: Source,
+    ) -> Result<LocatedSyntaxElement, String> {
+        check_len(rest, Some(2), None)?;
+        let bindings = rest[0].list_to_vec()?;
+        let inner_env = Rc::new(RefCell::new(Environment::new(Some(env.clone()))));
+        let definition_env = if rec { env } else { &inner_env };
+        for b in bindings.iter() {
+            let binding = b.list_to_vec()?;
+            check_len(&binding, Some(2), Some(2))?;
+
+            let symbol = binding[0]
+                .strip_locator()
+                .try_get_symbol()
+                .ok_or_else(|| {
+                    format!(
+                        "let-syntax: target must be symbol, not {}.",
+                        rest[0].pretty_print()
+                    )
+                })?
+                .to_string();
+            let mac = self.make_macro(env, af_info, binding[1])?;
+            inner_env.borrow_mut().define_macro(
+                &symbol,
+                mac,
+                definition_env.clone(),
+                source.clone(),
+            );
+        }
+
+        // Letrec and letrec syntax are allowed to have internal defines for some reason. We just
+        // create a lambda with no args and the body, and apply it immediately with no args.
+        let lambda = self.parse_split_lambda(
+            &inner_env,
+            af_info,
+            self.interpreter.arena.empty_list,
+            &rest[1..],
+            Some("[let-syntax inner lambda]".into()),
+            source.clone(),
+        )?;
+        Ok(SyntaxElement::Application(Box::new(Application {
+            function: lambda,
+            args: vec![],
+        }))
+        .with_source(source))
+    }
+
+    fn make_macro(&self, env: &RcEnv, af_info: &RcAfi, val: PoolPtr) -> Result<RootPtr, String> {
+        let mac = self.parse_compile_run_macro(env, af_info, val)?;
+        let mac = self.interpreter.arena.root(mac);
+        match &*mac {
+            Value::Lambda { code, .. } => {
+                let code = code.get_code_block();
+                if code.arity != 3 || code.dotted {
+                    Err("macro lambda must take exactly 3 arguments".into())
+                } else {
+                    Ok(mac)
+                }
+            }
+            _ => Err(format!(
+                "macro must be a lambda, is {}",
+                mac.pp().pretty_print()
+            )),
+        }
+    }
+
+    /// Like parse_compile_run, but it creates a fake environment to evaluate the macro in.
+    // TODO: refactor common code with parse_compile_run
+    fn parse_compile_run_macro(
+        &self,
+        env: &RcEnv,
+        af_info: &RcAfi,
+        val: PoolPtr,
+    ) -> Result<PoolPtr, String> {
+        let syntax_tree = self
+            .parse_val(env, af_info, val, Source::Absent)
+            .map_err(|e| format!("syntax error: {}", e))?;
+        self.interpreter
+            .global_frame
+            .pp()
+            .get_activation_frame()
+            .borrow_mut()
+            .ensure_index(
+                &self.interpreter.arena,
+                get_toplevel_afi(af_info).borrow().entries,
+            );
+
+        let frame = make_frame(
+            &self.interpreter.arena,
+            self.interpreter.global_frame.pp(),
+            af_info,
+        );
+
+        let code = compile::compile_toplevel(
+            &self.interpreter.arena,
+            &syntax_tree.element,
+            self.interpreter.global_environment.clone(),
+        );
+        // println!(" => {:?}", &state.code[start_pc..state.code.len()]);
+        let code = self.interpreter.arena.root(code);
+        vm::run(code, 0, frame, self.interpreter)
+            .map(|v| v.pp())
+            .map_err(|e| format!("runtime error: {}", e.pp().pretty_print()))
+    }
+
+    fn expand_macro_full(
+        &self,
+        env: &RcEnv,
+        mac: Macro,
+        expr: PoolPtr,
+        source: Source,
+    ) -> Result<(PoolPtr, Source), String> {
+        // TODO should we just take in a RootPtr instead of rooting here?
+        let expr = strip_locators(&self.interpreter.arena, expr);
+        let mut source = Source::Macro {
+            macro_source: mac.source.clone(),
+            code_source: Box::new(source),
+        };
+        let mut expanded = self.expand_macro(env, mac, expr)?;
+        let mut macro_count = 0;
+        while let Some(m) = get_macro(env, expanded.pp()) {
+            macro_count += 1;
+            if macro_count > MAX_MACRO_EXPANSION {
+                return Err("maximum macro expansion depth reached".into());
+            }
+            source = Source::Macro {
+                macro_source: m.source.clone(),
+                code_source: Box::new(source),
+            };
+            expanded = self.expand_macro(env, m, expanded)?;
+        }
+        Ok((expanded.pp(), source))
+    }
+
+    fn expand_macro(&self, env: &RcEnv, mac: Macro, expr: RootPtr) -> Result<RootPtr, String> {
+        let definition_environment = Value::Environment(mac.definition_environment.clone());
+        let usage_environment = Value::Environment(env.clone());
+        let syntax_tree = SyntaxElement::Application(Box::new(Application {
+            function: SyntaxElement::Quote(Box::new(Quote { quoted: mac.lambda })).into(),
+            args: vec![
+                SyntaxElement::Quote(Box::new(Quote { quoted: expr })).into(),
+                SyntaxElement::Quote(Box::new(Quote {
+                    quoted: self.interpreter.arena.insert_rooted(usage_environment),
+                }))
+                .into(),
+                SyntaxElement::Quote(Box::new(Quote {
+                    quoted: self.interpreter.arena.insert_rooted(definition_environment),
+                }))
+                .into(),
+            ],
+        }));
+        self.interpreter.compile_run(&syntax_tree)
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn collect_internal_defines(
+        &self,
+        env: &RcEnv,
+        body: &[PoolPtr],
+        source: Source,
+    ) -> Result<(Vec<DefineData>, Vec<PoolPtr>), String> {
+        // TODO figure out a nice way to push macro expanded, non-define values. Right know
+        //      we'll perform macro expansion both here and at the actual parse site.
+        // TODO support internal macro definitions
+
+        let mut defines = Vec::new();
+        let mut rest = Vec::new();
+        let mut i = 0_usize;
+
+        for statement in body.iter() {
+            let expanded_statement = if let Some(m) = get_macro(env, *statement) {
+                let (ptr, _src) = self.expand_macro_full(env, m, *statement, source.clone())?;
+                ptr
+            } else {
+                *statement
+            };
+            if let Value::Pair(car, cdr) = &*expanded_statement.strip_locator() {
+                let (res_env, res_car) = resolve_syntactic_closure(env, car.get())?;
+                if let Value::Symbol(s) = &*res_car.strip_locator() {
+                    match match_symbol(&res_env, s) {
+                        Symbol::Define => {
+                            let rest = cdr.get().list_to_vec()?;
+                            let dv = get_define_data(&rest, source.clone())?;
+                            defines.push(dv);
+                        }
+                        Symbol::Begin => {
+                            let expressions = cdr.get().list_to_vec()?;
+                            let (d, r) =
+                                self.collect_internal_defines(env, &expressions, source.clone())?;
+                            if !d.is_empty() && !r.is_empty() {
+                                return Err(
+                                    "inner begin in define section may only contain definitions"
+                                        .into(),
+                                );
+                            }
+                            defines.extend(d.into_iter());
+                            rest.extend(r.into_iter());
+                        }
+                        Symbol::Macro(_) => panic!("macro in fully expanded statement"),
+                        _ => break,
+                    }
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+            i += 1;
+        }
+
+        rest.extend(&body[i..]);
+        Ok((defines, rest))
+    }
+
+    fn parse_define_value(
+        &self,
+        env: &RcEnv,
+        af_info: &RcAfi,
+        name: String,
+        value: &DefineValue,
+        source: Source,
+    ) -> Result<LocatedSyntaxElement, String> {
+        match value {
+            DefineValue::Value(v) => self.parse_val(env, af_info, *v, source),
+            DefineValue::Lambda { formals, body } => {
+                self.parse_split_lambda(env, af_info, *formals, body, Some(name), source)
+            }
+        }
+    }
+}
+
+fn construct_reference(env: &RcEnv, afi: &RcAfi, name: &str) -> Result<Reference, String> {
+    let mut env = env.borrow_mut();
+    match env.get(name) {
+        Some(EnvironmentValue::Variable(v)) => Ok(Reference {
+            altitude: v.altitude,
+            depth: afi.borrow().altitude - v.altitude,
+            index: v.index,
+        }),
+        Some(EnvironmentValue::Macro(_)) => Err(format!(
+            "illegal reference to {}, which is a macro, not a variable",
+            name
+        )),
+        None => {
+            // TODO: remove this, or find a better way to surface it.
+            println!(
+                "warning: reference to undefined variable {} in {:?}",
+                name, env
+            );
+            let index = env.define_toplevel(name, afi);
+            Ok(Reference {
+                altitude: 0,
+                depth: afi.borrow().altitude,
+                index,
+            })
+        }
+    }
 }
 
 fn match_symbol(env: &RcEnv, sym: &str) -> Symbol {
@@ -938,76 +921,7 @@ fn match_symbol(env: &RcEnv, sym: &str) -> Symbol {
     }
 }
 
-#[allow(clippy::type_complexity)]
-fn collect_internal_defines(
-    arena: &Arena,
-    vms: &Interpreter,
-    env: &RcEnv,
-    body: &[PoolPtr],
-    source: Source,
-) -> Result<(Vec<DefineData>, Vec<PoolPtr>), String> {
-    // TODO figure out a nice way to push macro expanded, non-define values. Right know
-    //      we'll perform macro expansion both here and at the actual parse site.
-    // TODO support internal macro definitions
-
-    let mut defines = Vec::new();
-    let mut rest = Vec::new();
-    let mut i = 0_usize;
-
-    for statement in body.iter() {
-        let expanded_statement = if let Some(m) = get_macro(arena, env, *statement) {
-            let (ptr, _src) = expand_macro_full(arena, vms, env, m, *statement, source.clone())?;
-            ptr
-        } else {
-            *statement
-        };
-        if let Value::Pair(car, cdr) = &*expanded_statement.strip_locator() {
-            let (res_env, res_car) = resolve_syntactic_closure(arena, env, car.get())?;
-            if let Value::Symbol(s) = &*res_car.strip_locator() {
-                match match_symbol(&res_env, s) {
-                    Symbol::Define => {
-                        let rest = cdr.get().list_to_vec()?;
-                        let dv = get_define_data(&rest, source.clone())?;
-                        defines.push(dv);
-                    }
-                    Symbol::Begin => {
-                        let expressions = cdr.get().list_to_vec()?;
-                        let (d, r) = collect_internal_defines(
-                            arena,
-                            vms,
-                            env,
-                            &expressions,
-                            source.clone(),
-                        )?;
-                        if !d.is_empty() && !r.is_empty() {
-                            return Err(
-                                "inner begin in define section may only contain definitions".into(),
-                            );
-                        }
-                        defines.extend(d.into_iter());
-                        rest.extend(r.into_iter());
-                    }
-                    Symbol::Macro(_) => panic!("macro in fully expanded statement"),
-                    _ => break,
-                }
-            } else {
-                break;
-            }
-        } else {
-            break;
-        }
-        i += 1;
-    }
-
-    rest.extend(&body[i..]);
-    Ok((defines, rest))
-}
-
-fn resolve_syntactic_closure(
-    arena: &Arena,
-    env: &RcEnv,
-    value: PoolPtr,
-) -> Result<(RcEnv, PoolPtr), String> {
+fn resolve_syntactic_closure(env: &RcEnv, value: PoolPtr) -> Result<(RcEnv, PoolPtr), String> {
     if let Value::SyntacticClosure(SyntacticClosure {
         closed_env,
         free_variables,
@@ -1019,7 +933,7 @@ fn resolve_syntactic_closure(
             .try_get_environment()
             .expect("syntactic closure created with non-environment argument");
         let inner_env = environment::filter(closed_env, env, free_variables)?;
-        resolve_syntactic_closure(arena, &inner_env, *expr)
+        resolve_syntactic_closure(&inner_env, *expr)
     } else {
         Ok((env.clone(), value))
     }
@@ -1083,5 +997,106 @@ fn pop_envs(arena: &Arena, targets: &[DefineTarget]) {
         if let DefineTarget::SyntacticClosure(val) = target {
             val.try_get_syntactic_closure().unwrap().pop_env(arena);
         }
+    }
+}
+
+fn get_define_data(rest: &[PoolPtr], source: Source) -> Result<DefineData, String> {
+    let res = if let Some(target) = get_define_target(rest[0]) {
+        check_len(rest, Some(2), Some(2))?;
+        DefineData {
+            target,
+            value: DefineValue::Value(rest[1]),
+            source,
+        }
+    } else {
+        get_lambda_define_value(rest, source)?
+    };
+    Ok(res)
+}
+
+/// Helper method to parse direct lambda defines `(define (x y z) y z)`.
+fn get_lambda_define_value(rest: &[PoolPtr], source: Source) -> Result<DefineData, String> {
+    check_len(rest, Some(2), None)?;
+    if let Value::Pair(car, cdr) = &*rest[0].strip_locator() {
+        if let Value::Symbol(s) = &*car.get().strip_locator() {
+            let variable = s.clone();
+            Ok(DefineData {
+                target: DefineTarget::Bare(variable),
+                value: DefineValue::Lambda {
+                    formals: cdr.get(),
+                    body: rest[1..rest.len()].to_vec(),
+                },
+                source,
+            })
+        } else {
+            Err(format!(
+                "expected symbol for method name in define method, got `{}`",
+                car.get().pretty_print()
+            ))
+        }
+    } else {
+        Err(format!(
+            "expected symbol or formals as target of define, got `{}`",
+            rest[0].pretty_print()
+        ))
+    }
+}
+
+fn parse_formals(formals: PoolPtr) -> Result<Formals, String> {
+    let mut values = Vec::new();
+    let mut formal = formals;
+    loop {
+        if let Some(dt) = get_define_target(formal) {
+            return Ok(Formals {
+                values,
+                rest: Some(dt),
+            });
+        } else {
+            match &*formal.strip_locator() {
+                Value::EmptyList => return Ok(Formals { values, rest: None }),
+                Value::Pair(car, cdr) => {
+                    if let Some(dt) = get_define_target(car.get()) {
+                        values.push(dt);
+                        formal = cdr.get();
+                    } else {
+                        return Err(format!("malformed formals: {}", formals.pretty_print()));
+                    }
+                }
+                _ => {
+                    return Err(format!("malformed formals: {}", formals.pretty_print()));
+                }
+            }
+        }
+    }
+}
+
+fn make_frame(arena: &Arena, global_frame: PoolPtr, af_info: &RcAfi) -> PoolPtr {
+    let parent = if let Some(p) = af_info.borrow().parent.clone() {
+        p
+    } else {
+        return global_frame;
+    };
+    let entries = af_info.borrow().entries;
+    let mut frame = ActivationFrame {
+        parent: Some(make_frame(arena, global_frame, &parent)),
+        values: Vec::with_capacity(entries),
+    };
+    frame.values.resize(entries, arena.undefined);
+    arena.insert(Value::ActivationFrame(RefCell::new(frame)))
+}
+
+fn get_macro(env: &RcEnv, expr: PoolPtr) -> Option<Macro> {
+    match &*expr.strip_locator() {
+        Value::Pair(car, _cdr) => {
+            let (res_env, res_car) = resolve_syntactic_closure(env, car.get()).unwrap();
+            match &*res_car.strip_locator() {
+                Value::Symbol(s) => match match_symbol(&res_env, s) {
+                    Symbol::Macro(m) => Some(m),
+                    _ => None,
+                },
+                _ => None,
+            }
+        }
+        _ => None,
     }
 }

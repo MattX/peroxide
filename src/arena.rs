@@ -32,6 +32,7 @@ pub struct Arena {
     roots: Vec<RootPtr>,
     symbol_map: RefCell<HashMap<String, RootPtr>>,
     gensym_counter: Cell<usize>,
+    // TODO change these to RootPtrs
     pub undefined: PoolPtr,
     pub unspecific: PoolPtr,
     pub eof: PoolPtr,

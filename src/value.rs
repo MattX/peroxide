@@ -409,6 +409,8 @@ impl Display for Locator {
 /// Recursively removes all `Locator` values from the passed `value`.
 ///
 /// Requires `value` to be rooted?
+///
+// TODO maybe just do this in place?
 pub fn strip_locators(arena: &Arena, value: PoolPtr) -> RootPtr {
     match &*value {
         Value::Pair(car, cdr) => {
