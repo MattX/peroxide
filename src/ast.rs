@@ -303,7 +303,7 @@ pub fn parse(
     global_af_info: &RcAfi,
     value: PoolPtr,
 ) -> Result<LocatedSyntaxElement, ParseError> {
-    let parser = Parser {
+    let mut parser = Parser {
         interpreter,
         warnings: Vec::new(),
     };
@@ -326,7 +326,7 @@ impl<'a> Parser<'a> {
     /// constantly during parsing. Since the top-level value representing the expression to parse is
     /// rooted, we can get away with not rooting stuff as we go down the expression.
     fn parse_val(
-        &self,
+        &mut self,
         env: &RcEnv,
         af_info: &RcAfi,
         value: PoolPtr,
@@ -338,7 +338,7 @@ impl<'a> Parser<'a> {
             .map_err(|e| ParseError::new(e, source.clone()))?;
         match &*value {
             Value::Symbol(s) => Ok(SyntaxElement::Reference(Box::new(
-                construct_reference(&env, af_info, s)
+                self.construct_reference(&env, af_info, s, &source)
                     .map_err(|e| ParseError::new(e, source.clone()))?,
             ))
             .with_source(source)),
@@ -361,7 +361,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_pair(
-        &self,
+        &mut self,
         env: &RcEnv,
         af_info: &RcAfi,
         car: PoolPtr,
@@ -401,7 +401,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_quote(
-        &self,
+        &mut self,
         env: &RcEnv,
         rest: &[PoolPtr],
         syntax: bool,
@@ -426,7 +426,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_if(
-        &self,
+        &mut self,
         env: &RcEnv,
         af_info: &RcAfi,
         rest: &[PoolPtr],
@@ -446,7 +446,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_begin(
-        &self,
+        &mut self,
         env: &RcEnv,
         af_info: &RcAfi,
         rest: &[PoolPtr],
@@ -461,7 +461,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_lambda(
-        &self,
+        &mut self,
         env: &RcEnv,
         af_info: &RcAfi,
         rest: &[PoolPtr],
@@ -473,7 +473,7 @@ impl<'a> Parser<'a> {
 
     // TODO rename and document
     fn parse_split_lambda(
-        &self,
+        &mut self,
         outer_env: &RcEnv,
         af_info: &RcAfi,
         formals: PoolPtr,
@@ -573,7 +573,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_set(
-        &self,
+        &mut self,
         env: &RcEnv,
         af_info: &RcAfi,
         rest: &[PoolPtr],
@@ -613,7 +613,7 @@ impl<'a> Parser<'a> {
     /// Parses toplevel defines. Inner defines have different semantics and are parsed differently
     /// (see [`collect_internal_defines`]).
     fn parse_define(
-        &self,
+        &mut self,
         env: &RcEnv,
         af_info: &RcAfi,
         rest: &[PoolPtr],
@@ -647,7 +647,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_application(
-        &self,
+        &mut self,
         env: &RcEnv,
         af_info: &RcAfi,
         fun: PoolPtr,
@@ -666,7 +666,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_define_syntax(
-        &self,
+        &mut self,
         env: &RcEnv,
         af_info: &RcAfi,
         rest: &[PoolPtr],
@@ -709,7 +709,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_let_syntax(
-        &self,
+        &mut self,
         env: &RcEnv,
         af_info: &RcAfi,
         rest: &[PoolPtr],
@@ -770,7 +770,12 @@ impl<'a> Parser<'a> {
         .with_source(source))
     }
 
-    fn make_macro(&self, env: &RcEnv, af_info: &RcAfi, val: PoolPtr) -> Result<RootPtr, String> {
+    fn make_macro(
+        &mut self,
+        env: &RcEnv,
+        af_info: &RcAfi,
+        val: PoolPtr,
+    ) -> Result<RootPtr, String> {
         let mac = self.parse_compile_run_macro(env, af_info, val)?;
         let mac = self.interpreter.arena.root(mac);
         match &*mac {
@@ -792,7 +797,7 @@ impl<'a> Parser<'a> {
     /// Like parse_compile_run, but it creates a fake environment to evaluate the macro in.
     // TODO: refactor common code with parse_compile_run
     fn parse_compile_run_macro(
-        &self,
+        &mut self,
         env: &RcEnv,
         af_info: &RcAfi,
         val: PoolPtr,
@@ -829,7 +834,7 @@ impl<'a> Parser<'a> {
     }
 
     fn expand_macro_full(
-        &self,
+        &mut self,
         env: &RcEnv,
         mac: Macro,
         expr: PoolPtr,
@@ -864,7 +869,7 @@ impl<'a> Parser<'a> {
         Ok((expanded.pp(), source))
     }
 
-    fn expand_macro(&self, env: &RcEnv, mac: Macro, expr: RootPtr) -> Result<RootPtr, String> {
+    fn expand_macro(&mut self, env: &RcEnv, mac: Macro, expr: RootPtr) -> Result<RootPtr, String> {
         let definition_environment = Value::Environment(mac.definition_environment.clone());
         let usage_environment = Value::Environment(env.clone());
         let syntax_tree = SyntaxElement::Application(Box::new(Application {
@@ -886,7 +891,7 @@ impl<'a> Parser<'a> {
 
     #[allow(clippy::type_complexity)]
     fn collect_internal_defines(
-        &self,
+        &mut self,
         env: &RcEnv,
         body: &[PoolPtr],
         source: Source,
@@ -952,7 +957,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_define_value(
-        &self,
+        &mut self,
         env: &RcEnv,
         af_info: &RcAfi,
         name: String,
@@ -966,32 +971,37 @@ impl<'a> Parser<'a> {
             }
         }
     }
-}
 
-fn construct_reference(env: &RcEnv, afi: &RcAfi, name: &str) -> Result<Reference, String> {
-    let mut env = env.borrow_mut();
-    match env.get(name) {
-        Some(EnvironmentValue::Variable(v)) => Ok(Reference {
-            altitude: v.altitude,
-            depth: afi.borrow().altitude - v.altitude,
-            index: v.index,
-        }),
-        Some(EnvironmentValue::Macro(_)) => Err(format!(
-            "illegal reference to {}, which is a macro, not a variable",
-            name
-        )),
-        None => {
-            // TODO: remove this, or find a better way to surface it.
-            println!(
-                "warning: reference to undefined variable {} in {:?}",
-                name, env
-            );
-            let index = env.define_toplevel(name, afi);
-            Ok(Reference {
-                altitude: 0,
-                depth: afi.borrow().altitude,
-                index,
-            })
+    fn construct_reference(
+        &mut self,
+        env: &RcEnv,
+        afi: &RcAfi,
+        name: &str,
+        source: &Source,
+    ) -> Result<Reference, String> {
+        let mut env = env.borrow_mut();
+        match env.get(name) {
+            Some(EnvironmentValue::Variable(v)) => Ok(Reference {
+                altitude: v.altitude,
+                depth: afi.borrow().altitude - v.altitude,
+                index: v.index,
+            }),
+            Some(EnvironmentValue::Macro(_)) => Err(format!(
+                "illegal reference to {}, which is a macro, not a variable",
+                name
+            )),
+            None => {
+                self.warnings.push(ParseError::new(
+                    format!("reference to undefined variable {}", name),
+                    source.clone(),
+                ));
+                let index = env.define_toplevel(name, afi);
+                Ok(Reference {
+                    altitude: 0,
+                    depth: afi.borrow().altitude,
+                    index,
+                })
+            }
         }
     }
 }
