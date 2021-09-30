@@ -394,10 +394,7 @@ impl Heap {
     }
 
     fn root(&mut self, p: PoolPtr) -> usize {
-        #[cfg(debug_assertions)]
-        {
-            debug_assert!(!p.maybe_deref().is_free(), "rooting freed pointer {:?}", p,);
-        }
+        debug_assert!(!p.maybe_deref().is_free(), "rooting freed pointer {:?}", p);
         let empty = self
             .roots
             .iter_mut()

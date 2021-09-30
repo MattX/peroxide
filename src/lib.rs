@@ -66,11 +66,14 @@ impl Interruptor {
 }
 
 // TODO make arena non-pub
-/// Structure holding the global state of the interpreter between effective runs of the VM.
+/// Structure holding the global state of the interpreter between runs of the VM.
 pub struct Interpreter {
     global_environment: RcEnv,
     global_frame: RootPtr,
     interruptor: Arc<AtomicBool>,
+    // This is kept in an `Rc` because `File`s are referenced from errors, and errors are supposed
+    // to have a permanent lifetime.
+    files: Vec<Rc<File>>,
     // Keep arena last! It must not be dropped before the RootPtr above.
     pub arena: Arena,
 }
@@ -124,6 +127,7 @@ impl Interpreter {
             global_environment,
             global_frame,
             interruptor: Arc::new(AtomicBool::new(false)),
+            files: vec![],
         }
     }
 
@@ -150,6 +154,23 @@ impl Interpreter {
         Ok(())
     }
 
+    pub fn run(&mut self, file: File) -> Result<Vec<RootPtr>, String> {
+        self.files.push(Rc::new(file));
+        let file = self.files.last().unwrap();
+        let values = Reader::new(&self.arena, true, Rc::new(file.name.clone()))
+            .read_many(&file.source)
+            .map_err(|e| match e {
+                NoParseResult::Nothing => format!("{}: empty file", &file.name),
+                NoParseResult::LocatedParseError { msg, locator } => {
+                    locate_message(&file.source, &locator, &msg)
+                }
+            })?;
+        values
+            .into_iter()
+            .map(|v| self.parse_compile_run(v.ptr))
+            .collect()
+    }
+
     /// High-level interface to parse, compile, and run a value that's been read.
     pub fn parse_compile_run(&self, read: RootPtr) -> Result<RootPtr, String> {
         let cloned_env = self.global_environment.clone();
@@ -164,7 +185,6 @@ impl Interpreter {
                 .values
                 .len(),
         }));
-        // let read = strip_locators(&self.arena, read.pp());
         let syntax_tree = ast::parse(
             &self.arena,
             self,
@@ -179,7 +199,6 @@ impl Interpreter {
             .get_activation_frame()
             .borrow_mut()
             .ensure_index(&self.arena, global_af_info.borrow().entries);
-        // println!(" => {:?}", syntax_tree);
         self.compile_run(&syntax_tree.element)
     }
 
@@ -190,4 +209,11 @@ impl Interpreter {
         vm::run(code, 0, self.global_frame.pp(), self)
             .map_err(|e| format!("runtime error: {}", e.pp().pretty_print()))
     }
+}
+
+/// Represents an input file or other textual input source, such as a REPL segment.
+#[derive(Debug)]
+pub struct File {
+    name: String,
+    source: String,
 }
