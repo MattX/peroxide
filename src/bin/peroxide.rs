@@ -121,9 +121,9 @@ fn handle_one_expr(
         };
 
         let line = line_opt.unwrap();
-        if !pending_expr.is_empty() {
-            current_expr_string += "\n";
-        }
+        // if !pending_expr.is_empty() {
+        //     current_expr_string += "\n";
+        // }
         current_expr_string += &line;
         let line_file = File::new("<repl>", current_expr_string.to_string());
         let mut tokenize_result =

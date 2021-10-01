@@ -3,6 +3,8 @@ use std::fmt::Write;
 use ast::{MacroSource, Source};
 use value::Locator;
 
+const MAX_DEPTH: usize = 15;
+
 /// An error which can provide a code location
 pub trait SourcedError: std::error::Error {
     fn code_source(&self) -> Option<&Source>;
@@ -20,8 +22,13 @@ pub fn error_with_source(source: &Source, type_: impl AsRef<str>, msg: impl AsRe
 }
 
 fn error_with_source_d(output: &mut String, source: &Source, depth: usize) {
+    let prefix = " ".repeat(depth * 2);
+    if depth > MAX_DEPTH {
+        writeln!(output, "{}(maximum depth reached)", prefix).unwrap();
+        return;
+    }
     match source {
-        Source::Absent => writeln!(output, "{}--> (unknown code location)", depth).unwrap(),
+        Source::Absent => writeln!(output, "{}--> at an unknown code location", prefix).unwrap(),
         Source::Code(locator) => locate_in_code(output, locator, depth),
         Source::Macro {
             macro_source,
@@ -35,7 +42,7 @@ fn locate_in_code(output: &mut String, locator: &Locator, depth: usize) {
     let line_number_width = depth * 2 + locator.range.end.0.to_string().chars().count();
     let line_padding = " ".repeat(line_number_width);
 
-    writeln!(output, "{}--> {}", prefix, locator).unwrap();
+    writeln!(output, "{}--> at {}", prefix, locator).unwrap();
     writeln!(output, "{} |", line_padding).unwrap();
 
     for (i_line, line) in locator.file.source.lines().enumerate() {

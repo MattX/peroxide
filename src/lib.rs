@@ -24,6 +24,7 @@ extern crate num_traits;
 extern crate rustyline;
 
 use std::cell::RefCell;
+use std::fmt::{Debug, Formatter};
 use std::fs;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
@@ -213,7 +214,7 @@ impl Interpreter {
 }
 
 /// Represents an input file or other textual input source, such as a REPL segment.
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub struct File {
     pub name: String,
     pub source: String,
@@ -225,5 +226,11 @@ impl File {
             name: name.into(),
             source: source.into(),
         })
+    }
+}
+
+impl Debug for File {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "File({})", self.name)
     }
 }

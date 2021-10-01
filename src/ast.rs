@@ -589,23 +589,17 @@ impl<'a> Parser<'a> {
                     value,
                 }))
                 .with_source(source)),
-                Some(_) => Err(ParseError::new(
-                    format!("trying to set non-variable `{}`", dt.get_name()),
+                Some(EnvironmentValue::Macro(_)) => Err(ParseError::new(
+                    format!("setting macro `{}`", dt.get_name()),
                     source,
                 )),
                 None => Err(ParseError::new(
-                    format!("trying to set undefined value `{}`", dt.get_name()),
+                    format!("setting undefined value `{}`", dt.get_name()),
                     source,
                 )),
             }
         } else {
-            Err(ParseError::new(
-                format!(
-                    "expected symbol as target of set!, got `{}`",
-                    rest[0].pretty_print()
-                ),
-                source,
-            ))
+            Err(ParseError::new("expected symbol as target of set!", source))
         }
     }
 
@@ -839,7 +833,6 @@ impl<'a> Parser<'a> {
         expr: PoolPtr,
         source: Source,
     ) -> Result<(PoolPtr, Source), ParseError> {
-        // TODO should we just take in a RootPtr instead of rooting here?
         let expr = strip_locators(&self.interpreter.arena, expr);
         let mut source = Source::Macro {
             macro_source: mac.source.clone(),

@@ -44,7 +44,7 @@ impl ReadlineRepl {
         };
 
         if ed.editor.load_history("history.txt").is_err() {
-            println!("No previous history.");
+            println!("no previous history");
         }
 
         ed
@@ -83,6 +83,7 @@ impl Repl for StdIoRepl {
             .map_err(|e| GetLineError::Err(e.to_string()))?;
 
         let mut buf = String::new();
+        buf.push('\n');
         match io::stdin().read_line(&mut buf) {
             Ok(0) => Err(GetLineError::Eof),
             Ok(_) => Ok(buf),
