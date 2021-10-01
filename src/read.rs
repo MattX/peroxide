@@ -72,12 +72,6 @@ impl<'ar> Reader<'ar> {
         }
     }
 
-    // TODO maybe expose a `read` method that just returns a RootPtr?.
-    // pub fn read(&self, input: &str) -> Result<ParseResult, String> {
-    //     let tokens = lex::lex(input)?;
-    //     self.read_tokens(&tokens).map_err(|e| format!("{:?}", e))
-    // }
-
     pub fn read_many(&self, code: &str) -> Result<Vec<ReadResult>, NoReadResult> {
         let tokens = lex::lex(code).map_err(|e| self.error(e.msg, e.location))?;
         let segments = lex::segment(tokens).map_err(|e| self.error(e.msg, e.location))?;
@@ -148,7 +142,7 @@ impl<'ar> Reader<'ar> {
             match &t.token {
                 Token::ClosingParen => {
                     it.next();
-                    Ok(self.insert_positioned(Value::EmptyList, t.range))
+                    Ok(self.insert_positioned(Value::EmptyList, prev.merge(t.range)))
                 }
                 _ => {
                     let first = self.do_read(it)?;

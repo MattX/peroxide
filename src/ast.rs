@@ -468,11 +468,10 @@ impl<'a> Parser<'a> {
         source: Source,
     ) -> Result<LocatedSyntaxElement, ParseError> {
         check_len(rest, Some(2), None).map_err(|e| ParseError::new(e, source.clone()))?;
-        self.parse_split_lambda(env, af_info, rest[0], &rest[1..rest.len()], None, source)
+        self.parse_lambda_body(env, af_info, rest[0], &rest[1..rest.len()], None, source)
     }
 
-    // TODO rename and document
-    fn parse_split_lambda(
+    fn parse_lambda_body(
         &mut self,
         outer_env: &RcEnv,
         af_info: &RcAfi,
@@ -755,7 +754,7 @@ impl<'a> Parser<'a> {
 
         // Letrec and letrec syntax are allowed to have internal defines for some reason. We just
         // create a lambda with no args and the body, and apply it immediately with no args.
-        let lambda = self.parse_split_lambda(
+        let lambda = self.parse_lambda_body(
             &inner_env,
             af_info,
             self.interpreter.arena.empty_list,
@@ -934,7 +933,7 @@ impl<'a> Parser<'a> {
                             if !d.is_empty() && !r.is_empty() {
                                 return Err(ParseError::new(
                                     "inner begin in define section may only contain definitions",
-                                    source.clone(),
+                                    source,
                                 ));
                             }
                             defines.extend(d.into_iter());
@@ -967,7 +966,7 @@ impl<'a> Parser<'a> {
         match value {
             DefineValue::Value(v) => self.parse_val(env, af_info, *v, source),
             DefineValue::Lambda { formals, body } => {
-                self.parse_split_lambda(env, af_info, *formals, body, Some(name), source)
+                self.parse_lambda_body(env, af_info, *formals, body, Some(name), source)
             }
         }
     }

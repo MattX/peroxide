@@ -20,6 +20,7 @@ extern crate pretty_env_logger;
 extern crate rustyline;
 
 use std::env;
+use std::process::exit;
 use std::rc::Rc;
 use std::str::FromStr;
 
@@ -64,7 +65,11 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
     let interruptor_clone = interpreter.interruptor();
 
     ctrlc::set_handler(move || {
-        interruptor_clone.interrupt();
+        if !interruptor_clone.should_interrupt() {
+            interruptor_clone.interrupt();
+        } else {
+            exit(1);
+        }
     })
     .map_err(|e| format!("error setting Ctrl+C handler: {}", e.to_string()))?;
 
@@ -116,8 +121,10 @@ fn handle_one_expr(
         };
 
         let line = line_opt.unwrap();
+        if !pending_expr.is_empty() {
+            current_expr_string += "\n";
+        }
         current_expr_string += &line;
-        current_expr_string += "\n";
         let line_file = File::new("<repl>", current_expr_string.to_string());
         let mut tokenize_result =
             peroxide::lex::lex_line(&line, current_expr_string.lines().count() as u32).map_err(

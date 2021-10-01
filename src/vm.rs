@@ -145,10 +145,7 @@ pub struct Vm {
 
 impl Vm {
     fn set_value(&mut self, v: PoolPtr) {
-        #[cfg(debug_assertions)]
-        {
-            debug_assert!(v.ok());
-        }
+        debug_assert!(v.ok());
         self.value = v;
     }
 

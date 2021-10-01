@@ -63,6 +63,14 @@ impl Interruptor {
     pub fn interrupt(&self) {
         self.0.store(true, Relaxed);
     }
+
+    pub fn mark_interrupted(&self) {
+        self.0.store(true, Relaxed);
+    }
+
+    pub fn should_interrupt(&self) -> bool {
+        self.0.load(Relaxed)
+    }
 }
 
 // TODO make arena non-pub

@@ -318,10 +318,7 @@ pub struct PtrVec(Vec<PoolPtr>);
 
 impl PtrVec {
     pub fn push(&mut self, v: PoolPtr) {
-        #[cfg(debug_assertions)]
-        {
-            debug_assert!(v.ok());
-        }
+        debug_assert!(v.ok());
         self.0.push(v);
     }
 
