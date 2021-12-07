@@ -17,11 +17,11 @@
 use std::cell::{Cell, RefCell};
 use std::fmt::Write;
 use std::sync::atomic::Ordering::Relaxed;
-use num_bigint::BigInt;
 
 use arena::Arena;
 use environment::ActivationFrame;
 use heap::{Inventory, PoolPtr, PtrVec, RootPtr};
+use num_bigint::BigInt;
 use primitives::PrimitiveImplementation;
 use value::{list_from_vec, Value};
 use {heap, Interpreter, INPUT_PORT_INDEX, OUTPUT_PORT_INDEX};

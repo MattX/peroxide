@@ -46,7 +46,8 @@ use vm::Vm;
 
 const POOL_ENTRIES: u16 = 1 << 8;
 const FIRST_GC: usize = 1024 * 1024;
-const GC_GROWTH: f32 = 2.0;
+const MAX_OBJECTS: usize = 50 * 1024 * 1024;
+const GC_GROWTH: f32 = 10.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GcMode {
@@ -368,10 +369,17 @@ impl Heap {
             self.gc();
             debug!("done with GC");
         } else if self.gc_mode.is_normal() && self.allocated_values > self.next_gc {
-            debug!("running GC");
+            debug!("running GC: allocated {}", self.allocated_values);
             self.gc();
-            debug!("done with GC");
-            self.next_gc = (self.allocated_values as f32 * GC_GROWTH) as usize;
+            self.next_gc = num_traits::clamp(
+                (self.allocated_values as f32 * GC_GROWTH) as usize,
+                self.next_gc,
+                MAX_OBJECTS,
+            );
+            debug!(
+                "done with GC: allocated {}, next {}",
+                self.allocated_values, self.next_gc
+            );
         }
 
         if self.pools.is_empty() {
