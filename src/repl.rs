@@ -68,8 +68,8 @@ impl Repl for ReadlineRepl {
 
     fn save_history(&mut self) {
         self.history_location
-            .as_ref()
-            .map(|hl| self.editor.save_history(hl));
+            .clone()
+            .map(|hl| self.editor.save_history(&hl));
     }
 }
 

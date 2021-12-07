@@ -6,15 +6,15 @@ license = "Apache-2.0"
 publish = false
 
 [dependencies]
-bitvec = "0.17"
-clap = "2.33"
-ctrlc = "3.1"
-num-bigint = "0.3"
-num-complex = "0.3"
+bitvec = "0.22"
+clap = "2.34"
+ctrlc = "3.2"
+num-bigint = "0.4"
+num-complex = "0.4"
 num-integer = "0.1"
-num-rational = "0.3"
+num-rational = "0.4"
 num-traits = "0.2"
-rustyline = "6.2"
+rustyline = "8.2"
 
-# [profile.release]
-# debug = true
+[profile.release]
+debug = true

@@ -38,7 +38,8 @@ use std::pin::Pin;
 use std::rc::{Rc, Weak};
 use std::str::FromStr;
 
-use bitvec::prelude::{BitBox, BitVec};
+use bitvec::bitbox;
+use bitvec::prelude::BitBox;
 use value::Value;
 use vm::Vm;
 
@@ -170,7 +171,7 @@ impl Pool {
             data,
             free_block: Some(0),
             allocated: 0,
-            marked: BitVec::from(&[false; POOL_ENTRIES as usize][..]).into_boxed_bitslice(),
+            marked: bitbox![0; POOL_ENTRIES as usize],
         };
         Box::pin(pool)
     }
@@ -246,9 +247,10 @@ impl Pool {
 
     /// Returns the number of freed entries
     fn sweep(self: Pin<&mut Self>, debug: bool) -> u16 {
-        let mut selr = unsafe { self.get_unchecked_mut() };
+        let selr = unsafe { self.get_unchecked_mut() };
         let init = selr.allocated;
-        for (i_mark, mark) in selr.marked.clone().iter().enumerate() {
+        for i_mark in 0..selr.marked.len() - 1 {
+            let mark = selr.marked[i_mark];
             if !mark && !selr.data[i_mark].is_free() {
                 /*
                 if let PoolEntry::Used(UsedPoolEntry(Value::CodeBlock(_))) = &selr.data[i_mark] {
@@ -258,7 +260,7 @@ impl Pool {
                 selr.free_ref(u16::try_from(i_mark).unwrap(), debug)
             }
         }
-        selr.marked = BitVec::from(&[false; POOL_ENTRIES as usize][..]).into_boxed_bitslice();
+        selr.marked.set_all(false);
         init - selr.allocated
     }
 }
