@@ -936,3 +936,16 @@
         (if (not (promise-done? promise))
           (promise-update! promise* promise))
         (force promise))))
+
+;; System
+
+(define (jiffies-per-second) 1000000000)
+
+(define-syntax time
+  (syntax-rules ()
+    ((_ expr)
+     (let ((start-jiffy (current-jiffy))
+           (res expr)
+           (end-jiffy (current-jiffy)))
+       (display "time: " (inexact (/ (- end-jiffy start-jiffy) (jiffies-per-second))) " seconds\n")
+       res))))

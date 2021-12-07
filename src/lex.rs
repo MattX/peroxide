@@ -350,11 +350,11 @@ fn parse_number(s: &[char], base: u8, exactness: Exactness) -> Result<NumValue, 
 fn parse_simple_number(s: &[char], base: u8, exactness: Exactness) -> Result<NumValue, String> {
     if let Some(pos) = s.iter().position(|x| *x == '/') {
         let numerator =
-            parse_integer(&s[..pos], base).ok_or_else(|| "Invalid rational".to_string())?;
+            parse_integer(&s[..pos], base).ok_or_else(|| "invalid rational".to_string())?;
         let denominator =
-            parse_integer(&s[pos + 1..], base).ok_or_else(|| "Invalid rational".to_string())?;
+            parse_integer(&s[pos + 1..], base).ok_or_else(|| "invalid rational".to_string())?;
         if denominator.is_zero() {
-            Err(format!("Invalid zero denominator: {}", denominator))
+            Err(format!("invalid zero denominator: {}", denominator))
         } else {
             Ok(exactness.convert_rational(BigRational::new(numerator, denominator)))
         }
@@ -371,17 +371,17 @@ fn parse_simple_number(s: &[char], base: u8, exactness: Exactness) -> Result<Num
     {
         if base != 10 {
             return Err(format!(
-                "Real is specified in base {}, but only base 10 is supported.",
+                "real is specified in base {}, but only base 10 is supported",
                 base
             ));
         }
         parse_float(s)
             .map(|x| exactness.convert_real(x))
-            .ok_or_else(|| format!("Invalid float: {}", s.iter().collect::<String>()))
+            .ok_or_else(|| format!("invalid float: {}", s.iter().collect::<String>()))
     } else {
         parse_integer(s, base)
             .map(|x| exactness.convert_integer(x))
-            .ok_or_else(|| format!("Invalid integer: {}", s.iter().collect::<String>()))
+            .ok_or_else(|| format!("invalid integer: {}", s.iter().collect::<String>()))
     }
 }
 

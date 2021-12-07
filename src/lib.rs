@@ -28,6 +28,7 @@ use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
+use std::time::Instant;
 
 use arena::Arena;
 use ast::SyntaxElement;
@@ -68,6 +69,7 @@ pub struct Interpreter {
     global_environment: RcEnv,
     global_frame: RootPtr,
     interruptor: Arc<AtomicBool>,
+    start_time: Instant,
     // Keep arena last! It must not be dropped before the RootPtr above.
     pub arena: Arena,
 }
@@ -121,6 +123,7 @@ impl Interpreter {
             global_environment,
             global_frame,
             interruptor: Arc::new(AtomicBool::new(false)),
+            start_time: Instant::now(),
         }
     }
 

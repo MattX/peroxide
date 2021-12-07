@@ -17,6 +17,7 @@
 use std::cell::{Cell, RefCell};
 use std::fmt::Write;
 use std::sync::atomic::Ordering::Relaxed;
+use num_bigint::BigInt;
 
 use arena::Arena;
 use environment::ActivationFrame;
@@ -460,6 +461,7 @@ fn invoke(int: &Interpreter, vm: &mut Vm, tail: bool) -> Result<(), Error> {
                 PrimitiveImplementation::Abort => return Err(raise(arena, vm, true)),
                 PrimitiveImplementation::Raise => return Err(raise(arena, vm, false)),
                 PrimitiveImplementation::Eval => eval(int, vm)?,
+                PrimitiveImplementation::CurrentJiffy => vm.value = current_jiffy(int)?,
             };
             match p.implementation {
                 PrimitiveImplementation::Apply | PrimitiveImplementation::CallCC => {}
@@ -541,7 +543,6 @@ fn call_cc(int: &Interpreter, vm: &mut Vm) -> Result<(), Error> {
     invoke(int, vm, true)
 }
 
-// fn eval(arena: &Arena, vm: &mut Vm, env: &RcEnv) -> Result<(), Error> {
 fn eval(int: &Interpreter, vm: &mut Vm) -> Result<(), Error> {
     let arena = &int.arena;
     let af = vm.value.long_lived().get_activation_frame().borrow();
@@ -565,6 +566,12 @@ fn eval(int: &Interpreter, vm: &mut Vm) -> Result<(), Error> {
         .map_err(|e| raise_string(arena, format!("eval: {}", e)))?;
     vm.set_value(res.pp());
     Ok(())
+}
+
+fn current_jiffy(int: &Interpreter) -> Result<PoolPtr, Error> {
+    let arena = &int.arena;
+    let duration = int.start_time.elapsed().as_nanos();
+    Ok(arena.insert(Value::Integer(BigInt::from(duration))))
 }
 
 fn resolve_variable(vm: &Vm, altitude: usize, index: usize) -> String {

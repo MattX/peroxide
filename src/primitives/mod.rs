@@ -104,7 +104,7 @@ macro_rules! simple_primitive {
     };
 }
 
-static PRIMITIVES: [Primitive; 123] = [
+static PRIMITIVES: [Primitive; 124] = [
     simple_primitive!("make-syntactic-closure", make_syntactic_closure),
     simple_primitive!("identifier=?", identifier_equal_p),
     simple_primitive!("identifier?", identifier_p),
@@ -249,6 +249,10 @@ static PRIMITIVES: [Primitive; 123] = [
         name: "eval",
         implementation: PrimitiveImplementation::Eval,
     },
+    Primitive {
+        name: "current-jiffy",
+        implementation: PrimitiveImplementation::CurrentJiffy,
+    },
 ];
 
 pub struct Primitive {
@@ -265,6 +269,7 @@ pub enum PrimitiveImplementation {
     CallCC,
     Raise,
     Abort,
+    CurrentJiffy,
 }
 
 impl Debug for Primitive {
