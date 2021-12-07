@@ -61,8 +61,8 @@ fn do_main(args: Vec<String>) -> Result<(), String> {
     })
     .map_err(|e| format!("error setting Ctrl+C handler: {}", e.to_string()))?;
 
-    if !options.no_std {
-        interpreter.initialize("src/scheme-lib/init.scm")?;
+    if let Some(path) = options.stdlib_file {
+        interpreter.initialize(&path)?;
     }
     loop {
         if !handle_one_expr_wrap(&mut *repl, &interpreter, silent) {
@@ -153,7 +153,7 @@ fn rep(vm_state: &Interpreter, toks: Vec<Vec<Token>>, silent: bool) -> Result<()
 #[derive(Debug)]
 struct Options {
     pub enable_readline: bool,
-    pub no_std: bool,
+    pub stdlib_file: Option<String>,
     pub input_file: Option<String>,
     pub gc_mode: GcMode,
 }
@@ -166,6 +166,13 @@ fn parse_args(args: &[&str]) -> Result<Options, String> {
             Arg::with_name("no-std")
                 .long("no-std")
                 .help("Do not load the standard library"),
+        )
+        .arg(
+            Arg::with_name("stdlib-file")
+                .long("stdlib-file")
+                .takes_value(true)
+                .conflicts_with("no-std")
+                .help("Specify a file to load as the standard library"),
         )
         .arg(
             Arg::with_name("no-readline")
@@ -181,9 +188,18 @@ fn parse_args(args: &[&str]) -> Result<Options, String> {
         .arg(Arg::with_name("input-file").help("Sets the input file to use"))
         .get_matches_from(args);
 
+    let stdlib_file = if matches.is_present("no-std") {
+        None
+    } else {
+        let stdlib_file = matches
+            .value_of("stdlib-file")
+            .unwrap_or("src/scheme-lib/init.scm");
+        Some(stdlib_file.to_string())
+    };
+
     Ok(Options {
         enable_readline: !matches.is_present("no-readline"),
-        no_std: matches.is_present("no-std"),
+        stdlib_file,
         input_file: matches.value_of("input-file").map(|v| v.to_string()),
         gc_mode: GcMode::from_str(matches.value_of("gc-mode").unwrap()).unwrap(),
     })
