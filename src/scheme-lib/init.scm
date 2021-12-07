@@ -115,15 +115,17 @@
 (define (reverse l)
   (acc-reverse l '()))
 
+; If l is empty, returns res.
+; Otherwise, returns the concatenation of (reverse l) with res.
 (define (append2 l res)
   (if (null? l)
       res
-      (cons (car l) (append2 (cdr l) res))))
+      (append2 (cdr l) (cons (car l) res))))
 
 (define (append-helper ls res)
   (if (null? ls)
       res
-      (append-helper (cdr ls) (append2 (car ls) res))))
+      (append-helper (cdr ls) (append2 (reverse (car ls)) res))))
 
 (define (append . o)
   (if (null? o)
