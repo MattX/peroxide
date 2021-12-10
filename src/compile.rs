@@ -178,7 +178,9 @@ fn compile_lambda(arena: &Arena, l: &Lambda, rv: PoolPtr) -> PoolPtr {
     if l.dotted {
         code.push(Instruction::PackFrame(l.arity));
     }
-    code.push(Instruction::ExtendFrame(l.defines.len()));
+    if !l.defines.is_empty() {
+        code.push(Instruction::ExtendFrame(l.defines.len()));
+    }
     code.push(Instruction::ExtendEnv);
 
     if !l.defines.is_empty() {
@@ -197,6 +199,7 @@ fn compile_lambda(arena: &Arena, l: &Lambda, rv: PoolPtr) -> PoolPtr {
     code_block_ptr
 }
 
+// TODO fix this
 fn make_get_instruction(altitude: usize, depth: usize, index: usize) -> Instruction {
     match (altitude, false) {
         (0, true) => Instruction::GlobalArgumentGet { index },
