@@ -25,9 +25,7 @@ use heap::{Inventory, PoolPtr, PtrVec, RootPtr};
 use num_bigint::BigInt;
 use primitives::PrimitiveImplementation;
 use value::{list_from_vec, Value};
-use {heap, Interpreter, INPUT_PORT_INDEX, OUTPUT_PORT_INDEX};
-use read::read;
-use read_many;
+use {heap, read_many, Interpreter, INPUT_PORT_INDEX, OUTPUT_PORT_INDEX};
 
 static MAX_RECURSION_DEPTH: usize = 1000;
 
@@ -584,16 +582,18 @@ fn load(int: &Interpreter, vm: &mut Vm) -> Result<(), Error> {
     if af.values.len() != 1 {
         return Err(raise_string(arena, "load: expected 1 argument".into()));
     }
-    let filename = af.values[0]
-        .try_get_string()
-        .ok_or_else(|| raise_string(arena, "load: expected a string as the first argument".to_string()))?;
+    let filename = af.values[0].try_get_string().ok_or_else(|| {
+        raise_string(
+            arena,
+            "load: expected a string as the first argument".to_string(),
+        )
+    })?;
 
     let data = std::fs::read_to_string(Path::new(&*filename.borrow()))
         .map_err(|e| raise_string(arena, format!("load: {}", e)))?;
     drop(af);
 
-    let read = read_many(arena, &data)
-        .map_err(|e| raise_string(arena, format!("load: {}", e)))?;
+    let read = read_many(arena, &data).map_err(|e| raise_string(arena, format!("load: {}", e)))?;
 
     for r in read {
         int.parse_compile_run(r)

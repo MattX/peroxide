@@ -170,7 +170,7 @@ impl Interpreter {
 
     pub fn compile_run(&self, syntax_tree: &SyntaxElement) -> Result<RootPtr, String> {
         let code =
-            compile::compile_toplevel(&self.arena, syntax_tree, self.global_environment.clone());
+            compile::compile_toplevel(&self.arena, syntax_tree, self.global_environment.clone())?;
         let code = self.arena.root(code);
         vm::run(code, 0, self.global_frame.pp(), self)
             .map_err(|e| format!("runtime error: {}", e.pp().pretty_print()))
