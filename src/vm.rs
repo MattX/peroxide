@@ -16,6 +16,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::fmt::Write;
+use std::path::Path;
 use std::sync::atomic::Ordering::Relaxed;
 
 use arena::Arena;
@@ -25,6 +26,8 @@ use num_bigint::BigInt;
 use primitives::PrimitiveImplementation;
 use value::{list_from_vec, Value};
 use {heap, Interpreter, INPUT_PORT_INDEX, OUTPUT_PORT_INDEX};
+use read::read;
+use read_many;
 
 static MAX_RECURSION_DEPTH: usize = 1000;
 
@@ -462,6 +465,7 @@ fn invoke(int: &Interpreter, vm: &mut Vm, tail: bool) -> Result<(), Error> {
                 PrimitiveImplementation::Raise => return Err(raise(arena, vm, false)),
                 PrimitiveImplementation::Eval => eval(int, vm)?,
                 PrimitiveImplementation::CurrentJiffy => vm.value = current_jiffy(int)?,
+                PrimitiveImplementation::Load => load(int, vm)?,
             };
             match p.implementation {
                 PrimitiveImplementation::Apply | PrimitiveImplementation::CallCC => {}
@@ -572,6 +576,32 @@ fn current_jiffy(int: &Interpreter) -> Result<PoolPtr, Error> {
     let arena = &int.arena;
     let duration = int.start_time.elapsed().as_nanos();
     Ok(arena.insert(Value::Integer(BigInt::from(duration))))
+}
+
+fn load(int: &Interpreter, vm: &mut Vm) -> Result<(), Error> {
+    let arena = &int.arena;
+    let af = vm.value.get_activation_frame().borrow();
+    if af.values.len() != 1 {
+        return Err(raise_string(arena, "load: expected 1 argument".into()));
+    }
+    let filename = af.values[0]
+        .try_get_string()
+        .ok_or_else(|| raise_string(arena, "load: expected a string as the first argument".to_string()))?;
+
+    let data = std::fs::read_to_string(Path::new(&*filename.borrow()))
+        .map_err(|e| raise_string(arena, format!("load: {}", e)))?;
+    drop(af);
+
+    let read = read_many(arena, &data)
+        .map_err(|e| raise_string(arena, format!("load: {}", e)))?;
+
+    for r in read {
+        int.parse_compile_run(r)
+            .map_err(|e| raise_string(arena, format!("load: {}", e)))?;
+    }
+
+    vm.set_value(arena.unspecific);
+    Ok(())
 }
 
 fn resolve_variable(vm: &Vm, altitude: usize, index: usize) -> String {
